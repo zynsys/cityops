@@ -1,0 +1,29 @@
+# Dependencies / build output (reinstalled and rebuilt inside the image)
+node_modules
+.next
+out
+
+# VCS / tooling
+.git
+.gitignore
+.vscode
+.ado
+
+# Secrets — never bake into the image (keep the example only)
+.env
+.env.*
+!.env.example
+
+# Local runtime data and docs not needed for the build
+public/uploads
+docs
+site
+workshop
+coverage
+playwright-report
+test-results
+npm-debug.log*
+
+# Docker files themselves
+Dockerfile
+.dockerignore
