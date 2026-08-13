@@ -26,7 +26,6 @@ export default defineConfig({
     exclude: ['node_modules', '.next'],
     coverage: {
       provider: 'v8',
-      all: true,
       // cobertura feeds the Azure DevOps coverage tab; json-summary drives the warn-only gate.
       reporter: ['text', 'html', 'cobertura', 'json-summary'],
       reportsDirectory: './coverage',
