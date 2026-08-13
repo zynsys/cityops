@@ -247,7 +247,7 @@ stages:
                 - task: AzureKeyVault@2
                   displayName: 'Fetch dev DB secret'
                   inputs:
-                    azureSubscription: $(azureServiceConnection)
+                    azureSubscription: 'cityops-azure'
                     KeyVaultName: $(keyVaultName)
                     SecretsFilter: 'DATABASE-URL-DEV'
                     RunAsPreJob: false
@@ -262,7 +262,7 @@ stages:
                 - task: AzureWebApp@1
                   displayName: 'Deploy to dev slot'
                   inputs:
-                    azureSubscription: $(azureServiceConnection)
+                    azureSubscription: 'cityops-azure'
                     appType: webAppLinux
                     appName: $(webAppName)
                     resourceGroupName: $(resourceGroup)
@@ -308,7 +308,7 @@ stages:
                 - task: AzureKeyVault@2
                   displayName: 'Fetch prod DB secret'
                   inputs:
-                    azureSubscription: $(azureServiceConnection)
+                    azureSubscription: 'cityops-azure'
                     KeyVaultName: $(keyVaultName)
                     SecretsFilter: 'DATABASE-URL'
                     RunAsPreJob: false
@@ -321,7 +321,7 @@ stages:
                 - task: AzureAppServiceManage@0
                   displayName: 'Swap dev → production'
                   inputs:
-                    azureSubscription: $(azureServiceConnection)
+                    azureSubscription: 'cityops-azure'
                     action: 'Swap Slots'
                     webAppName: $(webAppName)
                     resourceGroupName: $(resourceGroup)

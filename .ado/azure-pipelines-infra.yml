@@ -63,7 +63,7 @@ stages:
           - task: AzureCLI@2
             displayName: 'Bicep lint + what-if preview'
             inputs:
-              azureSubscription: $(azureServiceConnection)
+              azureSubscription: 'cityops-azure'
               scriptType: bash
               scriptLocation: inlineScript
               inlineScript: |
@@ -100,7 +100,7 @@ stages:
                 - task: AzureCLI@2
                   displayName: 'az deployment group create'
                   inputs:
-                    azureSubscription: $(azureServiceConnection)
+                    azureSubscription: 'cityops-azure'
                     scriptType: bash
                     scriptLocation: inlineScript
                     inlineScript: |
