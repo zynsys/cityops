@@ -149,14 +149,14 @@ stages:
               pathToSources: '$(System.DefaultWorkingDirectory)'
 
   # ---------------------------------------------------------------------------
-  # E2E — Playwright against the built app. Runs on every trigger (push, PR, manual,
-  # nightly) because Deploy_Prod requires it to pass — production must never deploy
-  # without E2E coverage for that commit.
+  # E2E — Playwright against the built app. Runs on PRs (pre-merge safety net),
+  # the nightly schedule (health check), and manual runs (pre-prod promotion) —
+  # NOT on every push to main, to keep the continuous dev-deploy path fast.
   # ---------------------------------------------------------------------------
   - stage: E2ETest
     displayName: 'E2E tests'
     dependsOn: IntegrationTest
-    condition: succeeded()
+    condition: and(succeeded(), in(variables['Build.Reason'], 'PullRequest', 'Manual', 'Schedule'))
     jobs:
       - job: e2e
         pool:
@@ -275,7 +275,10 @@ stages:
   # ---------------------------------------------------------------------------
   # DEPLOY (Production) — migrate the prod DB (cityops), then SWAP dev → production
   # for a zero-downtime release (rollback = swap back). Gated by 'prod' approval AND
-  # requires E2ETest to have passed — production never deploys without E2E coverage.
+  # only runs on a manually-triggered pipeline run (Build.Reason == 'Manual') — that is
+  # the only trigger where E2ETest also runs in the SAME run, so production can never
+  # deploy without E2E passing, without E2E running on every ordinary push.
+  # To promote to prod: Pipelines → CityOps-CI → Run pipeline (manually) on main.
   # Slot-sticky DATABASE_URL/NEXTAUTH_URL keep each slot pointed at its own DB.
   # ---------------------------------------------------------------------------
   - stage: Deploy_Prod
@@ -283,7 +286,7 @@ stages:
     dependsOn:
       - Deploy_Dev
       - E2ETest
-    condition: succeeded()
+    condition: and(succeeded(), eq(variables['Build.Reason'], 'Manual'))
     variables:
       - name: azureServiceConnection
         value: cityops-azure

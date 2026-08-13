@@ -151,12 +151,14 @@ az role assignment create \
 
 Only **two** ADO Environments exist, matching the only two real deployment targets — both the app pipeline and the infra pipeline reuse them (no separate "infra" environment):
 
-- **`dev`** — deploy gate for the dev slot (app) and shared by the infra pipeline's Deploy stage.
-- **`prod`** — deploy gate for production (app); the infra pipeline's Deploy stage also targets **`prod`**, since a single Bicep apply provisions/updates the shared, production-impacting resources (Key Vault, PostgreSQL, App Service plan) alongside both slots.
+- **`dev`** — deploy target for the dev slot (app) and shared by the infra pipeline's Deploy stage. **No approval gate** — dev deploys continuously and automatically on every push to `main`, for fast feedback.
+- **`prod`** — deploy target for production (app); the infra pipeline's Deploy stage also targets **`prod`**, since a single Bicep apply provisions/updates the shared, production-impacting resources (Key Vault, PostgreSQL, App Service plan) alongside both slots. **Has an approval gate.**
 
 Create them under Pipelines → **Environments**.
 
-Both environments have an **Approval check with a 5-minute timeout** (not the platform default of 30 days), approved by a single required approver. A pending approval does **not** consume agent minutes — the stage sits in a "Waiting" state and no agent is allocated until it's approved. If it isn't approved within 5 minutes, the check times out and the stage fails (no indefinite hang).
+The `prod` environment has an **Approval check with a 5-minute timeout** (not the platform default of 30 days), approved by a single required approver. A pending approval does **not** consume agent minutes — the stage sits in a "Waiting" state and no agent is allocated until it's approved. If it isn't approved within 5 minutes, the check times out and the stage fails (no indefinite hang).
+
+> This asymmetry — no gate on dev, a gate on prod — is standard practice: lower environments favor fast, continuous feedback; production favors deliberate, reviewed releases.
 
 To add or inspect an approval check:
 
@@ -235,17 +237,18 @@ No secret is ever stored in pipeline YAML or as a plaintext App Service setting 
 ### 6.1 App pipeline (`CityOps-CI`)
 
 ```
-Build & Unit tests  →  Integration tests  →  Deploy_Dev (dev slot, migrate cityops_dev)  [env: dev, approval]
-                                          ↘  E2E tests (always, every trigger)          ↘
-                                                                                          Deploy_Prod (migrate cityops, swap dev→prod)  [env: prod, approval]
+Build & Unit tests  →  Integration tests  →  Deploy_Dev (dev slot, migrate cityops_dev)  [env: dev, no approval]
+                                          ↘  E2E tests (PR / nightly / manual only)
+
+Manual run only:  ... → E2E tests (passes) → Deploy_Prod (migrate cityops, swap dev→prod)  [env: prod, approval]
 ```
 
 - **Build** produces an environment-agnostic **standalone** artifact (`drop`). No runtime config needed — the Prisma client is lazily instantiated.
-- **Deploy_Dev** deploys `drop` to the **dev slot** and runs `db:migrate:deploy` against `cityops_dev`.
-- **E2E tests** run on every trigger (push, PR, manual, nightly) — not just PR/nightly — because **`Deploy_Prod` requires them to pass**: production never deploys without E2E coverage for that commit.
-- **Deploy_Prod** depends on both `Deploy_Dev` and `E2ETest` succeeding; it migrates `cityops` (prod) then **swaps** dev → production (zero-downtime).
+- **Deploy_Dev** deploys `drop` to the **dev slot** and runs `db:migrate:deploy` against `cityops_dev` automatically on every push to `main` — **no approval gate**, for fast continuous feedback.
+- **E2E tests** run on **PRs** (pre-merge safety net), the **nightly schedule** (health check), and **manual runs** — deliberately **not** on every push to `main`, to keep the continuous dev-deploy path fast.
+- **Deploy_Prod** only runs as part of a **manually triggered pipeline run** (Pipelines → `CityOps-CI` → **Run pipeline**) — the one trigger where `E2ETest` also runs in the same run. It depends on both `Deploy_Dev` and `E2ETest` succeeding, so **production can never deploy without E2E passing**, without E2E ever running on ordinary pushes. It migrates `cityops` (prod) then **swaps** dev → production (zero-downtime), gated by the `prod` approval.
 
-Deploys run on **main pushes / manual** only (not on PRs or the nightly schedule).
+`Deploy_Dev` runs automatically on every push to `main` (and on manual runs). `Deploy_Prod` runs **only** on manual runs — there is no automatic path to production.
 
 ### 6.2 Infra pipeline (`CityOps-Infra`)
 
