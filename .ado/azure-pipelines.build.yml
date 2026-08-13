@@ -6,7 +6,7 @@
 # Pair with: Pipelines → Releases → New release pipeline → Artifact source = this build.
 #
 # Manual trigger keeps this separate from the modern multi-stage pipeline
-# (azure-pipelines.yml) so both can coexist during the demo without double-deploying.
+# (.ado/azure-pipelines.yml) so both can coexist during the demo without double-deploying.
 trigger: none
 
 pool:
