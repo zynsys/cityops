@@ -21,7 +21,7 @@ trigger:
   paths:
     include:
       - infra/**
-      - .ado/modern/modern-cityops-infra.yml
+      - .ado/modern/infra.yml
 
 pr:
   branches:
@@ -29,7 +29,7 @@ pr:
   paths:
     include:
       - infra/**
-      - .ado/modern/modern-cityops-infra.yml
+      - .ado/modern/infra.yml
 
 parameters:
   - name: location

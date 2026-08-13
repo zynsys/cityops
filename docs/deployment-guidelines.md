@@ -188,16 +188,16 @@ Pipelines → **Library** → variable group **`cityops-infra`** with **secret**
 - `pgAdminPassword`
 - `authSecret`
 
-> Naming note: `cityops-infra` here is a **Library variable group**, unrelated to ADO Environments — there is no `cityops-infra` *environment*. The similarly-named `-n cityops-infra` in the `az deployment group create` commands (§3.2) is just the ARM deployment's name, also unrelated. Three different things share this name by coincidence; only the variable group and the ARM deployment name remain.
+> Naming note: `cityops-infra` here is a **Library variable group**, unrelated to ADO Environments — there is no `cityops-infra` _environment_. The similarly-named `-n cityops-infra` in the `az deployment group create` commands (§3.2) is just the ARM deployment's name, also unrelated. Three different things share this name by coincidence; only the variable group and the ARM deployment name remain.
 
 ### 4.4 Register pipelines
 
 Pipelines → New pipeline → Existing YAML file:
 
-| Pipeline        | YAML file                                                             | Purpose                                                  |
-| --------------- | --------------------------------------------------------------------- | -------------------------------------------------------- |
-| `CityOps-CI`    | [`.ado/modern/modern-cityops-app.yml`](../.ado/modern/modern-cityops-app.yml)             | App build, tests, coverage, **Deploy_Dev → Deploy_Prod** |
-| `CityOps-Infra` | [`.ado/modern/modern-cityops-infra.yml`](../.ado/modern/modern-cityops-infra.yml) | Infra **Validate → Deploy**                              |
+| Pipeline       | YAML file                                           | Purpose                                                  |
+| -------------- | --------------------------------------------------- | -------------------------------------------------------- |
+| `modern-app`   | [`.ado/modern/app.yml`](../.ado/modern/app.yml)     | App build, tests, coverage, **Deploy_Dev → Deploy_Prod** |
+| `modern-infra` | [`.ado/modern/infra.yml`](../.ado/modern/infra.yml) | Infra **Validate → Deploy**                              |
 
 ---
 
@@ -221,10 +221,10 @@ Config is validated at startup by `validateEnv()` (via `src/instrumentation.ts`)
 
 There are two distinct categories of secret, stored in two distinct places — do not mix them up:
 
-| Category              | Used by                                        | Stored in                                           | Examples                                                                  |
-| --------------------- | ---------------------------------------------- | --------------------------------------------------- | ------------------------------------------------------------------------- |
+| Category              | Used by                                        | Stored in                                                                         | Examples                                                                  |
+| --------------------- | ---------------------------------------------- | --------------------------------------------------------------------------------- | ------------------------------------------------------------------------- |
 | **Provisioning-time** | The _infra pipeline_, once, to seed everything | ADO variable group `cityops-infra` (Library, secret-flagged — not an Environment) | `pgAdminPassword`, `authSecret`                                           |
-| **Runtime**           | The _running application_                      | Azure Key Vault, read via managed identity          | `DATABASE-URL`, `DATABASE-URL-DEV`, `AUTH-SECRET`, `AZURE-OPENAI-API-KEY` |
+| **Runtime**           | The _running application_                      | Azure Key Vault, read via managed identity                                        | `DATABASE-URL`, `DATABASE-URL-DEV`, `AUTH-SECRET`, `AZURE-OPENAI-API-KEY` |
 
 No secret is ever stored in pipeline YAML or as a plaintext App Service setting — runtime secrets are always `@Microsoft.KeyVault(VaultName=...;SecretName=...)` references, resolved by each slot's own system-assigned managed identity (granted **Key Vault Secrets User** via RBAC). The `AZURE-OPENAI-API-KEY` secret value is pulled from the OpenAI account with `listKeys()` inside Bicep and written straight into Key Vault — it is never exposed as a deployment output.
 
@@ -355,7 +355,7 @@ done
 | [`infra/modules/postgres.bicep`](../infra/modules/postgres.bicep)     | PostgreSQL Flexible Server module                               |
 | [`infra/modules/appservice.bicep`](../infra/modules/appservice.bicep) | App Service (plan + web app + dev slot) module                  |
 | [`infra/modules/openai.bicep`](../infra/modules/openai.bicep)         | Azure OpenAI account + model deployment module                  |
-| [`.ado/modern/modern-cityops-app.yml`](../.ado/modern/modern-cityops-app.yml)             | App CI/CD (build, test, deploy dev/prod)                        |
-| [`.ado/modern/modern-cityops-infra.yml`](../.ado/modern/modern-cityops-infra.yml) | Infrastructure pipeline                                         |
+| [`.ado/modern/app.yml`](../.ado/modern/app.yml)                       | App CI/CD (build, test, deploy dev/prod)                        |
+| [`.ado/modern/infra.yml`](../.ado/modern/infra.yml)                   | Infrastructure pipeline                                         |
 | [`.env.example`](../.env.example)                                     | Full list of runtime environment variables                      |
 | [`Dockerfile`](../Dockerfile)                                         | Optional container build (not used for App Service code deploy) |
