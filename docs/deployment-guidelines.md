@@ -253,10 +253,12 @@ Manual run only:  ... → E2E tests (passes) → Deploy_Prod (migrate cityops, s
 ### 6.2 Infra pipeline (`CityOps-Infra`)
 
 ```
-Validate (bicep lint + what-if)  →  Deploy (az deployment group create)  [env: prod, approval]
+Validate (bicep lint + what-if, every push/PR)  →  Deploy (manual run only)  [env: prod, approval]
 ```
 
-`what-if` is the infra "build/preview"; the apply is the "release". Triggered only when `infra/**` changes. The Deploy stage is gated by the **same `prod` environment/approval** the app pipeline uses — there is no separate infra environment, since `dev` and `prod` are the only real deployment targets.
+`what-if` is the infra "build/preview" and runs automatically on every push/PR to `infra/**` — read this diff before applying. **`Deploy` only runs on a manually-triggered pipeline run** (Pipelines → `CityOps-Infra` → **Run pipeline**), never automatically, and is gated by the **same `prod` environment/approval** the app pipeline uses.
+
+> **Why infra doesn't have a "test in dev first" step like the app does:** the app builds one artifact and deploys it twice (dev slot, then swap to prod) — genuine dev-first validation of the same bits. Infra instead provisions **shared** resources in a single apply (one Key Vault, one Postgres server, one App Service plan serving both dev and prod slots at once) — there's no separate "dev infra" to isolate and test first; a change to the Postgres SKU, for example, affects the one server both databases sit on. Requiring a manual run (reviewed against the automatic `what-if` diff) plus the `prod` approval is the closest equivalent this shared architecture supports: infra never applies without deliberate human review. True dev/prod infra isolation would require separate resource groups (its own Key Vault, Postgres server, App Service per environment) — roughly doubling infra cost and retiring the current slot-swap design in favor of two separate Web Apps. Not implemented; revisit if full isolation becomes a requirement.
 
 ---
 

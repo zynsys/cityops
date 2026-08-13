@@ -82,14 +82,21 @@ stages:
                      authSecret="$(authSecret)"
 
   # -------------------------------------------------------------------------
-  # DEPLOY = the "release/CD": apply the template. Skipped on PRs (preview only).
-  # Gated by the SAME 'prod' environment/approval used by the app's Deploy_Prod stage —
-  # not a separate infra environment, since dev/prod are the only real deployment targets.
+  # DEPLOY = the "release/CD": apply the template. Only runs on a manually-triggered
+  # pipeline run (Build.Reason == 'Manual') — never automatically on push/PR. This
+  # infra apply is a single, atomic operation against SHARED resources (one Key Vault,
+  # one Postgres server, one App Service plan) serving both dev and prod at once, so
+  # there is no separate "dev infra" to validate in isolation first, the way the app
+  # tests in the dev slot before promoting. Instead, the Validate stage's `what-if`
+  # output — which runs automatically on every push/PR — IS the pre-apply review: a
+  # human must read that diff and deliberately run this pipeline to apply it. Still
+  # gated by the SAME 'prod' environment/approval used by the app's Deploy_Prod stage.
+  # To apply: Pipelines → CityOps-Infra → Run pipeline (manually) on main.
   # -------------------------------------------------------------------------
   - stage: Deploy
     displayName: 'Deploy (apply)'
     dependsOn: Validate
-    condition: and(succeeded(), ne(variables['Build.Reason'], 'PullRequest'))
+    condition: and(succeeded(), eq(variables['Build.Reason'], 'Manual'))
     jobs:
       - deployment: deploy
         environment: prod
