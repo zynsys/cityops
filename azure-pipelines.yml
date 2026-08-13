@@ -1,21 +1,119 @@
-# Node.js with React
-# Build a Node.js project that uses React.
-# Add steps that analyze code, save build artifacts, deploy, and more:
+# CityOps CI/CD
+# Best-practice separation: build once (environment-agnostic), then release/run with
+# per-environment configuration injected at deploy time.
 # https://docs.microsoft.com/azure/devops/pipelines/languages/javascript
 
 trigger:
-- main
+  - main
 
-pool:
-  vmImage: ubuntu-latest
+variables:
+  nodeVersion: '20.x'
 
-steps:
-- task: NodeTool@0
-  inputs:
-    versionSpec: '20.x'
-  displayName: 'Install Node.js'
+stages:
+  # ---------------------------------------------------------------------------
+  # BUILD — environment-agnostic. Needs NO runtime config: the Prisma client is
+  # lazily instantiated, so `next build` no longer requires DATABASE_URL.
+  # The same artifact is promoted to every environment.
+  # ---------------------------------------------------------------------------
+  - stage: Build
+    displayName: 'Build (environment-agnostic)'
+    jobs:
+      - job: build
+        pool:
+          vmImage: ubuntu-latest
+        steps:
+          - task: NodeTool@0
+            inputs:
+              versionSpec: $(nodeVersion)
+            displayName: 'Install Node.js'
 
-- script: |
-    npm install
-    npm run build
-  displayName: 'npm install and build'
+          - script: npm ci
+            displayName: 'Install dependencies'
+
+          - script: npm run build
+            displayName: 'Build'
+            # Intentionally no env: — the build must not depend on runtime config or secrets.
+
+          - task: CopyFiles@2
+            displayName: 'Stage build output'
+            inputs:
+              Contents: |
+                .next/**
+                public/**
+                prisma/**
+                package.json
+                package-lock.json
+                next.config.ts
+              TargetFolder: '$(Build.ArtifactStagingDirectory)'
+
+          - task: PublishPipelineArtifact@1
+            displayName: 'Publish artifact'
+            inputs:
+              targetPath: '$(Build.ArtifactStagingDirectory)'
+              artifact: drop
+
+  # ---------------------------------------------------------------------------
+  # DEPLOY (Dev) — supplies configuration at run time from a variable group that
+  # is linked to Azure Key Vault. Secrets are mapped explicitly via `env:` because
+  # Azure Pipelines does NOT auto-expose secret variables to scripts.
+  # Clone this stage for Prod with its own variable group (e.g. cityops-prod).
+  # ---------------------------------------------------------------------------
+  - stage: Deploy_Dev
+    displayName: 'Deploy to Dev'
+    dependsOn: Build
+    condition: succeeded()
+    variables:
+      # Create this group in Pipelines → Library and link it to Azure Key Vault.
+      # It must provide: DATABASE_URL, AUTH_SECRET, NEXTAUTH_URL, STORAGE_PROVIDER,
+      # SMTP_HOST, SMTP_PORT, AZURE_OPENAI_ENDPOINT, AZURE_OPENAI_API_KEY, AZURE_OPENAI_DEPLOYMENT.
+      - group: cityops-dev
+    jobs:
+      - deployment: deploy
+        environment: dev
+        pool:
+          vmImage: ubuntu-latest
+        strategy:
+          runOnce:
+            deploy:
+              steps:
+                - download: current
+                  artifact: drop
+
+                - task: NodeTool@0
+                  inputs:
+                    versionSpec: $(nodeVersion)
+                  displayName: 'Install Node.js'
+
+                - script: npm ci --omit=dev
+                  displayName: 'Install runtime dependencies'
+                  workingDirectory: '$(Pipeline.Workspace)/drop'
+
+                - script: npm run db:migrate:deploy
+                  displayName: 'Apply database migrations'
+                  workingDirectory: '$(Pipeline.Workspace)/drop'
+                  env:
+                    DATABASE_URL: $(DATABASE_URL)
+
+                - script: |
+                    echo "Replace with your real deploy target (az webapp deploy, container push, etc.)."
+                  displayName: 'Deploy application'
+                  workingDirectory: '$(Pipeline.Workspace)/drop'
+                  env:
+                    # Secrets — mapped explicitly from the Key Vault-backed variable group.
+                    DATABASE_URL: $(DATABASE_URL)
+                    AUTH_SECRET: $(AUTH_SECRET)
+                    AZURE_OPENAI_API_KEY: $(AZURE_OPENAI_API_KEY)
+                    # Non-secret configuration.
+                    NEXTAUTH_URL: $(NEXTAUTH_URL)
+                    STORAGE_PROVIDER: $(STORAGE_PROVIDER)
+                    SMTP_HOST: $(SMTP_HOST)
+                    SMTP_PORT: $(SMTP_PORT)
+                    AZURE_OPENAI_ENDPOINT: $(AZURE_OPENAI_ENDPOINT)
+                    AZURE_OPENAI_DEPLOYMENT: $(AZURE_OPENAI_DEPLOYMENT)
+                    # Optional — uncomment here AND add the matching variable to the group when needed.
+                    # (An undefined $(VAR) expands to the literal string "$(VAR)", so only enable what you set.)
+                    # AZURE_STORAGE_CONNECTION_STRING: $(AZURE_STORAGE_CONNECTION_STRING)
+                    # AZURE_STORAGE_CONTAINER: $(AZURE_STORAGE_CONTAINER)
+                    # EMAIL_FROM: $(EMAIL_FROM)
+                    # AZURE_OPENAI_API_VERSION: $(AZURE_OPENAI_API_VERSION)
+                    # AI_MODEL_VERSION: $(AI_MODEL_VERSION)

@@ -1,0 +1,48 @@
+# CityOps — CLASSIC-style BUILD pipeline (build only)
+# Demo of the older Build + Release split: this pipeline ONLY builds and publishes
+# an artifact. A Classic Release pipeline (Releases hub, UI-defined) consumes the
+# 'drop' artifact and performs the deployment with its own stages/approvals.
+#
+# Pair with: Pipelines → Releases → New release pipeline → Artifact source = this build.
+#
+# Manual trigger keeps this separate from the modern multi-stage pipeline
+# (azure-pipelines.yml) so both can coexist during the demo without double-deploying.
+trigger: none
+
+pool:
+  vmImage: ubuntu-latest
+
+variables:
+  nodeVersion: '20.x'
+
+steps:
+  - task: NodeTool@0
+    inputs:
+      versionSpec: $(nodeVersion)
+    displayName: 'Install Node.js'
+
+  - script: npm ci
+    displayName: 'Install dependencies'
+
+  - script: npm run build
+    displayName: 'Build'
+    # Environment-agnostic: no runtime config needed (Prisma client is lazy).
+
+  - task: CopyFiles@2
+    displayName: 'Stage build output'
+    inputs:
+      Contents: |
+        .next/**
+        public/**
+        prisma/**
+        package.json
+        package-lock.json
+        next.config.ts
+      TargetFolder: '$(Build.ArtifactStagingDirectory)'
+
+  - task: PublishBuildArtifacts@1
+    displayName: 'Publish build artifact (consumed by Classic Release)'
+    inputs:
+      PathtoPublish: '$(Build.ArtifactStagingDirectory)'
+      ArtifactName: 'drop'
+      publishLocation: 'Container'
