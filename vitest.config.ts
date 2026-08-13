@@ -1,6 +1,6 @@
-import { fileURLToPath } from "node:url";
-import react from "@vitejs/plugin-react";
-import { defineConfig } from "vitest/config";
+import { fileURLToPath } from 'node:url';
+import react from '@vitejs/plugin-react';
+import { defineConfig } from 'vitest/config';
 
 export default defineConfig({
   plugins: [react()],
@@ -8,24 +8,30 @@ export default defineConfig({
     alias: [
       {
         find: /^@\//,
-        replacement: fileURLToPath(new URL("./src/", import.meta.url)),
+        replacement: fileURLToPath(new URL('./src/', import.meta.url)),
       },
       {
-        find: "@auth",
-        replacement: fileURLToPath(new URL("./auth.ts", import.meta.url)),
+        find: '@auth',
+        replacement: fileURLToPath(new URL('./auth.ts', import.meta.url)),
       },
     ],
   },
   test: {
-    environment: "jsdom",
+    environment: 'jsdom',
     globals: true,
-    pool: "threads",
+    pool: 'threads',
     maxWorkers: 1,
-    setupFiles: ["src/__tests__/setup.ts"],
-    include: [
-      "src/**/__tests__/**/*.test.{ts,tsx}",
-      "src/**/*.test.{ts,tsx}",
-    ],
-    exclude: ["node_modules", ".next"],
+    setupFiles: ['src/__tests__/setup.ts'],
+    include: ['src/**/__tests__/**/*.test.{ts,tsx}', 'src/**/*.test.{ts,tsx}'],
+    exclude: ['node_modules', '.next'],
+    coverage: {
+      provider: 'v8',
+      all: true,
+      // cobertura feeds the Azure DevOps coverage tab; json-summary drives the warn-only gate.
+      reporter: ['text', 'html', 'cobertura', 'json-summary'],
+      reportsDirectory: './coverage',
+      include: ['src/lib/**/*.{ts,tsx}', 'src/db/**/*.{ts,tsx}', 'src/app/api/**/*.{ts,tsx}'],
+      exclude: ['src/**/__tests__/**', 'src/**/*.test.{ts,tsx}', 'src/generated/**', 'src/types/**'],
+    },
   },
 });
