@@ -155,6 +155,29 @@ Create Pipelines → **Environments**:
 - **`prod`** — deploy gate for production; add an **approval check**.
 - **`cityops-infra`** — approval gate for infrastructure applies.
 
+All three environments have an **Approval check with a 5-minute timeout** (not the platform default of 30 days), approved by a single required approver. A pending approval does **not** consume agent minutes — the stage sits in a "Waiting" state and no agent is allocated until it's approved. If it isn't approved within 5 minutes, the check times out and the stage fails (no indefinite hang).
+
+To add or inspect an approval check:
+
+- **UI**: Pipelines → Environments → *(environment)* → **Approvals and checks** → **+ Add check** → **Approvals** → set **Timeout** to 5 minutes → choose approver(s).
+- **API** (used to create these): `POST https://dev.azure.com/{org}/{project}/_apis/pipelines/checks/configurations?api-version=7.2-preview` with a body of:
+
+  ```json
+  {
+    "type": { "id": "8C6F20A7-A545-4486-9777-F762FAFE0D4D", "name": "Approval" },
+    "settings": {
+      "approvers": [ { "id": "<identity storage key>" } ],
+      "executionOrder": "anyOrder",
+      "minRequiredApprovers": 1,
+      "requesterCannotBeApprover": false
+    },
+    "resource": { "type": "environment", "id": "<environment id>" },
+    "timeout": 5
+  }
+  ```
+
+  The approver `id` must be the Identity service **storage key** (a GUID), not the Graph profile id. Resolve it via `Graph/Users` (find the descriptor for the target account) then `Graph/StorageKeys` with that descriptor.
+
 ### 4.3 Variable group (infra pipeline)
 
 Pipelines → **Library** → variable group **`cityops-infra`** with **secret**, **stable** variables:
@@ -279,6 +302,9 @@ curl -I https://<WEB_APP_NAME>-dev.azurewebsites.net       # dev slot
 | Migration can't reach the DB from the agent                       | Ensure the "Allow Azure services" firewall rule exists, or add the agent IP to the server firewall.                  |
 | Key Vault reference shows unresolved                              | The slot's managed identity needs **Key Vault Secrets User**; confirm the role assignment exists.                    |
 | `next build` fails type-check on config                           | Run `npx tsc --noEmit` locally to catch config type errors before pushing.                                           |
+| `az devops invoke` errors `could not convert string to float`      | Known bug with revision-numbered preview API versions (e.g. `7.1-preview.1`). Use the bare preview format instead (e.g. `7.2-preview`, no trailing `.N`). |
+| `az devops invoke` GET ignores `resourceType`/`resourceId`         | Those are query-string args, not path segments — pass them via `--query-parameters`, not `--route-parameters`.       |
+| `az devops invoke` JSON output fails to parse (`Expecting value`)  | The CLI sometimes prints a `Please wait…` status line before the JSON on stdout; strip the first line, or redirect stdout/stderr to separate files and parse the file directly. |
 
 ### Find a region with App Service quota
 
