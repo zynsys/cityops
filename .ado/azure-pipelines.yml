@@ -1,24 +1,46 @@
-# CityOps CI (build only)
-# CD is intentionally omitted for now — add a Deploy stage once Azure Key Vault and a
-# Pipelines Environment exist (see the commented blueprint at the bottom of this file).
+# CityOps CI — build + test pyramid
+# Unit + integration gate every push/PR; e2e runs on PRs and nightly only.
+# CD is intentionally omitted for now (see the commented blueprint at the bottom of this file).
 # https://docs.microsoft.com/azure/devops/pipelines/languages/javascript
 
 trigger:
   - main
 
+pr:
+  - main
+
+schedules:
+  - cron: '0 2 * * *' # nightly 02:00 UTC — full e2e run
+    displayName: Nightly e2e
+    branches:
+      include:
+        - main
+    always: true
+
 variables:
   nodeVersion: '20.x'
 
+resources:
+  containers:
+    # Ephemeral database for integration/e2e. PostGIS image because CityOps uses PostGIS.
+    - container: postgis
+      image: postgis/postgis:16-3.4
+      ports:
+        - 5432:5432
+      env:
+        POSTGRES_USER: postgres
+        POSTGRES_PASSWORD: postgres
+        POSTGRES_DB: cityops_test
+
 stages:
   # ---------------------------------------------------------------------------
-  # BUILD — environment-agnostic. Needs NO runtime config: the Prisma client is
-  # lazily instantiated, so `next build` no longer requires DATABASE_URL.
-  # Publishes an artifact that a future Deploy stage can consume.
+  # BUILD + UNIT — fast gate on every push/PR. Environment-agnostic build
+  # (lazy Prisma), plus unit tests which need no external services.
   # ---------------------------------------------------------------------------
-  - stage: Build
-    displayName: 'Build (environment-agnostic)'
+  - stage: Build_and_UnitTest
+    displayName: 'Build & Unit tests'
     jobs:
-      - job: build
+      - job: build_unit
         pool:
           vmImage: ubuntu-latest
         steps:
@@ -29,6 +51,17 @@ stages:
 
           - script: npm ci
             displayName: 'Install dependencies'
+
+          - script: mkdir -p reports && npm run test:unit -- --reporter=default --reporter=junit --outputFile.junit=reports/unit.xml
+            displayName: 'Unit tests'
+
+          - task: PublishTestResults@2
+            displayName: 'Publish unit results'
+            condition: succeededOrFailed()
+            inputs:
+              testResultsFormat: JUnit
+              testResultsFiles: 'reports/unit.xml'
+              testRunTitle: 'Unit'
 
           - script: npm run build
             displayName: 'Build'
@@ -51,6 +84,107 @@ stages:
             inputs:
               targetPath: '$(Build.ArtifactStagingDirectory)'
               artifact: drop
+
+  # ---------------------------------------------------------------------------
+  # INTEGRATION — runs against an ephemeral PostGIS service. Gates push/PR.
+  # ---------------------------------------------------------------------------
+  - stage: IntegrationTest
+    displayName: 'Integration tests'
+    dependsOn: Build_and_UnitTest
+    condition: succeeded()
+    jobs:
+      - job: integration
+        pool:
+          vmImage: ubuntu-latest
+        services:
+          postgis: postgis
+        variables:
+          DATABASE_URL: 'postgresql://postgres:postgres@localhost:5432/cityops_test'
+        steps:
+          - task: NodeTool@0
+            inputs:
+              versionSpec: $(nodeVersion)
+            displayName: 'Install Node.js'
+
+          - script: npm ci
+            displayName: 'Install dependencies'
+
+          - script: |
+              for i in $(seq 1 30); do
+                (exec 3<>/dev/tcp/localhost/5432) >/dev/null 2>&1 && { echo "PostgreSQL is up"; break; }
+                echo "waiting for postgres ($i)…"; sleep 2
+              done
+            displayName: 'Wait for PostgreSQL'
+
+          - script: npm run db:migrate:deploy
+            displayName: 'Apply migrations'
+
+          - script: mkdir -p reports && npm run test:integration -- --reporter=default --reporter=junit --outputFile.junit=reports/integration.xml
+            displayName: 'Integration tests'
+
+          - task: PublishTestResults@2
+            displayName: 'Publish integration results'
+            condition: succeededOrFailed()
+            inputs:
+              testResultsFormat: JUnit
+              testResultsFiles: 'reports/integration.xml'
+              testRunTitle: 'Integration'
+
+  # ---------------------------------------------------------------------------
+  # E2E — Playwright against the built app. Only on PRs and the nightly schedule
+  # (kept off the every-commit fast path because it is slower/heavier).
+  # ---------------------------------------------------------------------------
+  - stage: E2ETest
+    displayName: 'E2E tests (PR & nightly)'
+    dependsOn: IntegrationTest
+    condition: and(succeeded(), or(eq(variables['Build.Reason'], 'PullRequest'), eq(variables['Build.Reason'], 'Schedule')))
+    jobs:
+      - job: e2e
+        pool:
+          vmImage: ubuntu-latest
+        services:
+          postgis: postgis
+        variables:
+          DATABASE_URL: 'postgresql://postgres:postgres@localhost:5432/cityops_test'
+          NEXTAUTH_URL: 'http://localhost:3000'
+          # Throwaway 32+ char value for ephemeral CI only — NOT a real secret.
+          AUTH_SECRET: 'ci-e2e-nonsecret-placeholder-0123456789'
+          CI: 'true'
+        steps:
+          - task: NodeTool@0
+            inputs:
+              versionSpec: $(nodeVersion)
+            displayName: 'Install Node.js'
+
+          - script: npm ci
+            displayName: 'Install dependencies'
+
+          - script: npx playwright install --with-deps chromium
+            displayName: 'Install Playwright browser'
+
+          - script: |
+              for i in $(seq 1 30); do
+                (exec 3<>/dev/tcp/localhost/5432) >/dev/null 2>&1 && { echo "PostgreSQL is up"; break; }
+                echo "waiting for postgres ($i)…"; sleep 2
+              done
+            displayName: 'Wait for PostgreSQL'
+
+          - script: npm run db:migrate:deploy && npm run db:seed
+            displayName: 'Migrate & seed'
+
+          - script: npm run build
+            displayName: 'Build app'
+
+          - script: npm run test:e2e
+            displayName: 'Playwright e2e'
+            # playwright.config starts `npm run start` in CI and waits for http://localhost:3000.
+
+          - task: PublishPipelineArtifact@1
+            displayName: 'Publish Playwright report'
+            condition: succeededOrFailed()
+            inputs:
+              targetPath: 'playwright-report'
+              artifact: playwright-report
 
 # ===========================================================================
 # CD BLUEPRINT (enable later) — uncomment once you have:
