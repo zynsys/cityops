@@ -1,8 +1,12 @@
 // CityOps — App Service (code deploy) + PostgreSQL Flexible Server (PostGIS) + Key Vault
 // No containers: the Web App runs the Next.js standalone server via `node server.js`.
+//
+// Modularized: modules/keyvault.bicep, modules/postgres.bicep, modules/appservice.bicep each
+// own one logical concern (security, data, compute). The Azure OpenAI account is referenced
+// as an EXISTING resource (provisioned separately) — not created here.
 targetScope = 'resourceGroup'
 
-@description('Azure region for all resources.')
+@description('Azure region for App Service and Key Vault.')
 param location string = resourceGroup().location
 
 @description('Region for PostgreSQL (kept separate: not all regions offer the Flexible Server SKU).')
@@ -34,271 +38,268 @@ param alwaysOn bool = true
 @description('Name of the non-production (dev) deployment slot.')
 param devSlotName string = 'dev'
 
+@description('Azure OpenAI (Cognitive Services) account name. Matching an existing resource of this name in this resource group adopts it instead of creating a duplicate.')
+param openAiAccountName string = 'azopenai-cityops'
+
+@description('Azure region for Azure OpenAI — model/region availability varies independently of App Service/Postgres regions.')
+param openAiLocation string = 'eastus'
+
+@description('Name of the deployed model used for AI report validation.')
+param openAiDeploymentName string = 'gpt-4o'
+
+@description('Model name to deploy.')
+param openAiModelName string = 'gpt-4o'
+
+@description('Model version to deploy.')
+param openAiModelVersion string = '2024-11-20'
+
+@description('Deployment SKU name (throughput tier).')
+param openAiSkuName string = 'GlobalStandard'
+
+@description('Deployment capacity (TPM units) — subject to per-subscription/region quota.')
+param openAiCapacity int = 100
+
 var suffix = uniqueString(resourceGroup().id)
 var planName = 'asp-${baseName}'
 var appName = 'app-${baseName}-${suffix}'
 var kvName = 'kv-${baseName}-${substring(suffix, 0, 8)}'
 var pgName = 'pg-${baseName}-${suffix}'
 var dbName = 'cityops'
+var dbNameDev = '${dbName}_dev'
 var appHost = '${appName}.azurewebsites.net'
 var devSlotHost = '${appName}-${devSlotName}.azurewebsites.net'
-var dbNameDev = '${dbName}_dev'
 
 // ---------------------------------------------------------------------------
-// PostgreSQL Flexible Server (Burstable) with PostGIS allow-listed
+// Azure OpenAI account + model deployment — created (not just referenced). Deterministic
+// naming means this adopts and manages a resource that was pre-existing under the same name.
 // ---------------------------------------------------------------------------
-resource postgres 'Microsoft.DBforPostgreSQL/flexibleServers@2023-06-01-preview' = {
-  name: pgName
-  location: dbLocation
-  sku: {
-    name: 'Standard_B1ms'
-    tier: 'Burstable'
-  }
-  properties: {
-    version: '16'
-    administratorLogin: pgAdminLogin
-    administratorLoginPassword: pgAdminPassword
-    storage: {
-      storageSizeGB: 32
-    }
-    backup: {
-      backupRetentionDays: 7
-      geoRedundantBackup: 'Disabled'
-    }
-    highAvailability: {
-      mode: 'Disabled'
-    }
+module openAi 'modules/openai.bicep' = {
+  name: 'openAiDeploy'
+  params: {
+    location: openAiLocation
+    name: openAiAccountName
+    deploymentName: openAiDeploymentName
+    modelName: openAiModelName
+    modelVersion: openAiModelVersion
+    deploymentSkuName: openAiSkuName
+    deploymentCapacity: openAiCapacity
   }
 }
 
-resource pgDatabase 'Microsoft.DBforPostgreSQL/flexibleServers/databases@2023-06-01-preview' = {
-  parent: postgres
-  name: dbName
+// Existing-resource lookup (openAiAccountName is a deterministic top-level variable) so we can
+// call listKeys()/read .properties.endpoint — module outputs alone can't do that.
+resource openAiRef 'Microsoft.CognitiveServices/accounts@2023-05-01' existing = {
+  name: openAiAccountName
 }
 
-resource pgDatabaseDev 'Microsoft.DBforPostgreSQL/flexibleServers/databases@2023-06-01-preview' = {
-  parent: postgres
-  name: dbNameDev
-}
-
-// Allow-list the PostGIS extension so migrations can CREATE EXTENSION postgis.
-resource pgExtensions 'Microsoft.DBforPostgreSQL/flexibleServers/configurations@2023-06-01-preview' = {
-  parent: postgres
-  name: 'azure.extensions'
-  properties: {
-    value: 'POSTGIS'
-    source: 'user-override'
+// ---------------------------------------------------------------------------
+// Data layer
+// ---------------------------------------------------------------------------
+module postgres 'modules/postgres.bicep' = {
+  name: 'postgresDeploy'
+  params: {
+    location: dbLocation
+    name: pgName
+    adminLogin: pgAdminLogin
+    adminPassword: pgAdminPassword
+    dbName: dbName
+    dbNameDev: dbNameDev
   }
 }
 
-// Allow other Azure services (incl. App Service) to reach the server.
-resource pgAllowAzure 'Microsoft.DBforPostgreSQL/flexibleServers/firewallRules@2023-06-01-preview' = {
-  parent: postgres
-  name: 'AllowAllAzureServices'
-  properties: {
-    startIpAddress: '0.0.0.0'
-    endIpAddress: '0.0.0.0'
+var databaseUrlProd = 'postgresql://${pgAdminLogin}:${pgAdminPassword}@${postgres.outputs.fqdn}:5432/${dbName}?sslmode=require'
+var databaseUrlDev = 'postgresql://${pgAdminLogin}:${pgAdminPassword}@${postgres.outputs.fqdn}:5432/${dbNameDev}?sslmode=require'
+
+// ---------------------------------------------------------------------------
+// Security layer — Key Vault (RBAC) + secrets
+// ---------------------------------------------------------------------------
+module keyVault 'modules/keyvault.bicep' = {
+  name: 'keyVaultDeploy'
+  params: {
+    location: location
+    name: kvName
   }
 }
 
-var databaseUrlProd = 'postgresql://${pgAdminLogin}:${pgAdminPassword}@${postgres.properties.fullyQualifiedDomainName}:5432/${dbName}?sslmode=require'
-var databaseUrlDev = 'postgresql://${pgAdminLogin}:${pgAdminPassword}@${postgres.properties.fullyQualifiedDomainName}:5432/${dbNameDev}?sslmode=require'
-
-// ---------------------------------------------------------------------------
-// Key Vault (RBAC) + secrets
-// ---------------------------------------------------------------------------
-resource keyVault 'Microsoft.KeyVault/vaults@2023-07-01' = {
+// Existing-resource lookup so child secrets/role assignments can use a proper 'scope'/'parent'.
+// kvName is a deterministic top-level variable (not a module output), so this is valid here
+// even though the vault itself is created by the module above (ordered via dependsOn).
+resource keyVaultRef 'Microsoft.KeyVault/vaults@2023-07-01' existing = {
   name: kvName
-  location: location
-  properties: {
-    sku: {
-      family: 'A'
-      name: 'standard'
-    }
-    tenantId: subscription().tenantId
-    enableRbacAuthorization: true
-    enableSoftDelete: true
-  }
 }
 
 resource secretDatabaseUrl 'Microsoft.KeyVault/vaults/secrets@2023-07-01' = {
-  parent: keyVault
+  parent: keyVaultRef
   name: 'DATABASE-URL'
   properties: {
     value: databaseUrlProd
   }
+  dependsOn: [
+    keyVault
+  ]
 }
 
 resource secretDatabaseUrlDev 'Microsoft.KeyVault/vaults/secrets@2023-07-01' = {
-  parent: keyVault
+  parent: keyVaultRef
   name: 'DATABASE-URL-DEV'
   properties: {
     value: databaseUrlDev
   }
+  dependsOn: [
+    keyVault
+  ]
 }
 
 resource secretAuthSecret 'Microsoft.KeyVault/vaults/secrets@2023-07-01' = {
-  parent: keyVault
+  parent: keyVaultRef
   name: 'AUTH-SECRET'
   properties: {
     value: authSecret
   }
+  dependsOn: [
+    keyVault
+  ]
+}
+
+// Pulled from the existing OpenAI account via listKeys() — never exposed as a deployment output.
+resource secretOpenAiKey 'Microsoft.KeyVault/vaults/secrets@2023-07-01' = {
+  parent: keyVaultRef
+  name: 'AZURE-OPENAI-API-KEY'
+  properties: {
+    value: openAiRef.listKeys().key1
+  }
+  dependsOn: [
+    keyVault
+    openAi
+  ]
 }
 
 // ---------------------------------------------------------------------------
-// App Service Plan (Linux) + Web App (Node 20, code deploy)
+// Compute layer — App Service plan + Web App (Node 20, code deploy) + dev slot
 // ---------------------------------------------------------------------------
-resource plan 'Microsoft.Web/serverfarms@2023-12-01' = {
-  name: planName
-  location: location
-  sku: {
-    name: appServiceSkuName
-    tier: appServiceSkuTier
+var commonAppSettings = [
+  {
+    name: 'SCM_DO_BUILD_DURING_DEPLOYMENT'
+    value: 'false'
   }
-  kind: 'linux'
-  properties: {
-    reserved: true
+  {
+    name: 'WEBSITE_NODE_DEFAULT_VERSION'
+    value: '~20'
   }
-}
+  {
+    name: 'NODE_ENV'
+    value: 'production'
+  }
+  {
+    name: 'STORAGE_PROVIDER'
+    value: 'local'
+  }
+  {
+    name: 'AZURE_OPENAI_ENDPOINT'
+    value: openAiRef.properties.endpoint
+  }
+  {
+    name: 'AZURE_OPENAI_DEPLOYMENT'
+    value: openAiDeploymentName
+  }
+  {
+    name: 'AZURE_OPENAI_API_KEY'
+    value: '@Microsoft.KeyVault(VaultName=${kvName};SecretName=AZURE-OPENAI-API-KEY)'
+  }
+]
 
-resource webApp 'Microsoft.Web/sites@2023-12-01' = {
-  name: appName
-  location: location
-  kind: 'app,linux'
-  identity: {
-    type: 'SystemAssigned'
+var prodAppSettings = [
+  {
+    name: 'NEXTAUTH_URL'
+    value: 'https://${appHost}'
   }
-  properties: {
-    serverFarmId: plan.id
-    httpsOnly: true
-    siteConfig: {
-      linuxFxVersion: 'NODE|20-lts'
-      alwaysOn: alwaysOn
-      ftpsState: 'Disabled'
-      appCommandLine: 'node server.js'
-      appSettings: [
-        {
-          name: 'SCM_DO_BUILD_DURING_DEPLOYMENT'
-          value: 'false'
-        }
-        {
-          name: 'WEBSITE_NODE_DEFAULT_VERSION'
-          value: '~20'
-        }
-        {
-          name: 'NODE_ENV'
-          value: 'production'
-        }
-        {
-          name: 'NEXTAUTH_URL'
-          value: 'https://${appHost}'
-        }
-        {
-          name: 'STORAGE_PROVIDER'
-          value: 'local'
-        }
-        {
-          name: 'DATABASE_URL'
-          value: '@Microsoft.KeyVault(SecretUri=${secretDatabaseUrl.properties.secretUri})'
-        }
-        {
-          name: 'AUTH_SECRET'
-          value: '@Microsoft.KeyVault(SecretUri=${secretAuthSecret.properties.secretUri})'
-        }
-      ]
-    }
+  {
+    name: 'DATABASE_URL'
+    value: '@Microsoft.KeyVault(VaultName=${kvName};SecretName=DATABASE-URL)'
   }
-}
+  {
+    name: 'AUTH_SECRET'
+    value: '@Microsoft.KeyVault(VaultName=${kvName};SecretName=AUTH-SECRET)'
+  }
+]
 
-// Grant the Web App's managed identity read access to Key Vault secrets (RBAC).
-var kvSecretsUserRoleId = '4633458b-17de-408a-b874-0445c86b69e6' // Key Vault Secrets User
-resource kvRoleAssignment 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
-  name: guid(keyVault.id, webApp.id, kvSecretsUserRoleId)
-  scope: keyVault
-  properties: {
-    principalId: webApp.identity.principalId
-    roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', kvSecretsUserRoleId)
-    principalType: 'ServicePrincipal'
+var devAppSettings = [
+  {
+    name: 'NEXTAUTH_URL'
+    value: 'https://${devSlotHost}'
   }
-}
+  {
+    name: 'DATABASE_URL'
+    value: '@Microsoft.KeyVault(VaultName=${kvName};SecretName=DATABASE-URL-DEV)'
+  }
+  {
+    name: 'AUTH_SECRET'
+    value: '@Microsoft.KeyVault(VaultName=${kvName};SecretName=AUTH-SECRET)'
+  }
+]
 
-// Env-specific settings are slot-sticky, so they do NOT travel during a swap.
-resource slotStickySettings 'Microsoft.Web/sites/config@2023-12-01' = {
-  parent: webApp
-  name: 'slotConfigNames'
-  properties: {
-    appSettingNames: [
+module appService 'modules/appservice.bicep' = {
+  name: 'appServiceDeploy'
+  params: {
+    location: location
+    planName: planName
+    appName: appName
+    devSlotName: devSlotName
+    skuName: appServiceSkuName
+    skuTier: appServiceSkuTier
+    alwaysOn: alwaysOn
+    commonAppSettings: commonAppSettings
+    prodAppSettings: prodAppSettings
+    devAppSettings: devAppSettings
+    stickyAppSettingNames: [
       'DATABASE_URL'
       'NEXTAUTH_URL'
     ]
   }
+  dependsOn: [
+    secretDatabaseUrl
+    secretDatabaseUrlDev
+    secretAuthSecret
+    secretOpenAiKey
+  ]
 }
 
-// Non-production (dev) slot — its own identity + config pointing at the dev database.
-resource devSlot 'Microsoft.Web/sites/slots@2023-12-01' = {
-  parent: webApp
-  name: devSlotName
-  location: location
-  kind: 'app,linux'
-  identity: {
-    type: 'SystemAssigned'
-  }
-  properties: {
-    serverFarmId: plan.id
-    httpsOnly: true
-    siteConfig: {
-      linuxFxVersion: 'NODE|20-lts'
-      alwaysOn: alwaysOn
-      ftpsState: 'Disabled'
-      appCommandLine: 'node server.js'
-      appSettings: [
-        {
-          name: 'SCM_DO_BUILD_DURING_DEPLOYMENT'
-          value: 'false'
-        }
-        {
-          name: 'WEBSITE_NODE_DEFAULT_VERSION'
-          value: '~20'
-        }
-        {
-          name: 'NODE_ENV'
-          value: 'production'
-        }
-        {
-          name: 'NEXTAUTH_URL'
-          value: 'https://${devSlotHost}'
-        }
-        {
-          name: 'STORAGE_PROVIDER'
-          value: 'local'
-        }
-        {
-          name: 'DATABASE_URL'
-          value: '@Microsoft.KeyVault(SecretUri=${secretDatabaseUrlDev.properties.secretUri})'
-        }
-        {
-          name: 'AUTH_SECRET'
-          value: '@Microsoft.KeyVault(SecretUri=${secretAuthSecret.properties.secretUri})'
-        }
-      ]
-    }
-  }
-}
+// Grant both the production Web App and the dev slot's managed identity read access
+// to Key Vault secrets (RBAC). 'name'/'scope' must be deterministic, so they're built from
+// the pre-computed appName/devSlotName/kvName variables and the 'existing' vault reference
+// above — not from module outputs (which aren't resolvable until the nested deployment runs).
+var kvSecretsUserRoleId = '4633458b-17de-408a-b874-0445c86b69e6' // Key Vault Secrets User
 
-// Grant the dev slot's managed identity read access to Key Vault secrets.
-resource kvRoleAssignmentDevSlot 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
-  name: guid(keyVault.id, devSlot.id, kvSecretsUserRoleId)
-  scope: keyVault
+resource kvRoleAssignment 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
+  name: guid(keyVaultRef.id, resourceId('Microsoft.Web/sites', appName), kvSecretsUserRoleId)
+  scope: keyVaultRef
   properties: {
-    principalId: devSlot.identity.principalId
+    principalId: appService.outputs.webAppPrincipalId
     roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', kvSecretsUserRoleId)
     principalType: 'ServicePrincipal'
   }
+  dependsOn: [
+    keyVault
+  ]
 }
 
-output webAppName string = webApp.name
+resource kvRoleAssignmentDevSlot 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
+  name: guid(keyVaultRef.id, resourceId('Microsoft.Web/sites/slots', appName, devSlotName), kvSecretsUserRoleId)
+  scope: keyVaultRef
+  properties: {
+    principalId: appService.outputs.devSlotPrincipalId
+    roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', kvSecretsUserRoleId)
+    principalType: 'ServicePrincipal'
+  }
+  dependsOn: [
+    keyVault
+  ]
+}
+
+output webAppName string = appName
 output webAppUrl string = 'https://${appHost}'
 output devSlotName string = devSlotName
 output devSlotUrl string = 'https://${devSlotHost}'
-output keyVaultName string = keyVault.name
-output postgresFqdn string = postgres.properties.fullyQualifiedDomainName
+output keyVaultName string = kvName
+output postgresFqdn string = postgres.outputs.fqdn
+
