@@ -196,8 +196,8 @@ Pipelines → New pipeline → Existing YAML file:
 
 | Pipeline        | YAML file                                                             | Purpose                                                  |
 | --------------- | --------------------------------------------------------------------- | -------------------------------------------------------- |
-| `CityOps-CI`    | [`.ado/modern/azure-pipelines.yml`](../.ado/modern/azure-pipelines.yml)             | App build, tests, coverage, **Deploy_Dev → Deploy_Prod** |
-| `CityOps-Infra` | [`.ado/modern/azure-pipelines-infra.yml`](../.ado/modern/azure-pipelines-infra.yml) | Infra **Validate → Deploy**                              |
+| `CityOps-CI`    | [`.ado/modern/modern-cityops-app.yml`](../.ado/modern/modern-cityops-app.yml)             | App build, tests, coverage, **Deploy_Dev → Deploy_Prod** |
+| `CityOps-Infra` | [`.ado/modern/modern-cityops-infra.yml`](../.ado/modern/modern-cityops-infra.yml) | Infra **Validate → Deploy**                              |
 
 ---
 
@@ -355,7 +355,7 @@ done
 | [`infra/modules/postgres.bicep`](../infra/modules/postgres.bicep)     | PostgreSQL Flexible Server module                               |
 | [`infra/modules/appservice.bicep`](../infra/modules/appservice.bicep) | App Service (plan + web app + dev slot) module                  |
 | [`infra/modules/openai.bicep`](../infra/modules/openai.bicep)         | Azure OpenAI account + model deployment module                  |
-| [`.ado/modern/azure-pipelines.yml`](../.ado/modern/azure-pipelines.yml)             | App CI/CD (build, test, deploy dev/prod)                        |
-| [`.ado/modern/azure-pipelines-infra.yml`](../.ado/modern/azure-pipelines-infra.yml) | Infrastructure pipeline                                         |
+| [`.ado/modern/modern-cityops-app.yml`](../.ado/modern/modern-cityops-app.yml)             | App CI/CD (build, test, deploy dev/prod)                        |
+| [`.ado/modern/modern-cityops-infra.yml`](../.ado/modern/modern-cityops-infra.yml) | Infrastructure pipeline                                         |
 | [`.env.example`](../.env.example)                                     | Full list of runtime environment variables                      |
 | [`Dockerfile`](../Dockerfile)                                         | Optional container build (not used for App Service code deploy) |
