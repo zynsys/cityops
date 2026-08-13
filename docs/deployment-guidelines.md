@@ -8,14 +8,14 @@ End-to-end instructions to provision the Azure infrastructure and deploy CityOps
 
 CityOps is a server-side Next.js app (App Router, NextAuth, Prisma) deployed to **Azure App Service** as **code** (no container) using the Next.js **standalone** output (`node server.js`).
 
-| Component      | Azure resource                                              | Notes                                                     |
-| -------------- | ----------------------------------------------------------- | --------------------------------------------------------- |
-| Web app (prod) | App Service (Linux, Node 20) — **production slot**          | Runs `node server.js`                                     |
-| Web app (dev)  | App Service **`dev` deployment slot**                       | Requires Standard (S1)+                                   |
-| Database       | Azure Database for **PostgreSQL Flexible Server** + PostGIS | Two DBs: `cityops` (prod), `cityops_dev` (dev)            |
-| AI validation  | Azure OpenAI (`gpt-4o`)                                      | Created by IaC; shared by both slots (not slot-sticky)   |
+| Component      | Azure resource                                              | Notes                                                                     |
+| -------------- | ----------------------------------------------------------- | ------------------------------------------------------------------------- |
+| Web app (prod) | App Service (Linux, Node 20) — **production slot**          | Runs `node server.js`                                                     |
+| Web app (dev)  | App Service **`dev` deployment slot**                       | Requires Standard (S1)+                                                   |
+| Database       | Azure Database for **PostgreSQL Flexible Server** + PostGIS | Two DBs: `cityops` (prod), `cityops_dev` (dev)                            |
+| AI validation  | Azure OpenAI (`gpt-4o`)                                     | Created by IaC; shared by both slots (not slot-sticky)                    |
 | Secrets        | Azure Key Vault (RBAC)                                      | `DATABASE-URL`, `DATABASE-URL-DEV`, `AUTH-SECRET`, `AZURE-OPENAI-API-KEY` |
-| Identity       | System-assigned managed identity on the web app + dev slot  | Reads Key Vault via `@Microsoft.KeyVault(...)` references |
+| Identity       | System-assigned managed identity on the web app + dev slot  | Reads Key Vault via `@Microsoft.KeyVault(...)` references                 |
 
 **Environment → slot → database mapping**
 
@@ -59,13 +59,13 @@ If you deploy to a fresh subscription, check quota first. To find a region with 
 
 The template is modularized — `infra/main.bicep` orchestrates one module per logical concern:
 
-| File | Owns |
-| --- | --- |
-| [`infra/main.bicep`](../infra/main.bicep) | Orchestration: wires modules together, builds Key Vault secrets, app settings, role assignments |
-| [`infra/modules/keyvault.bicep`](../infra/modules/keyvault.bicep) | Key Vault (RBAC-enabled) |
-| [`infra/modules/postgres.bicep`](../infra/modules/postgres.bicep) | PostgreSQL Flexible Server, `cityops`/`cityops_dev` databases, PostGIS extension, firewall rule |
-| [`infra/modules/appservice.bicep`](../infra/modules/appservice.bicep) | App Service plan, Web App, `dev` slot, slot-sticky config |
-| [`infra/modules/openai.bicep`](../infra/modules/openai.bicep) | Azure OpenAI account + `gpt-4o` model deployment |
+| File                                                                  | Owns                                                                                            |
+| --------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------- |
+| [`infra/main.bicep`](../infra/main.bicep)                             | Orchestration: wires modules together, builds Key Vault secrets, app settings, role assignments |
+| [`infra/modules/keyvault.bicep`](../infra/modules/keyvault.bicep)     | Key Vault (RBAC-enabled)                                                                        |
+| [`infra/modules/postgres.bicep`](../infra/modules/postgres.bicep)     | PostgreSQL Flexible Server, `cityops`/`cityops_dev` databases, PostGIS extension, firewall rule |
+| [`infra/modules/appservice.bicep`](../infra/modules/appservice.bicep) | App Service plan, Web App, `dev` slot, slot-sticky config                                       |
+| [`infra/modules/openai.bicep`](../infra/modules/openai.bicep)         | Azure OpenAI account + `gpt-4o` model deployment                                                |
 
 > Modules are split by **logical concern** (data / security / compute / AI), not one file per resource instance — a Web App and its slot are one cohesive unit and live in the same module.
 >
@@ -73,19 +73,19 @@ The template is modularized — `infra/main.bicep` orchestrates one module per l
 
 Key parameters:
 
-| Parameter                                 | Default                 | Purpose                             |
-| ----------------------------------------- | ----------------------- | ------------------------------------ |
-| `location`                                | resource group location | App Service + Key Vault region      |
-| `dbLocation`                              | `uksouth`               | PostgreSQL region (kept separate)   |
-| `openAiLocation`                          | `eastus`                | Azure OpenAI region (kept separate) |
-| `appServiceSkuName` / `appServiceSkuTier` | `S1` / `Standard`       | S1+ enables slots                   |
-| `alwaysOn`                                | `true`                  | Keep the app warm (Standard+)       |
-| `devSlotName`                             | `dev`                   | Non-production slot                 |
-| `openAiAccountName`                       | `azopenai-cityops`      | Azure OpenAI account name           |
-| `openAiDeploymentName` / `openAiModelName` / `openAiModelVersion` | `gpt-4o` / `gpt-4o` / `2024-11-20` | Model deployment |
-| `openAiSkuName` / `openAiCapacity`        | `GlobalStandard` / `100` | Deployment throughput (TPM), subject to quota |
-| `pgAdminPassword`                         | _(secure)_              | PostgreSQL admin password           |
-| `authSecret`                              | _(secure)_              | NextAuth `AUTH_SECRET` (≥ 32 chars) |
+| Parameter                                                         | Default                            | Purpose                                       |
+| ----------------------------------------------------------------- | ---------------------------------- | --------------------------------------------- |
+| `location`                                                        | resource group location            | App Service + Key Vault region                |
+| `dbLocation`                                                      | `uksouth`                          | PostgreSQL region (kept separate)             |
+| `openAiLocation`                                                  | `eastus`                           | Azure OpenAI region (kept separate)           |
+| `appServiceSkuName` / `appServiceSkuTier`                         | `S1` / `Standard`                  | S1+ enables slots                             |
+| `alwaysOn`                                                        | `true`                             | Keep the app warm (Standard+)                 |
+| `devSlotName`                                                     | `dev`                              | Non-production slot                           |
+| `openAiAccountName`                                               | `azopenai-cityops`                 | Azure OpenAI account name                     |
+| `openAiDeploymentName` / `openAiModelName` / `openAiModelVersion` | `gpt-4o` / `gpt-4o` / `2024-11-20` | Model deployment                              |
+| `openAiSkuName` / `openAiCapacity`                                | `GlobalStandard` / `100`           | Deployment throughput (TPM), subject to quota |
+| `pgAdminPassword`                                                 | _(secure)_                         | PostgreSQL admin password                     |
+| `authSecret`                                                      | _(secure)_                         | NextAuth `AUTH_SECRET` (≥ 32 chars)           |
 
 ### 3.1 Generate stable secrets
 
@@ -149,24 +149,25 @@ az role assignment create \
 
 ### 4.2 Environments (approval gates)
 
-Create Pipelines → **Environments**:
+Only **two** ADO Environments exist, matching the only two real deployment targets — both the app pipeline and the infra pipeline reuse them (no separate "infra" environment):
 
-- **`dev`** — deploy gate for the dev slot.
-- **`prod`** — deploy gate for production; add an **approval check**.
-- **`cityops-infra`** — approval gate for infrastructure applies.
+- **`dev`** — deploy gate for the dev slot (app) and shared by the infra pipeline's Deploy stage.
+- **`prod`** — deploy gate for production (app); the infra pipeline's Deploy stage also targets **`prod`**, since a single Bicep apply provisions/updates the shared, production-impacting resources (Key Vault, PostgreSQL, App Service plan) alongside both slots.
 
-All three environments have an **Approval check with a 5-minute timeout** (not the platform default of 30 days), approved by a single required approver. A pending approval does **not** consume agent minutes — the stage sits in a "Waiting" state and no agent is allocated until it's approved. If it isn't approved within 5 minutes, the check times out and the stage fails (no indefinite hang).
+Create them under Pipelines → **Environments**.
+
+Both environments have an **Approval check with a 5-minute timeout** (not the platform default of 30 days), approved by a single required approver. A pending approval does **not** consume agent minutes — the stage sits in a "Waiting" state and no agent is allocated until it's approved. If it isn't approved within 5 minutes, the check times out and the stage fails (no indefinite hang).
 
 To add or inspect an approval check:
 
-- **UI**: Pipelines → Environments → *(environment)* → **Approvals and checks** → **+ Add check** → **Approvals** → set **Timeout** to 5 minutes → choose approver(s).
+- **UI**: Pipelines → Environments → _(environment)_ → **Approvals and checks** → **+ Add check** → **Approvals** → set **Timeout** to 5 minutes → choose approver(s).
 - **API** (used to create these): `POST https://dev.azure.com/{org}/{project}/_apis/pipelines/checks/configurations?api-version=7.2-preview` with a body of:
 
   ```json
   {
     "type": { "id": "8C6F20A7-A545-4486-9777-F762FAFE0D4D", "name": "Approval" },
     "settings": {
-      "approvers": [ { "id": "<identity storage key>" } ],
+      "approvers": [{ "id": "<identity storage key>" }],
       "executionOrder": "anyOrder",
       "minRequiredApprovers": 1,
       "requesterCannotBeApprover": false
@@ -185,6 +186,8 @@ Pipelines → **Library** → variable group **`cityops-infra`** with **secret**
 - `pgAdminPassword`
 - `authSecret`
 
+> Naming note: `cityops-infra` here is a **Library variable group**, unrelated to ADO Environments — there is no `cityops-infra` *environment*. The similarly-named `-n cityops-infra` in the `az deployment group create` commands (§3.2) is just the ARM deployment's name, also unrelated. Three different things share this name by coincidence; only the variable group and the ARM deployment name remain.
+
 ### 4.4 Register pipelines
 
 Pipelines → New pipeline → Existing YAML file:
@@ -200,15 +203,15 @@ Pipelines → New pipeline → Existing YAML file:
 
 Runtime configuration mirrors [`.env.example`](../.env.example). In Azure these are set as **App Service application settings**; secrets use **Key Vault references** resolved by the managed identity.
 
-| Variable           | Source in Azure                                                        | Required        |
-| ------------------ | ---------------------------------------------------------------------- | --------------- |
-| `DATABASE_URL`     | Key Vault reference (`DATABASE-URL` / `DATABASE-URL-DEV`), slot-sticky | ✅              |
-| `AUTH_SECRET`      | Key Vault reference (`AUTH-SECRET`)                                    | ✅ (prod)       |
-| `NEXTAUTH_URL`     | App setting per slot (slot-sticky)                                     | ✅ (prod)       |
-| `NODE_ENV`         | `production`                                                           | ✅              |
-| `STORAGE_PROVIDER` | `local` (or `azure` + storage vars)                                    | default `local` |
-| `AZURE_OPENAI_ENDPOINT` / `AZURE_OPENAI_DEPLOYMENT` | App setting (not secret), shared by both slots       | required for AI validation |
-| `AZURE_OPENAI_API_KEY` | Key Vault reference (`AZURE-OPENAI-API-KEY`), shared by both slots  | required for AI validation |
+| Variable                                            | Source in Azure                                                        | Required                   |
+| --------------------------------------------------- | ---------------------------------------------------------------------- | -------------------------- |
+| `DATABASE_URL`                                      | Key Vault reference (`DATABASE-URL` / `DATABASE-URL-DEV`), slot-sticky | ✅                         |
+| `AUTH_SECRET`                                       | Key Vault reference (`AUTH-SECRET`)                                    | ✅ (prod)                  |
+| `NEXTAUTH_URL`                                      | App setting per slot (slot-sticky)                                     | ✅ (prod)                  |
+| `NODE_ENV`                                          | `production`                                                           | ✅                         |
+| `STORAGE_PROVIDER`                                  | `local` (or `azure` + storage vars)                                    | default `local`            |
+| `AZURE_OPENAI_ENDPOINT` / `AZURE_OPENAI_DEPLOYMENT` | App setting (not secret), shared by both slots                         | required for AI validation |
+| `AZURE_OPENAI_API_KEY`                              | Key Vault reference (`AZURE-OPENAI-API-KEY`), shared by both slots     | required for AI validation |
 
 Config is validated at startup by `validateEnv()` (via `src/instrumentation.ts`); a missing required variable fails fast with a clear message.
 
@@ -216,10 +219,10 @@ Config is validated at startup by `validateEnv()` (via `src/instrumentation.ts`)
 
 There are two distinct categories of secret, stored in two distinct places — do not mix them up:
 
-| Category | Used by | Stored in | Examples |
-| --- | --- | --- | --- |
-| **Provisioning-time** | The *infra pipeline*, once, to seed everything | ADO variable group `cityops-infra` (secret-flagged) | `pgAdminPassword`, `authSecret` |
-| **Runtime** | The *running application* | Azure Key Vault, read via managed identity | `DATABASE-URL`, `DATABASE-URL-DEV`, `AUTH-SECRET`, `AZURE-OPENAI-API-KEY` |
+| Category              | Used by                                        | Stored in                                           | Examples                                                                  |
+| --------------------- | ---------------------------------------------- | --------------------------------------------------- | ------------------------------------------------------------------------- |
+| **Provisioning-time** | The _infra pipeline_, once, to seed everything | ADO variable group `cityops-infra` (Library, secret-flagged — not an Environment) | `pgAdminPassword`, `authSecret`                                           |
+| **Runtime**           | The _running application_                      | Azure Key Vault, read via managed identity          | `DATABASE-URL`, `DATABASE-URL-DEV`, `AUTH-SECRET`, `AZURE-OPENAI-API-KEY` |
 
 No secret is ever stored in pipeline YAML or as a plaintext App Service setting — runtime secrets are always `@Microsoft.KeyVault(VaultName=...;SecretName=...)` references, resolved by each slot's own system-assigned managed identity (granted **Key Vault Secrets User** via RBAC). The `AZURE-OPENAI-API-KEY` secret value is pulled from the OpenAI account with `listKeys()` inside Bicep and written straight into Key Vault — it is never exposed as a deployment output.
 
@@ -248,10 +251,10 @@ Deploys run on **main pushes / manual** only (not on PRs or the nightly schedule
 ### 6.2 Infra pipeline (`CityOps-Infra`)
 
 ```
-Validate (bicep lint + what-if)  →  Deploy (az deployment group create)  [env: cityops-infra, approval]
+Validate (bicep lint + what-if)  →  Deploy (az deployment group create)  [env: prod, approval]
 ```
 
-`what-if` is the infra "build/preview"; the apply is the "release". Triggered only when `infra/**` changes.
+`what-if` is the infra "build/preview"; the apply is the "release". Triggered only when `infra/**` changes. The Deploy stage is gated by the **same `prod` environment/approval** the app pipeline uses — there is no separate infra environment, since `dev` and `prod` are the only real deployment targets.
 
 ---
 
@@ -293,18 +296,18 @@ curl -I https://<WEB_APP_NAME>-dev.azurewebsites.net       # dev slot
 
 ## 8. Troubleshooting
 
-| Symptom                                                           | Cause / Fix                                                                                                          |
-| ----------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------- |
-| `SubscriptionIsOverQuotaForSku … Total VMs: 0`                    | No App Service compute quota in that region. Try another region or request a quota increase. Slots also require S1+. |
-| PostgreSQL `Version should be in: []`                             | Flexible Server SKU not offered in that region. Use a supported region (e.g. `uksouth`) via `dbLocation`.            |
-| `NetworkAcls is required for this resouce` (Azure OpenAI)          | The `Microsoft.CognitiveServices/accounts` PUT requires `networkAcls` explicitly, even though `what-if` may show it as informational. Ensure `networkAcls.defaultAction` is set in the module. |
-| `COPY .next/standalone … not found` (Docker) or missing server.js | `output: 'standalone'` must be set in [`next.config.ts`](../next.config.ts).                                         |
-| Migration can't reach the DB from the agent                       | Ensure the "Allow Azure services" firewall rule exists, or add the agent IP to the server firewall.                  |
-| Key Vault reference shows unresolved                              | The slot's managed identity needs **Key Vault Secrets User**; confirm the role assignment exists.                    |
-| `next build` fails type-check on config                           | Run `npx tsc --noEmit` locally to catch config type errors before pushing.                                           |
-| `az devops invoke` errors `could not convert string to float`      | Known bug with revision-numbered preview API versions (e.g. `7.1-preview.1`). Use the bare preview format instead (e.g. `7.2-preview`, no trailing `.N`). |
-| `az devops invoke` GET ignores `resourceType`/`resourceId`         | Those are query-string args, not path segments — pass them via `--query-parameters`, not `--route-parameters`.       |
-| `az devops invoke` JSON output fails to parse (`Expecting value`)  | The CLI sometimes prints a `Please wait…` status line before the JSON on stdout; strip the first line, or redirect stdout/stderr to separate files and parse the file directly. |
+| Symptom                                                           | Cause / Fix                                                                                                                                                                                    |
+| ----------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `SubscriptionIsOverQuotaForSku … Total VMs: 0`                    | No App Service compute quota in that region. Try another region or request a quota increase. Slots also require S1+.                                                                           |
+| PostgreSQL `Version should be in: []`                             | Flexible Server SKU not offered in that region. Use a supported region (e.g. `uksouth`) via `dbLocation`.                                                                                      |
+| `NetworkAcls is required for this resouce` (Azure OpenAI)         | The `Microsoft.CognitiveServices/accounts` PUT requires `networkAcls` explicitly, even though `what-if` may show it as informational. Ensure `networkAcls.defaultAction` is set in the module. |
+| `COPY .next/standalone … not found` (Docker) or missing server.js | `output: 'standalone'` must be set in [`next.config.ts`](../next.config.ts).                                                                                                                   |
+| Migration can't reach the DB from the agent                       | Ensure the "Allow Azure services" firewall rule exists, or add the agent IP to the server firewall.                                                                                            |
+| Key Vault reference shows unresolved                              | The slot's managed identity needs **Key Vault Secrets User**; confirm the role assignment exists.                                                                                              |
+| `next build` fails type-check on config                           | Run `npx tsc --noEmit` locally to catch config type errors before pushing.                                                                                                                     |
+| `az devops invoke` errors `could not convert string to float`     | Known bug with revision-numbered preview API versions (e.g. `7.1-preview.1`). Use the bare preview format instead (e.g. `7.2-preview`, no trailing `.N`).                                      |
+| `az devops invoke` GET ignores `resourceType`/`resourceId`        | Those are query-string args, not path segments — pass them via `--query-parameters`, not `--route-parameters`.                                                                                 |
+| `az devops invoke` JSON output fails to parse (`Expecting value`) | The CLI sometimes prints a `Please wait…` status line before the JSON on stdout; strip the first line, or redirect stdout/stderr to separate files and parse the file directly.                |
 
 ### Find a region with App Service quota
 
@@ -344,8 +347,8 @@ done
 | File                                                                  | Purpose                                                         |
 | --------------------------------------------------------------------- | --------------------------------------------------------------- |
 | [`infra/main.bicep`](../infra/main.bicep)                             | Infrastructure orchestrator                                     |
-| [`infra/modules/keyvault.bicep`](../infra/modules/keyvault.bicep)     | Key Vault module                                                 |
-| [`infra/modules/postgres.bicep`](../infra/modules/postgres.bicep)     | PostgreSQL Flexible Server module                                |
+| [`infra/modules/keyvault.bicep`](../infra/modules/keyvault.bicep)     | Key Vault module                                                |
+| [`infra/modules/postgres.bicep`](../infra/modules/postgres.bicep)     | PostgreSQL Flexible Server module                               |
 | [`infra/modules/appservice.bicep`](../infra/modules/appservice.bicep) | App Service (plan + web app + dev slot) module                  |
 | [`infra/modules/openai.bicep`](../infra/modules/openai.bicep)         | Azure OpenAI account + model deployment module                  |
 | [`.ado/azure-pipelines.yml`](../.ado/azure-pipelines.yml)             | App CI/CD (build, test, deploy dev/prod)                        |

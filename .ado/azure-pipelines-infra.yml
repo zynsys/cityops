@@ -11,7 +11,9 @@
 #   2. Variable group 'cityops-infra' (Pipelines → Library) with SECRET, STABLE variables:
 #        - pgAdminPassword  (fixed — changing it rotates the DB admin password)
 #        - authSecret       (fixed, >= 32 chars — changing it invalidates existing sessions)
-#   3. Environment 'cityops-infra' (Pipelines → Environments) with an approval check → gates Deploy.
+#   3. No separate infra environment — the Deploy stage below is gated by the same 'prod'
+#      environment (and its approval check) used by the app pipeline's Deploy_Prod stage,
+#      since this template provisions/updates production-impacting shared resources.
 
 trigger:
   branches:
@@ -80,8 +82,9 @@ stages:
                      authSecret="$(authSecret)"
 
   # -------------------------------------------------------------------------
-  # DEPLOY = the "release/CD": apply the template. Skipped on PRs (preview only),
-  # and gated by the 'cityops-infra' environment approval before it runs.
+  # DEPLOY = the "release/CD": apply the template. Skipped on PRs (preview only).
+  # Gated by the SAME 'prod' environment/approval used by the app's Deploy_Prod stage —
+  # not a separate infra environment, since dev/prod are the only real deployment targets.
   # -------------------------------------------------------------------------
   - stage: Deploy
     displayName: 'Deploy (apply)'
@@ -89,7 +92,7 @@ stages:
     condition: and(succeeded(), ne(variables['Build.Reason'], 'PullRequest'))
     jobs:
       - deployment: deploy
-        environment: cityops-infra
+        environment: prod
         pool:
           vmImage: ubuntu-latest
         strategy:
