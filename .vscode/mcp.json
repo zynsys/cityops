@@ -6,9 +6,16 @@
     },
     "playwright": {
       "command": "npx",
-      "args": [
-        "@playwright/mcp@latest"
-      ]
+      "args": ["@playwright/mcp@latest"]
+    },
+    "azure-devops": {
+      "type": "http",
+      "url": "https://mcp.dev.azure.com/hp-gmail-org",
+      "headers": {
+        "X-MCP-Toolsets": "pipelines",
+        "X-MCP-Readonly": "true"
+      }
     }
-  }
+  },
+  "inputs": []
 }
