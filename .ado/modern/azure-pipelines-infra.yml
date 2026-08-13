@@ -21,7 +21,7 @@ trigger:
   paths:
     include:
       - infra/**
-      - .ado/azure-pipelines-infra.yml
+      - .ado/modern/azure-pipelines-infra.yml
 
 pr:
   branches:
@@ -29,7 +29,7 @@ pr:
   paths:
     include:
       - infra/**
-      - .ado/azure-pipelines-infra.yml
+      - .ado/modern/azure-pipelines-infra.yml
 
 parameters:
   - name: location
