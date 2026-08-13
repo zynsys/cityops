@@ -1,0 +1,32 @@
+# CityOps — CLASSIC-style infra BUILD pipeline (build only)
+# Compiles infra/main.bicep to a self-contained ARM JSON template (local modules are
+# inlined by the Bicep compiler) and publishes it as an artifact. A Classic Release
+# pipeline (Releases hub, UI-defined: 'classic-infra-release') consumes the 'infra-arm'
+# artifact and applies it with the classic "ARM Template Deployment" task.
+#
+# Pair with: Pipelines → Releases → New release pipeline → Artifact source = this build.
+# Release stage should use task "ARM Template Deployment" (AzureResourceManagerTemplateDeployment@3):
+#   Scope: Resource Group | Subscription: cityops-azure | Resource group: rg-cityops
+#   Template: <artifact>/infra-arm/main.json | Deployment mode: Incremental
+#   Override parameters: -pgAdminPassword $(pgAdminPassword) -authSecret $(authSecret)
+#                         -location ukwest -dbLocation uksouth
+#   Link the existing 'cityops-infra' Library variable group to the release for those secrets.
+#
+# Manual trigger — this is a build-only demo artifact source, not part of the real CD.
+trigger: none
+
+pool:
+  vmImage: ubuntu-latest
+
+steps:
+  - script: |
+      az bicep install
+      az bicep build --file infra/main.bicep --outfile $(Build.ArtifactStagingDirectory)/main.json
+    displayName: 'Compile Bicep to ARM JSON'
+
+  - task: PublishBuildArtifacts@1
+    displayName: 'Publish ARM template (consumed by Classic Release)'
+    inputs:
+      PathtoPublish: '$(Build.ArtifactStagingDirectory)'
+      ArtifactName: 'infra-arm'
+      publishLocation: 'Container'
