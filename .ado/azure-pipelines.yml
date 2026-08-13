@@ -149,13 +149,14 @@ stages:
               pathToSources: '$(System.DefaultWorkingDirectory)'
 
   # ---------------------------------------------------------------------------
-  # E2E — Playwright against the built app. Only on PRs and the nightly schedule
-  # (kept off the every-commit fast path because it is slower/heavier).
+  # E2E — Playwright against the built app. Runs on every trigger (push, PR, manual,
+  # nightly) because Deploy_Prod requires it to pass — production must never deploy
+  # without E2E coverage for that commit.
   # ---------------------------------------------------------------------------
   - stage: E2ETest
-    displayName: 'E2E tests (PR & nightly)'
+    displayName: 'E2E tests'
     dependsOn: IntegrationTest
-    condition: and(succeeded(), or(eq(variables['Build.Reason'], 'PullRequest'), eq(variables['Build.Reason'], 'Schedule')))
+    condition: succeeded()
     jobs:
       - job: e2e
         pool:
@@ -273,12 +274,15 @@ stages:
 
   # ---------------------------------------------------------------------------
   # DEPLOY (Production) — migrate the prod DB (cityops), then SWAP dev → production
-  # for a zero-downtime release (rollback = swap back). Gated by 'prod' approval.
+  # for a zero-downtime release (rollback = swap back). Gated by 'prod' approval AND
+  # requires E2ETest to have passed — production never deploys without E2E coverage.
   # Slot-sticky DATABASE_URL/NEXTAUTH_URL keep each slot pointed at its own DB.
   # ---------------------------------------------------------------------------
   - stage: Deploy_Prod
     displayName: 'Deploy to Production (swap)'
-    dependsOn: Deploy_Dev
+    dependsOn:
+      - Deploy_Dev
+      - E2ETest
     condition: succeeded()
     variables:
       - name: azureServiceConnection

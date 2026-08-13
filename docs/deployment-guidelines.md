@@ -235,16 +235,15 @@ No secret is ever stored in pipeline YAML or as a plaintext App Service setting 
 ### 6.1 App pipeline (`CityOps-CI`)
 
 ```
-Build & Unit tests  →  Integration tests  →  E2E (PR & nightly only)
-                                          ↓
-                       Deploy_Dev (dev slot, migrate cityops_dev)   [env: dev, approval]
-                                          ↓
-                       Deploy_Prod (migrate cityops, swap dev→prod) [env: prod, approval]
+Build & Unit tests  →  Integration tests  →  Deploy_Dev (dev slot, migrate cityops_dev)  [env: dev, approval]
+                                          ↘  E2E tests (always, every trigger)          ↘
+                                                                                          Deploy_Prod (migrate cityops, swap dev→prod)  [env: prod, approval]
 ```
 
 - **Build** produces an environment-agnostic **standalone** artifact (`drop`). No runtime config needed — the Prisma client is lazily instantiated.
 - **Deploy_Dev** deploys `drop` to the **dev slot** and runs `db:migrate:deploy` against `cityops_dev`.
-- **Deploy_Prod** migrates `cityops` (prod) then **swaps** dev → production (zero-downtime).
+- **E2E tests** run on every trigger (push, PR, manual, nightly) — not just PR/nightly — because **`Deploy_Prod` requires them to pass**: production never deploys without E2E coverage for that commit.
+- **Deploy_Prod** depends on both `Deploy_Dev` and `E2ETest` succeeding; it migrates `cityops` (prod) then **swaps** dev → production (zero-downtime).
 
 Deploys run on **main pushes / manual** only (not on PRs or the nightly schedule).
 
