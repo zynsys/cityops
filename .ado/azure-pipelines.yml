@@ -80,17 +80,15 @@ stages:
             displayName: 'Build'
             # Intentionally no env: — the build must not depend on runtime config or secrets.
 
-          - task: CopyFiles@2
-            displayName: 'Stage build output'
-            inputs:
-              Contents: |
-                .next/**
-                public/**
-                prisma/**
-                package.json
-                package-lock.json
-                next.config.ts
-              TargetFolder: '$(Build.ArtifactStagingDirectory)'
+          - script: |
+              set -e
+              APP="$(Build.ArtifactStagingDirectory)"
+              # Assemble the Next.js standalone server into a ready-to-run App Service package.
+              cp -r .next/standalone/. "$APP/"
+              mkdir -p "$APP/.next"
+              cp -r .next/static "$APP/.next/static"
+              cp -r public "$APP/public"
+            displayName: 'Assemble standalone deploy package'
 
           - task: PublishPipelineArtifact@1
             displayName: 'Publish artifact'
@@ -206,51 +204,125 @@ stages:
               targetPath: 'playwright-report'
               artifact: playwright-report
 
-# ===========================================================================
-# CD BLUEPRINT (enable later) — uncomment once you have:
-#   1. Azure Key Vault + a variable group 'cityops-dev' linked to it, and
-#   2. A Pipelines Environment named 'dev' (Pipelines → Environments → New).
-# Then move this under the `stages:` list above.
-# ---------------------------------------------------------------------------
-#   - stage: Deploy_Dev
-#     displayName: 'Deploy to Dev'
-#     dependsOn: Build
-#     condition: succeeded()
-#     variables:
-#       - group: cityops-dev   # Key Vault-backed: DATABASE_URL, AUTH_SECRET, NEXTAUTH_URL, etc.
-#     jobs:
-#       - deployment: deploy
-#         environment: dev
-#         pool:
-#           vmImage: ubuntu-latest
-#         strategy:
-#           runOnce:
-#             deploy:
-#               steps:
-#                 - download: current
-#                   artifact: drop
-#                 - task: NodeTool@0
-#                   inputs:
-#                     versionSpec: $(nodeVersion)
-#                   displayName: 'Install Node.js'
-#                 - script: npm ci --omit=dev
-#                   displayName: 'Install runtime dependencies'
-#                   workingDirectory: '$(Pipeline.Workspace)/drop'
-#                 - script: npm run db:migrate:deploy
-#                   displayName: 'Apply database migrations'
-#                   workingDirectory: '$(Pipeline.Workspace)/drop'
-#                   env:
-#                     DATABASE_URL: $(DATABASE_URL)
-#                 - script: echo "Replace with your real deploy target (az webapp deploy, container push, etc.)."
-#                   displayName: 'Deploy application'
-#                   workingDirectory: '$(Pipeline.Workspace)/drop'
-#                   env:
-#                     DATABASE_URL: $(DATABASE_URL)
-#                     AUTH_SECRET: $(AUTH_SECRET)
-#                     AZURE_OPENAI_API_KEY: $(AZURE_OPENAI_API_KEY)
-#                     NEXTAUTH_URL: $(NEXTAUTH_URL)
-#                     STORAGE_PROVIDER: $(STORAGE_PROVIDER)
-#                     SMTP_HOST: $(SMTP_HOST)
-#                     SMTP_PORT: $(SMTP_PORT)
-#                     AZURE_OPENAI_ENDPOINT: $(AZURE_OPENAI_ENDPOINT)
-#                     AZURE_OPENAI_DEPLOYMENT: $(AZURE_OPENAI_DEPLOYMENT)
+  # ---------------------------------------------------------------------------
+  # DEPLOY (Dev slot) — deploy the built app to the 'dev' slot and migrate the
+  # dev database (cityops_dev). Gated by the 'dev' environment approval.
+  #
+  # PREREQUISITES (one-time):
+  #   1. ARM service connection 'cityops-azure' whose SP has Contributor on rg-cityops
+  #      and Key Vault Secrets User on kv-cityops-lagsjw6f.
+  #   2. Pipelines Environments 'dev' and 'prod' (each with an approval check).
+  # ---------------------------------------------------------------------------
+  - stage: Deploy_Dev
+    displayName: 'Deploy to Dev slot'
+    dependsOn:
+      - Build_and_UnitTest
+      - IntegrationTest
+    condition: and(succeeded(), in(variables['Build.Reason'], 'IndividualCI', 'Manual'))
+    variables:
+      - name: azureServiceConnection
+        value: cityops-azure
+      - name: resourceGroup
+        value: rg-cityops
+      - name: webAppName
+        value: app-cityops-lagsjw6fa5uxc
+      - name: keyVaultName
+        value: kv-cityops-lagsjw6f
+      - name: devSlotName
+        value: dev
+    jobs:
+      - deployment: deploy_dev
+        environment: dev
+        pool:
+          vmImage: ubuntu-latest
+        strategy:
+          runOnce:
+            deploy:
+              steps:
+                - checkout: self
+                - task: NodeTool@0
+                  inputs:
+                    versionSpec: $(nodeVersion)
+                  displayName: 'Install Node.js'
+                - task: AzureKeyVault@2
+                  displayName: 'Fetch dev DB secret'
+                  inputs:
+                    azureSubscription: $(azureServiceConnection)
+                    KeyVaultName: $(keyVaultName)
+                    SecretsFilter: 'DATABASE-URL-DEV'
+                    RunAsPreJob: false
+                - script: npm ci
+                  displayName: 'Install deps (Prisma CLI)'
+                - script: npm run db:migrate:deploy
+                  displayName: 'Migrate cityops_dev'
+                  env:
+                    DATABASE_URL: $(DATABASE-URL-DEV)
+                - download: current
+                  artifact: drop
+                - task: AzureWebApp@1
+                  displayName: 'Deploy to dev slot'
+                  inputs:
+                    azureSubscription: $(azureServiceConnection)
+                    appType: webAppLinux
+                    appName: $(webAppName)
+                    resourceGroupName: $(resourceGroup)
+                    deployToSlotOrASE: true
+                    slotName: $(devSlotName)
+                    package: '$(Pipeline.Workspace)/drop'
+                    startUpCommand: 'node server.js'
+
+  # ---------------------------------------------------------------------------
+  # DEPLOY (Production) — migrate the prod DB (cityops), then SWAP dev → production
+  # for a zero-downtime release (rollback = swap back). Gated by 'prod' approval.
+  # Slot-sticky DATABASE_URL/NEXTAUTH_URL keep each slot pointed at its own DB.
+  # ---------------------------------------------------------------------------
+  - stage: Deploy_Prod
+    displayName: 'Deploy to Production (swap)'
+    dependsOn: Deploy_Dev
+    condition: succeeded()
+    variables:
+      - name: azureServiceConnection
+        value: cityops-azure
+      - name: resourceGroup
+        value: rg-cityops
+      - name: webAppName
+        value: app-cityops-lagsjw6fa5uxc
+      - name: devSlotName
+        value: dev
+      - name: keyVaultName
+        value: kv-cityops-lagsjw6f
+    jobs:
+      - deployment: deploy_prod
+        environment: prod
+        pool:
+          vmImage: ubuntu-latest
+        strategy:
+          runOnce:
+            deploy:
+              steps:
+                - checkout: self
+                - task: NodeTool@0
+                  inputs:
+                    versionSpec: $(nodeVersion)
+                  displayName: 'Install Node.js'
+                - task: AzureKeyVault@2
+                  displayName: 'Fetch prod DB secret'
+                  inputs:
+                    azureSubscription: $(azureServiceConnection)
+                    KeyVaultName: $(keyVaultName)
+                    SecretsFilter: 'DATABASE-URL'
+                    RunAsPreJob: false
+                - script: npm ci
+                  displayName: 'Install deps (Prisma CLI)'
+                - script: npm run db:migrate:deploy
+                  displayName: 'Migrate cityops (prod)'
+                  env:
+                    DATABASE_URL: $(DATABASE-URL)
+                - task: AzureAppServiceManage@0
+                  displayName: 'Swap dev → production'
+                  inputs:
+                    azureSubscription: $(azureServiceConnection)
+                    action: 'Swap Slots'
+                    webAppName: $(webAppName)
+                    resourceGroupName: $(resourceGroup)
+                    sourceSlot: $(devSlotName)
