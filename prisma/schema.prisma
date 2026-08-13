@@ -1,0 +1,626 @@
+generator client {
+  provider        = "prisma-client"
+  output          = "../src/generated/prisma"
+  previewFeatures = ["postgresqlExtensions"]
+}
+
+datasource db {
+  provider   = "postgresql"
+  extensions = [postgis]
+}
+
+// ---------------------------------------------------------------------------
+// Enums (11 total — see docs/data-model.md section 3)
+// ---------------------------------------------------------------------------
+
+enum TenantStatus {
+  active
+  suspended
+  deactivated
+  onboarding
+}
+
+enum ReportStatus {
+  created
+  under_validation
+  validated
+  invalid
+  assigned
+  in_progress
+  resolved
+  closed
+}
+
+enum ReportPriority {
+  low
+  medium
+  high
+  critical
+}
+
+enum AiValidationOutcome {
+  valid
+  review_required
+  invalid
+}
+
+enum AiModerationReason {
+  category_mismatch
+  image_irrelevant
+  image_unusable
+  spam
+  abusive_content
+  duplicate_suspected
+  manual_override
+}
+
+enum NotificationChannel {
+  email
+  sms
+  push
+}
+
+enum NotificationStatus {
+  pending
+  sent
+  failed
+}
+
+enum RewardTransactionType {
+  earned
+  redeemed
+  expired
+  adjusted
+}
+
+enum AttachmentType {
+  image
+  document
+}
+
+enum ActivityAction {
+  created
+  status_changed
+  assigned
+  reassigned
+  commented
+  attachment_added
+  priority_changed
+  duplicate_linked
+  merged
+  validation_completed
+  manually_reviewed
+  edited
+}
+
+// ---------------------------------------------------------------------------
+// Models (24 total — see docs/data-model.md section 4)
+// ---------------------------------------------------------------------------
+
+/// 4.1 Tenant — a city or municipality operating on the platform
+model Tenant {
+  id        String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name      String       @db.VarChar(255)
+  slug      String       @unique @db.VarChar(100)
+  domain    String?      @unique @db.VarChar(255)
+  status    TenantStatus @default(onboarding)
+  createdAt DateTime     @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt DateTime     @default(now()) @updatedAt @map("updated_at") @db.Timestamptz
+  deletedAt DateTime?    @map("deleted_at") @db.Timestamptz
+
+  configs               TenantConfig[]
+  users                 User[]
+  userRoles             UserRole[]
+  reports               Report[]
+  reportAttachments      ReportAttachment[]
+  reportAssignments      ReportAssignment[]
+  reportComments         ReportComment[]
+  reportActivities       ReportActivity[]
+  duplicateLinks        DuplicateLink[]
+  aiValidationResults   AiValidationResult[]
+  notifications         Notification[]
+  notificationTemplates NotificationTemplate[]
+  notificationRules     NotificationRule[]
+  auditLogs             AuditLog[]
+  rewardPointLedgers    RewardPointLedger[]
+  badges                  Badge[]
+  userBadges              UserBadge[]
+  sessions                Session[]
+  passwordResetTokens     PasswordResetToken[]
+  emailVerificationTokens EmailVerificationToken[]
+  accounts                Account[]
+  boundary                TenantBoundary?
+
+  @@map("tenant")
+}
+
+/// 4.2 TenantBoundary — PostGIS polygon defining a council's geographic responsibility
+model TenantBoundary {
+  id         String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId   String   @unique @map("tenant_id") @db.Uuid
+  boundary   Unsupported("geography(Geometry,4326)")
+  source     String?  @db.VarChar(100)
+  importedAt DateTime @default(now()) @map("imported_at") @db.Timestamptz
+
+  tenant Tenant @relation(fields: [tenantId], references: [id])
+
+  @@map("tenant_boundary")
+}
+
+/// 4.2b TenantConfig — tenant-specific settings as structured JSONB
+model TenantConfig {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId  String   @map("tenant_id") @db.Uuid
+  namespace String   @db.VarChar(100)
+  config    Json     @default("{}")
+  version   Int      @default(1)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz
+
+  tenant Tenant @relation(fields: [tenantId], references: [id])
+
+  @@unique([tenantId, namespace])
+  @@map("tenant_config")
+}
+
+/// 4.3 User — any person registered on the platform
+model User {
+  id              String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId        String    @map("tenant_id") @db.Uuid
+  email           String    @db.VarChar(255)
+  passwordHash    String    @map("password_hash") @db.VarChar(255)
+  displayName     String    @map("display_name") @db.VarChar(150)
+  avatarUrl       String?   @map("avatar_url") @db.Text
+  isActive        Boolean   @default(true) @map("is_active")
+  emailVerifiedAt DateTime? @map("email_verified_at") @db.Timestamptz
+  lastLoginAt     DateTime? @map("last_login_at") @db.Timestamptz
+  invitedByUserId String?   @map("invited_by_user_id") @db.Uuid
+  createdAt       DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt       DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz
+  deletedAt       DateTime? @map("deleted_at") @db.Timestamptz
+
+  tenant    Tenant @relation(fields: [tenantId], references: [id])
+  invitedBy User?  @relation("UserInvitations", fields: [invitedByUserId], references: [id])
+
+  invitedUsers             User[]              @relation("UserInvitations")
+  userRoles                UserRole[]
+  submittedReports           Report[]             @relation("ReportReporter")
+  assignedReports           Report[]             @relation("ReportAssignee")
+  uploadedAttachments      ReportAttachment[]
+  assignedToAssignments    ReportAssignment[]   @relation("AssignmentAssignee")
+  assignedByAssignments    ReportAssignment[]   @relation("AssignmentAssigner")
+  reportComments            ReportComment[]
+  reportActivities          ReportActivity[]
+  duplicateLinks           DuplicateLink[]
+  aiReviews                AiValidationResult[] @relation("AiReviewer")
+  notifications            Notification[]
+  auditLogs                AuditLog[]
+  rewardPointLedgers       RewardPointLedger[]
+  userBadges               UserBadge[]
+  sessions                 Session[]
+  passwordResetTokens      PasswordResetToken[]
+  emailVerificationTokens  EmailVerificationToken[]
+  accounts                 Account[]
+
+  @@unique([tenantId, email])
+  @@map("user")
+}
+
+/// 4.4 Role — platform-defined roles (not tenant-scoped)
+model Role {
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name        String   @unique @db.VarChar(50)
+  description String?  @db.VarChar(255)
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  userRoles UserRole[]
+
+  @@map("role")
+}
+
+/// 4.5 UserRole — maps a user to one or more roles within a tenant
+model UserRole {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId  String   @map("tenant_id") @db.Uuid
+  userId    String   @map("user_id") @db.Uuid
+  roleId    String   @map("role_id") @db.Uuid
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  tenant Tenant @relation(fields: [tenantId], references: [id])
+  user   User   @relation(fields: [userId], references: [id])
+  role   Role   @relation(fields: [roleId], references: [id])
+
+  @@unique([tenantId, userId, roleId])
+  @@index([userId])
+  @@map("user_role")
+}
+
+/// 4.6 ReportCategory — platform-level report categories, managed by platform admin
+model ReportCategory {
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name        String   @db.VarChar(100)
+  slug        String   @db.VarChar(100)
+  description String?  @db.Text
+  icon        String?  @db.VarChar(100)
+  color       String?  @db.VarChar(7)
+  sortOrder   Int      @default(0) @map("sort_order")
+  isActive    Boolean  @default(true) @map("is_active")
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt   DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz
+
+  reports Report[]
+
+  @@unique([slug])
+  @@map("report_category")
+}
+
+/// 4.7 Report — a reported civic report
+model Report {
+  id             Int                                   @id @default(autoincrement())
+  tenantId       String                                @map("tenant_id") @db.Uuid
+  categoryId     String                                @map("category_id") @db.Uuid
+  reporterUserId String                                @map("reporter_user_id") @db.Uuid
+  assignedUserId String?                               @map("assigned_user_id") @db.Uuid
+  title          String                                @db.VarChar(255)
+  description    String                                @db.Text
+  status         ReportStatus                           @default(created)
+  priority       ReportPriority?
+  locationText   String?                               @map("location_text") @db.VarChar(500)
+  locationPoint  Unsupported("geography(Point,4326)")? @map("location_point")
+  resolvedAt     DateTime?                             @map("resolved_at") @db.Timestamptz
+  closedAt       DateTime?                             @map("closed_at") @db.Timestamptz
+  createdAt      DateTime                              @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt      DateTime                              @default(now()) @updatedAt @map("updated_at") @db.Timestamptz
+  deletedAt      DateTime?                             @map("deleted_at") @db.Timestamptz
+
+  tenant       Tenant        @relation(fields: [tenantId], references: [id])
+  category     ReportCategory @relation(fields: [categoryId], references: [id])
+  reporter     User          @relation("ReportReporter", fields: [reporterUserId], references: [id])
+  assignedUser User?         @relation("ReportAssignee", fields: [assignedUserId], references: [id])
+
+  attachments         ReportAttachment[]
+  assignments         ReportAssignment[]
+  comments            ReportComment[]
+  activities          ReportActivity[]
+  sourceDuplicates    DuplicateLink[]      @relation("DuplicateSource")
+  targetDuplicates    DuplicateLink[]      @relation("DuplicateTarget")
+  aiValidationResults AiValidationResult[]
+
+  @@index([tenantId, status])
+  @@index([tenantId, categoryId])
+  @@index([tenantId, reporterUserId])
+  @@index([tenantId, assignedUserId])
+  @@index([tenantId, createdAt(sort: Desc)])
+  @@map("report")
+}
+
+/// 4.8 ReportAttachment — image or file attached to a report
+model ReportAttachment {
+  id               String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId         String         @map("tenant_id") @db.Uuid
+  reportId          Int            @map("report_id")
+  uploadedByUserId String         @map("uploaded_by_user_id") @db.Uuid
+  type             AttachmentType
+  fileName         String         @map("file_name") @db.VarChar(255)
+  fileSize         Int            @map("file_size")
+  contentType      String         @map("content_type") @db.VarChar(100)
+  storagePath      String         @map("storage_path") @db.Text
+  altText          String?        @map("alt_text") @db.VarChar(500)
+  createdAt        DateTime       @default(now()) @map("created_at") @db.Timestamptz
+
+  tenant     Tenant @relation(fields: [tenantId], references: [id])
+  report      Report  @relation(fields: [reportId], references: [id])
+  uploadedBy User   @relation(fields: [uploadedByUserId], references: [id])
+
+  @@map("report_attachment")
+}
+
+/// 4.9 ReportAssignment — immutable log of every assignment
+model ReportAssignment {
+  id               String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId         String    @map("tenant_id") @db.Uuid
+  reportId          Int       @map("report_id")
+  assignedToUserId String    @map("assigned_to_user_id") @db.Uuid
+  assignedByUserId String    @map("assigned_by_user_id") @db.Uuid
+  isCurrent        Boolean   @default(true) @map("is_current")
+  assignedAt       DateTime  @default(now()) @map("assigned_at") @db.Timestamptz
+  unassignedAt     DateTime? @map("unassigned_at") @db.Timestamptz
+
+  tenant     Tenant @relation(fields: [tenantId], references: [id])
+  report      Report  @relation(fields: [reportId], references: [id])
+  assignedTo User   @relation("AssignmentAssignee", fields: [assignedToUserId], references: [id])
+  assignedBy User   @relation("AssignmentAssigner", fields: [assignedByUserId], references: [id])
+
+  @@map("report_assignment")
+}
+
+/// 4.10 ReportComment — comment on a report
+model ReportComment {
+  id         String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId   String    @map("tenant_id") @db.Uuid
+  reportId    Int       @map("report_id")
+  userId     String    @map("user_id") @db.Uuid
+  body       String    @db.Text
+  isInternal Boolean   @default(false) @map("is_internal")
+  createdAt  DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt  DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz
+  deletedAt  DateTime? @map("deleted_at") @db.Timestamptz
+
+  tenant Tenant @relation(fields: [tenantId], references: [id])
+  report  Report  @relation(fields: [reportId], references: [id])
+  user   User   @relation(fields: [userId], references: [id])
+
+  @@index([reportId, createdAt])
+  @@map("report_comment")
+}
+
+/// 4.11 ReportActivity — immutable append-only lifecycle log
+model ReportActivity {
+  id        String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId  String         @map("tenant_id") @db.Uuid
+  reportId   Int            @map("report_id")
+  userId    String?        @map("user_id") @db.Uuid
+  action    ActivityAction
+  oldValue  String?        @map("old_value") @db.Text
+  newValue  String?        @map("new_value") @db.Text
+  metadata  Json?
+  createdAt DateTime       @default(now()) @map("created_at") @db.Timestamptz
+
+  tenant Tenant @relation(fields: [tenantId], references: [id])
+  report  Report  @relation(fields: [reportId], references: [id])
+  user   User?  @relation(fields: [userId], references: [id])
+
+  @@index([reportId, createdAt])
+  @@map("report_activity")
+}
+
+/// 4.12 DuplicateLink — links two reports identified as duplicates
+model DuplicateLink {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId       String   @map("tenant_id") @db.Uuid
+  sourceReportId  Int      @map("source_report_id")
+  targetReportId  Int      @map("target_report_id")
+  linkedByUserId String   @map("linked_by_user_id") @db.Uuid
+  isMerged       Boolean  @default(false) @map("is_merged")
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  tenant      Tenant @relation(fields: [tenantId], references: [id])
+  sourceReport Report  @relation("DuplicateSource", fields: [sourceReportId], references: [id])
+  targetReport Report  @relation("DuplicateTarget", fields: [targetReportId], references: [id])
+  linkedBy    User   @relation(fields: [linkedByUserId], references: [id])
+
+  @@unique([sourceReportId, targetReportId])
+  @@map("duplicate_link")
+}
+
+/// 4.13 AiValidationResult — one record per validation run on a report
+model AiValidationResult {
+  id               String              @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId         String              @map("tenant_id") @db.Uuid
+  reportId          Int                 @map("report_id")
+  outcome          AiValidationOutcome
+  confidenceScore  Decimal?            @map("confidence_score") @db.Decimal(5, 4)
+  reasonCodes      String[]            @default([]) @map("reason_codes")
+  reasonText       String?             @map("reason_text") @db.Text
+  reviewedByUserId String?             @map("reviewed_by_user_id") @db.Uuid
+  reviewOutcome    AiValidationOutcome? @map("review_outcome")
+  reviewedAt       DateTime?           @map("reviewed_at") @db.Timestamptz
+  modelVersion     String?             @map("model_version") @db.VarChar(50)
+  rawResponse      Json?               @map("raw_response")
+  createdAt        DateTime            @default(now()) @map("created_at") @db.Timestamptz
+
+  tenant     Tenant @relation(fields: [tenantId], references: [id])
+  report      Report  @relation(fields: [reportId], references: [id])
+  reviewedBy User?  @relation("AiReviewer", fields: [reviewedByUserId], references: [id])
+
+  @@index([reportId])
+  @@map("ai_validation_result")
+}
+
+/// 4.14 Notification — a notification sent or pending for a user
+model Notification {
+  id            String              @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId      String              @map("tenant_id") @db.Uuid
+  userId        String              @map("user_id") @db.Uuid
+  channel       NotificationChannel
+  status        NotificationStatus  @default(pending)
+  subject       String?             @db.VarChar(255)
+  body          String              @db.Text
+  referenceType String?             @map("reference_type") @db.VarChar(50)
+  referenceId   String?             @map("reference_id") @db.VarChar(100)
+  sentAt        DateTime?           @map("sent_at") @db.Timestamptz
+  failedReason  String?             @map("failed_reason") @db.Text
+  createdAt     DateTime            @default(now()) @map("created_at") @db.Timestamptz
+
+  tenant Tenant @relation(fields: [tenantId], references: [id])
+  user   User   @relation(fields: [userId], references: [id])
+
+  @@index([userId, createdAt(sort: Desc)])
+  @@map("notification")
+}
+
+/// 4.15 NotificationTemplate — tenant-specific notification templates
+model NotificationTemplate {
+  id              String              @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId        String              @map("tenant_id") @db.Uuid
+  eventType       String              @map("event_type") @db.VarChar(100)
+  channel         NotificationChannel
+  subjectTemplate String?             @map("subject_template") @db.VarChar(500)
+  bodyTemplate    String              @map("body_template") @db.Text
+  isActive        Boolean             @default(true) @map("is_active")
+  createdAt       DateTime            @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt       DateTime            @default(now()) @updatedAt @map("updated_at") @db.Timestamptz
+
+  tenant Tenant @relation(fields: [tenantId], references: [id])
+
+  @@unique([tenantId, eventType, channel])
+  @@map("notification_template")
+}
+
+/// 4.16 NotificationRule — tenant-specific rules controlling when notifications fire
+model NotificationRule {
+  id            String              @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId      String              @map("tenant_id") @db.Uuid
+  eventType     String              @map("event_type") @db.VarChar(100)
+  channel       NotificationChannel
+  recipientRole String?             @map("recipient_role") @db.VarChar(50)
+  isActive      Boolean             @default(true) @map("is_active")
+  conditions    Json?
+  createdAt     DateTime            @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt     DateTime            @default(now()) @updatedAt @map("updated_at") @db.Timestamptz
+
+  tenant Tenant @relation(fields: [tenantId], references: [id])
+
+  @@map("notification_rule")
+}
+
+/// 4.17 AuditLog — immutable append-only administrative/security log
+model AuditLog {
+  id         String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId   String?  @map("tenant_id") @db.Uuid
+  userId     String?  @map("user_id") @db.Uuid
+  action     String   @db.VarChar(100)
+  entityType String   @map("entity_type") @db.VarChar(50)
+  entityId   String   @map("entity_id") @db.Uuid
+  oldValue   Json?    @map("old_value")
+  newValue   Json?    @map("new_value")
+  ipAddress  String?  @map("ip_address") @db.Inet
+  userAgent  String?  @map("user_agent") @db.Text
+  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  tenant Tenant? @relation(fields: [tenantId], references: [id])
+  user   User?   @relation(fields: [userId], references: [id])
+
+  @@index([entityType, entityId])
+  @@index([tenantId, createdAt(sort: Desc)])
+  @@map("audit_log")
+}
+
+/// 4.18 RewardPointLedger — append-only point transactions
+model RewardPointLedger {
+  id              String                @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId        String                @map("tenant_id") @db.Uuid
+  userId          String                @map("user_id") @db.Uuid
+  transactionType RewardTransactionType @map("transaction_type")
+  points          Int
+  reason          String?               @db.VarChar(255)
+  referenceType   String?               @map("reference_type") @db.VarChar(50)
+  referenceId     String?               @map("reference_id") @db.VarChar(100)
+  createdAt       DateTime              @default(now()) @map("created_at") @db.Timestamptz
+
+  tenant Tenant @relation(fields: [tenantId], references: [id])
+  user   User   @relation(fields: [userId], references: [id])
+
+  @@index([tenantId, userId])
+  @@map("reward_point_ledger")
+}
+
+/// 4.19 Badge — badge definitions (platform-wide or tenant-specific)
+model Badge {
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId    String?  @map("tenant_id") @db.Uuid
+  name        String   @db.VarChar(100)
+  slug        String   @db.VarChar(100)
+  description String?  @db.Text
+  icon        String?  @db.VarChar(100)
+  criteria    Json
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt   DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz
+
+  tenant     Tenant?     @relation(fields: [tenantId], references: [id])
+  userBadges UserBadge[]
+
+  @@map("badge")
+}
+
+/// 4.20 UserBadge — badges awarded to a user
+model UserBadge {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId  String   @map("tenant_id") @db.Uuid
+  userId    String   @map("user_id") @db.Uuid
+  badgeId   String   @map("badge_id") @db.Uuid
+  awardedAt DateTime @default(now()) @map("awarded_at") @db.Timestamptz
+
+  tenant Tenant @relation(fields: [tenantId], references: [id])
+  user   User   @relation(fields: [userId], references: [id])
+  badge  Badge  @relation(fields: [badgeId], references: [id])
+
+  @@unique([userId, badgeId])
+  @@map("user_badge")
+}
+
+/// 4.21 Session — active user sessions for first-party auth
+model Session {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId  String   @map("tenant_id") @db.Uuid
+  userId    String   @map("user_id") @db.Uuid
+  token     String   @unique @db.Text
+  ipAddress String?  @map("ip_address") @db.Inet
+  userAgent String?  @map("user_agent") @db.Text
+  expiresAt DateTime @map("expires_at") @db.Timestamptz
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  tenant Tenant @relation(fields: [tenantId], references: [id])
+  user   User   @relation(fields: [userId], references: [id])
+
+  @@index([userId])
+  @@map("session")
+}
+
+/// 4.22 PasswordResetToken — time-limited tokens for password reset flows
+model PasswordResetToken {
+  id        String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId  String    @map("tenant_id") @db.Uuid
+  userId    String    @map("user_id") @db.Uuid
+  token     String    @unique @db.Text
+  expiresAt DateTime  @map("expires_at") @db.Timestamptz
+  usedAt    DateTime? @map("used_at") @db.Timestamptz
+  createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz
+
+  tenant Tenant @relation(fields: [tenantId], references: [id])
+  user   User   @relation(fields: [userId], references: [id])
+
+  @@index([userId])
+  @@map("password_reset_token")
+}
+
+/// 4.23 EmailVerificationToken — tokens for email address confirmation
+model EmailVerificationToken {
+  id        String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId  String    @map("tenant_id") @db.Uuid
+  userId    String    @map("user_id") @db.Uuid
+  token     String    @unique @db.Text
+  expiresAt DateTime  @map("expires_at") @db.Timestamptz
+  usedAt    DateTime? @map("used_at") @db.Timestamptz
+  createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz
+
+  tenant Tenant @relation(fields: [tenantId], references: [id])
+  user   User   @relation(fields: [userId], references: [id])
+
+  @@index([userId])
+  @@map("email_verification_token")
+}
+
+/// 4.24 Account — links external OAuth/OIDC provider identities to a user
+model Account {
+  id                String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId          String    @map("tenant_id") @db.Uuid
+  userId            String    @map("user_id") @db.Uuid
+  provider          String    @db.VarChar(100)
+  providerAccountId String    @map("provider_account_id") @db.VarChar(255)
+  accessToken       String?   @map("access_token") @db.Text
+  refreshToken      String?   @map("refresh_token") @db.Text
+  tokenType         String?   @map("token_type") @db.VarChar(50)
+  scope             String?   @db.Text
+  idToken           String?   @map("id_token") @db.Text
+  expiresAt         DateTime? @map("expires_at") @db.Timestamptz
+  createdAt         DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt         DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz
+
+  tenant Tenant @relation(fields: [tenantId], references: [id])
+  user   User   @relation(fields: [userId], references: [id])
+
+  @@unique([provider, providerAccountId])
+  @@index([userId])
+  @@map("account")
+}

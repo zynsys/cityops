@@ -1,0 +1,545 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Real-World AI Development with GitHub Copilot</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap"
+      rel="stylesheet"
+    />
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.9.2/dist/confetti.browser.min.js"></script>
+    <link rel="stylesheet" href="step.css" />
+    <link rel="stylesheet" href="light-theme.css" />
+    <script src="theme-toggle.js"></script>
+  </head>
+  <body>
+    <header class="header">
+      <div class="header-content">
+        <a href="index.html" class="header-brand">
+          <span class="brand-icon">🏙️</span>
+          <span class="header-title">Real-World AI Development with GitHub Copilot</span>
+        </a>
+        <div class="header-nav">
+          <button class="theme-toggle" onclick="toggleTheme()">☀️ Light</button>
+          <button class="nav-btn" id="prevBtn" onclick="navigate(-1)" disabled>← Prev</button>
+          <button class="nav-btn" id="nextBtn" onclick="navigate(1)">Next →</button>
+        </div>
+      </div>
+    </header>
+
+    <div class="layout">
+      <aside class="sidebar">
+        <div class="sidebar-section">
+          <div class="sidebar-title">Workshop Steps</div>
+          <nav id="stepNav"></nav>
+        </div>
+      </aside>
+
+      <main class="main">
+        <div class="content">
+          <div id="markdownContent">
+            <div class="loading">Loading content</div>
+          </div>
+          <div class="nav-footer" id="navFooter"></div>
+        </div>
+      </main>
+    </div>
+
+    <script>
+      const steps = [
+        // Foundation
+        {
+          id: 'foundation-01-workshop-overview',
+          file: 'workshop/foundation/01-workshop-overview.md',
+          title: 'Workshop Overview',
+          number: '01',
+        },
+        {
+          id: 'foundation-02-prereqs',
+          file: 'workshop/foundation/02-prereqs.md',
+          title: 'Prerequisites',
+          number: '02',
+        },
+        {
+          id: 'foundation-03-project-walkthrough',
+          file: 'workshop/foundation/03-project-walkthrough.md',
+          title: 'Project Walkthrough',
+          number: '03',
+        },
+        {
+          id: 'foundation-04-understanding-codebase',
+          file: 'workshop/foundation/04-understanding-codebase.md',
+          title: 'Understanding a Codebase',
+          number: '04',
+        },
+        // Developer Productivity
+        {
+          id: 'dev-01-ask-mode',
+          file: 'workshop/developer-productivity/01-ask-mode.md',
+          title: 'Ask Mode',
+          number: '05',
+        },
+        {
+          id: 'dev-02-inline-chat',
+          file: 'workshop/developer-productivity/02-inline-chat.md',
+          title: 'Inline Chat & Edit Mode',
+          number: '06',
+        },
+        {
+          id: 'dev-03-plan-mode',
+          file: 'workshop/developer-productivity/03-plan-mode.md',
+          title: 'Plan Mode',
+          number: '07',
+        },
+        {
+          id: 'dev-04-agent-mode',
+          file: 'workshop/developer-productivity/04-agent-mode.md',
+          title: 'Agent Mode',
+          number: '08',
+        },
+        {
+          id: 'dev-05-approval-types',
+          file: 'workshop/developer-productivity/05-approval-types.md',
+          title: 'Approval Types',
+          number: '09',
+        },
+        // Extending Copilot in VS Code
+        {
+          id: 'ext-01-custom-instructions',
+          file: 'workshop/extending-copilot/01-custom-instructions.md',
+          title: 'Custom Instructions',
+          number: '10',
+        },
+        {
+          id: 'ext-02-prompt-files',
+          file: 'workshop/extending-copilot/02-prompt-files.md',
+          title: 'Prompt Files',
+          number: '11',
+        },
+        {
+          id: 'ext-03-custom-agents',
+          file: 'workshop/extending-copilot/03-custom-agents.md',
+          title: 'Custom Agents',
+          number: '12',
+        },
+        {
+          id: 'ext-04-agent-skills',
+          file: 'workshop/extending-copilot/04-agent-skills.md',
+          title: 'Agent Skills',
+          number: '13',
+        },
+        {
+          id: 'ext-05-mcp-servers',
+          file: 'workshop/extending-copilot/05-mcp-servers.md',
+          title: 'MCP Servers',
+          number: '14',
+        },
+        {
+          id: 'ext-06-awesome-copilot',
+          file: 'workshop/extending-copilot/06-awesome-copilot.md',
+          title: 'Awesome Copilot',
+          number: '15',
+        },
+        // Copilot CLI
+        {
+          id: 'cli-01-installation',
+          file: 'workshop/copilot-cli/01-installation.md',
+          title: 'CLI Installation',
+          number: '16',
+        },
+        {
+          id: 'cli-02-commands',
+          file: 'workshop/copilot-cli/02-commands.md',
+          title: 'Commonly Used Commands',
+          number: '17',
+        },
+        {
+          id: 'cli-03-mcp',
+          file: 'workshop/copilot-cli/03-mcp-integration.md',
+          title: 'CLI + MCP Servers',
+          number: '18',
+        },
+        {
+          id: 'cli-04-skills',
+          file: 'workshop/copilot-cli/04-skills-integration.md',
+          title: 'CLI + Agent Skills',
+          number: '19',
+        },
+        // Testing
+        {
+          id: 'testing-01-unit',
+          file: 'workshop/testing/01-unit-testing.md',
+          title: 'Unit Testing with Copilot',
+          number: '20',
+        },
+        {
+          id: 'testing-02-playwright',
+          file: 'workshop/testing/02-ui-testing-playwright.md',
+          title: 'UI Testing with Playwright',
+          number: '21',
+        },
+        {
+          id: 'testing-03-security',
+          file: 'workshop/testing/03-security-review.md',
+          title: 'Security Review',
+          number: '22',
+        },
+        // Spec Driven Development
+        {
+          id: 'sdd-01-speckit-installation',
+          file: 'workshop/spec-driven-development/01-speckit-installation.md',
+          title: 'Speckit Installation',
+          number: '23',
+        },
+        {
+          id: 'sdd-02-generating-spec',
+          file: 'workshop/spec-driven-development/02-generating-spec.md',
+          title: 'Generating a Spec',
+          number: '24',
+        },
+        {
+          id: 'sdd-03-implementation',
+          file: 'workshop/spec-driven-development/03-implementation.md',
+          title: 'Implementation from Spec',
+          number: '25',
+        },
+        // Agentic Development
+        {
+          id: 'agentic-01-coding-agent',
+          file: 'workshop/agentic-development/01-coding-agent.md',
+          title: 'Copilot Coding Agent',
+          number: '26',
+        },
+        {
+          id: 'agentic-02-pr-review',
+          file: 'workshop/agentic-development/02-pr-review.md',
+          title: 'PR Descriptions & Review',
+          number: '27',
+        },
+        {
+          id: 'agentic-03-background',
+          file: 'workshop/agentic-development/03-background-agents.md',
+          title: 'Background Agents',
+          number: '28',
+        },
+        {
+          id: 'agentic-04-workflows',
+          file: 'workshop/agentic-development/04-agentic-workflows.md',
+          title: 'Agentic Workflows',
+          number: '29',
+        },
+        {
+          id: 'agentic-05-multi-agent',
+          file: 'workshop/agentic-development/05-multi-agent.md',
+          title: 'Multi-Agent Development',
+          number: '30',
+        },
+        {
+          id: 'agentic-06-hooks',
+          file: 'workshop/agentic-development/06-agent-hooks.md',
+          title: 'Agent Hooks',
+          number: '31',
+        },
+      ];
+
+      const isLocal =
+        window.location.hostname === 'localhost' ||
+        window.location.hostname === '127.0.0.1' ||
+        window.location.protocol === 'file:';
+      const GITHUB_RAW_BASE = isLocal
+        ? '../'
+        : 'https://raw.githubusercontent.com/prasadhonrao/real-world-ai-development-with-ghcp-workshop/main/';
+      const COPY_FEEDBACK_DURATION_MS = 2000;
+      const MAX_CODE_PREVIEW_LENGTH = 40;
+      const copyResetTimers = new WeakMap();
+
+      let currentIndex = 0;
+
+      function getStepFromURL() {
+        const params = new URLSearchParams(window.location.search);
+        return params.get('step') || steps[0].id;
+      }
+
+      const groups = [
+        { label: 'Foundation', prefix: 'foundation-' },
+        { label: 'Developer Productivity', prefix: 'dev-' },
+        { label: 'Extending Copilot', prefix: 'ext-' },
+        { label: 'Copilot CLI', prefix: 'cli-' },
+        { label: 'Testing', prefix: 'testing-' },
+        { label: 'Spec Driven Development', prefix: 'sdd-' },
+        { label: 'Agentic Development', prefix: 'agentic-' },
+      ];
+
+      function buildSidebar() {
+        const nav = document.getElementById('stepNav');
+        nav.innerHTML = groups
+          .map((group) => {
+            const groupSteps = steps
+              .map((step, i) => ({ step, i }))
+              .filter(({ step }) => step.id.startsWith(group.prefix));
+            if (groupSteps.length === 0) return '';
+            const items = groupSteps
+              .map(
+                ({ step, i }) => `
+                <a href="?step=${step.id}" class="step-link ${i === currentIndex ? 'active' : ''}" data-index="${i}">
+                    <span class="step-number">${step.number}</span>
+                    <span>${step.title}</span>
+                </a>
+            `,
+              )
+              .join('');
+            return `<div class="sidebar-group"><div class="sidebar-group-label">${group.label}</div>${items}</div>`;
+          })
+          .join('');
+      }
+
+      function updateNavButtons() {
+        document.getElementById('prevBtn').disabled = currentIndex === 0;
+        document.getElementById('nextBtn').disabled = currentIndex === steps.length - 1;
+      }
+
+      function buildFooterNav() {
+        const footer = document.getElementById('navFooter');
+        const prev = currentIndex > 0 ? steps[currentIndex - 1] : null;
+        const next = currentIndex < steps.length - 1 ? steps[currentIndex + 1] : null;
+        footer.innerHTML = `
+                <a href="${prev ? '?step=' + prev.id : '#'}" class="nav-footer-btn ${!prev ? 'disabled' : ''}">← ${prev ? prev.title : 'Previous'}</a>
+                <a href="${next ? '?step=' + next.id : '#'}" class="nav-footer-btn ${!next ? 'disabled' : ''}">${next ? next.title : 'Next'} →</a>
+            `;
+      }
+
+      function navigate(direction) {
+        const newIndex = currentIndex + direction;
+        if (newIndex >= 0 && newIndex < steps.length) {
+          window.location.href = `?step=${steps[newIndex].id}`;
+        }
+      }
+
+      function processCallouts(doc) {
+        const icons = { NOTE: 'ℹ️', TIP: '💡', IMPORTANT: '❗', WARNING: '⚠️', CAUTION: '🔴' };
+        const colors = {
+          NOTE: 'var(--neon-cyan)',
+          TIP: 'var(--success-green)',
+          IMPORTANT: 'var(--neon-purple)',
+          WARNING: 'var(--warning-yellow)',
+          CAUTION: '#ff6b6b',
+        };
+        doc.querySelectorAll('blockquote').forEach((bq) => {
+          const firstP = bq.querySelector('p');
+          if (!firstP) return;
+          const m = firstP.innerHTML.match(/^\[!(NOTE|TIP|IMPORTANT|WARNING|CAUTION)\](\n|<br\s*\/?>)?([\s\S]*)$/i);
+          if (!m) return;
+          const type = m[1].toUpperCase();
+          const rest = (m[3] || '').trim();
+          const icon = icons[type];
+          const color = colors[type];
+          const bodyNodes = Array.from(bq.childNodes);
+          bq.innerHTML = '';
+          bq.className = `callout callout-${type.toLowerCase()}`;
+          bq.style.borderLeftColor = color;
+          const label = doc.createElement('span');
+          label.className = 'callout-label';
+          label.style.color = color;
+          label.textContent = `${icon} ${type}`;
+          bq.appendChild(label);
+          const body = doc.createElement('div');
+          body.className = 'callout-body';
+          bq.appendChild(body);
+          for (const node of bodyNodes) body.appendChild(node);
+          const firstPInBody = body.querySelector('p:first-child');
+          if (firstPInBody) {
+            if (rest) {
+              firstPInBody.innerHTML = rest;
+            } else {
+              firstPInBody.remove();
+            }
+          }
+        });
+      }
+
+      function processMarkdown(md) {
+        // Convert internal .md links to step.html links
+        md = md.replace(/\[([^\]]+)\]\((?:\.\/)?workshop\/(\d+)-([^)]+)\.md\)/g, function (match, text, num, slug) {
+          const stepId = num.replace(/^0+/, '0') + '-' + slug;
+          const found = steps.find((s) => s.id === stepId || s.file === `workshop/${num}-${slug}.md`);
+          if (found) {
+            return `[${text}](step.html?step=${found.id})`;
+          }
+          return match;
+        });
+
+        // Convert reference-style link definitions (e.g. [ex0]: ./00-prereqs.md) to step.html links
+        md = md.replace(/^(\[[^\]]+\]):\s*\.\/(\d+-[^.\s]+)\.md\s*$/gm, function (match, label, slug) {
+          const found = steps.find((s) => s.id === slug || s.file === `workshop/${slug}.md`);
+          if (found) {
+            return `${label}: step.html?step=${found.id}`;
+          }
+          return match;
+        });
+
+        return md;
+      }
+
+      async function writeTextToClipboard(text) {
+        if (navigator.clipboard?.writeText) {
+          await navigator.clipboard.writeText(text);
+          return;
+        }
+
+        console.warn('Using deprecated execCommand copy fallback; prefer loading the workshop docs over HTTPS.');
+
+        const textArea = document.createElement('textarea');
+        textArea.value = text;
+        textArea.setAttribute('readonly', '');
+        textArea.style.position = 'absolute';
+        textArea.style.left = '-9999px';
+        document.body.appendChild(textArea);
+        textArea.select();
+
+        const copied = document.execCommand('copy');
+        document.body.removeChild(textArea);
+
+        if (!copied) {
+          throw new Error('Unable to copy to clipboard. Please copy the code manually.');
+        }
+      }
+
+      function getCodePreview(code) {
+        const codeText = code?.textContent ?? '';
+        if (!codeText.trim()) {
+          return '';
+        }
+
+        return (
+          codeText
+            .split('\n')
+            .find((line) => line.trim().length > 0)
+            ?.trim()
+            .slice(0, MAX_CODE_PREVIEW_LENGTH) ?? ''
+        );
+      }
+
+      async function copyCodeToClipboard(button) {
+        const code = button.parentElement?.querySelector('pre code');
+        if (!code) {
+          return;
+        }
+
+        try {
+          await writeTextToClipboard(code.textContent);
+          button.textContent = 'Copied!';
+          button.dataset.copyState = 'copied';
+        } catch (err) {
+          button.textContent = 'Failed';
+          button.dataset.copyState = 'error';
+        }
+
+        window.clearTimeout(copyResetTimers.get(button));
+        const resetTimerId = window.setTimeout(() => {
+          button.textContent = 'Copy';
+          button.dataset.copyState = 'idle';
+        }, COPY_FEEDBACK_DURATION_MS);
+        copyResetTimers.set(button, resetTimerId);
+      }
+
+      function enhanceCodeBlocks(container) {
+        container.querySelectorAll('pre').forEach((pre, index) => {
+          if (pre.parentElement?.classList.contains('code-block')) {
+            return;
+          }
+
+          const wrapper = document.createElement('div');
+          wrapper.className = 'code-block';
+
+          const button = document.createElement('button');
+          button.type = 'button';
+          button.className = 'copy-code-btn';
+          button.textContent = 'Copy';
+          button.dataset.copyState = 'idle';
+          const code = pre.querySelector('code');
+          const codePreview = getCodePreview(code);
+          const ariaLabel = codePreview
+            ? `Copy code block ${index + 1}: ${codePreview}`
+            : `Copy code block ${index + 1}`;
+          button.setAttribute('aria-label', ariaLabel);
+          button.addEventListener('click', () => {
+            void copyCodeToClipboard(button);
+          });
+
+          pre.parentNode.insertBefore(wrapper, pre);
+          wrapper.append(button, pre);
+        });
+      }
+
+      async function loadStep(stepId) {
+        const step = steps.find((s) => s.id === stepId) ?? steps[0];
+        currentIndex = steps.indexOf(step);
+        buildSidebar();
+        updateNavButtons();
+        buildFooterNav();
+        document.title = `${step.title} — Real-World AI Development with GitHub Copilot`;
+
+        const contentEl = document.getElementById('markdownContent');
+        contentEl.innerHTML = '<div class="loading">Loading content</div>';
+
+        try {
+          const url = GITHUB_RAW_BASE + step.file;
+          const res = await fetch(url);
+          if (!res.ok) throw new Error(`HTTP ${res.status}`);
+          let md = await res.text();
+          md = processMarkdown(md);
+          // Fix relative image paths to resolve against the markdown file's directory
+          const stepDir = step.file.substring(0, step.file.lastIndexOf('/') + 1);
+          // Handle inline-style images: ![alt](./images/foo.png)
+          md = md.replace(/!\[([^\]]*)\]\((?!https?:\/\/|\/\/)([^)]+)\)/g, (match, alt, path) => {
+            const cleanPath = path.replace(/^\.\//, '');
+            return `![${alt}](${GITHUB_RAW_BASE}${stepDir}${cleanPath})`;
+          });
+          // Handle reference-style image definitions: [label]: ./images/foo.png
+          md = md.replace(
+            /^(\[[^\]]+\]):\s*((?!https?:\/\/|\/\/)\S+\.(png|jpe?g|gif|svg|webp))([ \t].*)?$/gim,
+            (match, label, path, ext, title) => {
+              const cleanPath = path.replace(/^\.\//, '');
+              return `${label}: ${GITHUB_RAW_BASE}${stepDir}${cleanPath}${title || ''}`;
+            },
+          );
+          let html = marked.parse(md);
+          const parser = new DOMParser();
+          const parsedDocument = parser.parseFromString(html, 'text/html');
+          const taskListCheckboxSelector = 'li.task-list-item input[type="checkbox"][disabled]';
+          parsedDocument.querySelectorAll(taskListCheckboxSelector).forEach((checkbox) => {
+            checkbox.removeAttribute('disabled');
+          });
+          processCallouts(parsedDocument);
+          html = parsedDocument.body.innerHTML;
+          contentEl.innerHTML = `<div class="markdown">${html}</div>`;
+          enhanceCodeBlocks(contentEl);
+
+          // Fire confetti on last step
+          if (currentIndex === steps.length - 1 && typeof confetti === 'function') {
+            confetti({ particleCount: 100, spread: 70, origin: { y: 0.6 } });
+          }
+        } catch (err) {
+          contentEl.innerHTML = `
+                    <div class="markdown">
+                        <h1>${step.title}</h1>
+                        <p>Could not load content. Please check the <a href="https://github.com/prasadhonrao/real-world-ai-development-with-ghcp-workshop" target="_blank">GitHub repository</a> directly.</p>
+                        <p style="color: var(--text-secondary); font-size: 0.875rem;">Error: ${err.message}</p>
+                    </div>`;
+        }
+      }
+
+      // Keyboard navigation
+      document.addEventListener('keydown', (e) => {
+        if (e.key === 'ArrowLeft') navigate(-1);
+        if (e.key === 'ArrowRight') navigate(1);
+      });
+
+      // Initialize
+      loadStep(getStepFromURL());
+    </script>
+  </body>
+</html>
