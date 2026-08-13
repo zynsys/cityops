@@ -1,0 +1,116 @@
+# CityOps — Infrastructure pipeline (Bicep)
+# IaC has no compiled artifact, so the "build/CI" is lint + what-if (a safe preview) and the
+# "release/CD" is the apply. Both live in ONE multi-stage YAML (not two separate pipelines):
+#   Validate (build)  →  Deploy (release, gated by an environment approval)
+#
+# PREREQUISITES (one-time):
+#   1. ARM service connection 'cityops-azure'
+#      (Project Settings → Service connections → New → Azure Resource Manager).
+#      Its service principal needs Contributor + User Access Administrator (or Owner) on rg-cityops
+#      — User Access Administrator is required because the template creates a role assignment.
+#   2. Variable group 'cityops-infra' (Pipelines → Library) with SECRET, STABLE variables:
+#        - pgAdminPassword  (fixed — changing it rotates the DB admin password)
+#        - authSecret       (fixed, >= 32 chars — changing it invalidates existing sessions)
+#   3. Environment 'cityops-infra' (Pipelines → Environments) with an approval check → gates Deploy.
+
+trigger:
+  branches:
+    include: [main]
+  paths:
+    include:
+      - infra/**
+      - .ado/azure-pipelines-infra.yml
+
+pr:
+  branches:
+    include: [main]
+  paths:
+    include:
+      - infra/**
+      - .ado/azure-pipelines-infra.yml
+
+parameters:
+  - name: location
+    displayName: App / Key Vault region
+    type: string
+    default: ukwest
+  - name: dbLocation
+    displayName: PostgreSQL region
+    type: string
+    default: uksouth
+  - name: resourceGroup
+    displayName: Resource group
+    type: string
+    default: rg-cityops
+
+variables:
+  - group: cityops-infra # secret vars: pgAdminPassword, authSecret
+  - name: azureServiceConnection
+    value: cityops-azure
+
+stages:
+  # -------------------------------------------------------------------------
+  # VALIDATE = the "build/CI" for infrastructure: lint + what-if preview.
+  # Read-only. Runs on PRs and main so infra changes are reviewed before apply.
+  # -------------------------------------------------------------------------
+  - stage: Validate
+    displayName: 'Validate (lint + what-if)'
+    jobs:
+      - job: validate
+        pool:
+          vmImage: ubuntu-latest
+        steps:
+          - task: AzureCLI@2
+            displayName: 'Bicep lint + what-if preview'
+            inputs:
+              azureSubscription: $(azureServiceConnection)
+              scriptType: bash
+              scriptLocation: inlineScript
+              inlineScript: |
+                set -e
+                az bicep build --file infra/main.bicep
+                az group show -n ${{ parameters.resourceGroup }} >/dev/null 2>&1 || \
+                  az group create -n ${{ parameters.resourceGroup }} -l ${{ parameters.location }} -o none
+                az deployment group what-if \
+                  -g ${{ parameters.resourceGroup }} \
+                  -f infra/main.bicep \
+                  -p location=${{ parameters.location }} \
+                     dbLocation=${{ parameters.dbLocation }} \
+                     pgAdminPassword="$(pgAdminPassword)" \
+                     authSecret="$(authSecret)"
+
+  # -------------------------------------------------------------------------
+  # DEPLOY = the "release/CD": apply the template. Skipped on PRs (preview only),
+  # and gated by the 'cityops-infra' environment approval before it runs.
+  # -------------------------------------------------------------------------
+  - stage: Deploy
+    displayName: 'Deploy (apply)'
+    dependsOn: Validate
+    condition: and(succeeded(), ne(variables['Build.Reason'], 'PullRequest'))
+    jobs:
+      - deployment: deploy
+        environment: cityops-infra
+        pool:
+          vmImage: ubuntu-latest
+        strategy:
+          runOnce:
+            deploy:
+              steps:
+                - checkout: self
+                - task: AzureCLI@2
+                  displayName: 'az deployment group create'
+                  inputs:
+                    azureSubscription: $(azureServiceConnection)
+                    scriptType: bash
+                    scriptLocation: inlineScript
+                    inlineScript: |
+                      set -e
+                      az deployment group create \
+                        -g ${{ parameters.resourceGroup }} \
+                        -n cityops-infra \
+                        -f infra/main.bicep \
+                        -p location=${{ parameters.location }} \
+                           dbLocation=${{ parameters.dbLocation }} \
+                           pgAdminPassword="$(pgAdminPassword)" \
+                           authSecret="$(authSecret)" \
+                        --query "properties.outputs" -o json
