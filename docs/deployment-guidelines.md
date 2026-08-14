@@ -134,18 +134,29 @@ Outputs include: `webAppName`, `webAppUrl`, `devSlotName`, `devSlotUrl`, `keyVau
 Create an **Azure Resource Manager** service connection named **`cityops-azure`**
 (Project Settings → Service connections → New → Azure Resource Manager).
 
-Its service principal needs, on `rg-cityops`:
+Its service principal needs, at **subscription scope**:
 
-- **Contributor** — deploy the web app and swap slots.
-- **Key Vault Secrets User** — read secrets in the `AzureKeyVault@2` task.
+- **Contributor** — deploy the web app, swap slots, and create/update whole resource groups.
+- **User Access Administrator** — the Bicep template creates its own role assignments (Key Vault Secrets User grants to the App Service/slot identities); the deploying principal must be able to grant roles too.
 
 ```bash
-# Example: grant the service connection's SP the Key Vault role
-az role assignment create \
-  --assignee <SERVICE_PRINCIPAL_APP_ID> \
-  --role "Key Vault Secrets User" \
-  --scope $(az keyvault show -n <KEYVAULT_NAME> -g rg-cityops --query id -o tsv)
+# Grant the service connection's SP subscription-wide Contributor + User Access Administrator.
+# Git Bash mangles "/subscriptions/..." into a Windows path — prefix with MSYS_NO_PATHCONV=1.
+MSYS_NO_PATHCONV=1 az role assignment create \
+  --assignee <SERVICE_PRINCIPAL_APP_ID> --role "Contributor" \
+  --scope "/subscriptions/<SUBSCRIPTION_ID>"
+MSYS_NO_PATHCONV=1 az role assignment create \
+  --assignee <SERVICE_PRINCIPAL_APP_ID> --role "User Access Administrator" \
+  --scope "/subscriptions/<SUBSCRIPTION_ID>"
 ```
+
+> **Why subscription scope, not just `rg-cityops`:** the ADO service connection itself is registered
+> at `scopeLevel: Subscription`, but that's only ADO metadata — it doesn't grant any Azure RBAC on its
+> own. The Classic Release pipeline (`classic-infra-release`) is used to deploy to **arbitrary new
+> resource groups** as part of this project's Classic-vs-Modern demo (e.g. `rg-cityops-1`), so the SP
+> needs rights beyond the original `rg-cityops`. A RG-scoped grant will fail with a `403 Failed to
+> check the resource group status` error the first time the pipeline targets a resource group the SP
+> has no role on — see §8.
 
 ### 4.2 Environments (approval gates)
 
@@ -198,7 +209,21 @@ Pipelines → New pipeline → Existing YAML file:
 | -------------- | --------------------------------------------------- | -------------------------------------------------------- |
 | `modern-app`   | [`.ado/modern/app.yml`](../.ado/modern/app.yml)     | App build, tests, coverage, **Deploy_Dev → Deploy_Prod** |
 | `modern-infra` | [`.ado/modern/infra.yml`](../.ado/modern/infra.yml) | Infra **Validate → Deploy**                              |
+The project also demonstrates the older **Classic (Build + Release)** paradigm side by side with the
+modern YAML pipelines above — same underlying app/infra, different pipeline model:
 
+| Pipeline               | Type                                     | Source                                    | Purpose                                                   |
+| ----------------------- | ----------------------------------------- | ------------------------------------------ | ----------------------------------------------------------- |
+| `classic-app`           | Classic-style YAML build (`trigger: none`) | [`.ado/classic/app.yml`](../.ado/classic/app.yml)     | Builds, publishes `drop` artifact                          |
+| `classic-ui-app`        | True Classic (UI-designer, no YAML)       | n/a — configured entirely in the ADO UI    | Same build, demonstrating the no-YAML designer experience   |
+| `classic-infra`         | Classic-style YAML build (`trigger: none`) | [`.ado/classic/infra.yml`](../.ado/classic/infra.yml) | Compiles `infra/main.bicep` → `main.json`, publishes `infra-arm` artifact |
+| `classic-app-release`   | Classic Release (UI-defined)              | Artifact: `classic-app`/`classic-ui-app`   | Deploys `drop` to the Web App                              |
+| `classic-infra-release` | Classic Release (UI-defined)              | Artifact: `classic-infra` (`infra-arm`)    | Applies `main.json` via the **ARM Template Deployment** task (`AzureResourceManagerTemplateDeployment@3`) |
+
+All four Classic builds use `trigger: none` (manual only) deliberately — see the comments at the top
+of each YAML file. This keeps them from double-deploying alongside the Modern pipelines' automatic
+CI/CD on every push to `main`; Classic Release deployments are always started by hand (**Create
+release** → **Deploy stage**), independent of the build trigger.
 ---
 
 ## 5. Application configuration (env vars) & secrets model
@@ -312,6 +337,9 @@ curl -I https://<WEB_APP_NAME>-dev.azurewebsites.net       # dev slot
 | `az devops invoke` errors `could not convert string to float`     | Known bug with revision-numbered preview API versions (e.g. `7.1-preview.1`). Use the bare preview format instead (e.g. `7.2-preview`, no trailing `.N`).                                      |
 | `az devops invoke` GET ignores `resourceType`/`resourceId`        | Those are query-string args, not path segments — pass them via `--query-parameters`, not `--route-parameters`.                                                                                 |
 | `az devops invoke` JSON output fails to parse (`Expecting value`) | The CLI sometimes prints a `Please wait…` status line before the JSON on stdout; strip the first line, or redirect stdout/stderr to separate files and parse the file directly.                |
+| ARM Template Deployment task fails: `Failed to check the resource group status. Error: {"statusCode":403}`                                   | The `cityops-azure` service principal has no RBAC role on the **target** resource group (e.g. a new one like `rg-cityops-1`). Grant it Contributor + User Access Administrator at **subscription** scope (§4.1), not just on `rg-cityops`. |
+| ARM deployment fails: `ResourceNotFound: The Resource '<name>' under resource group '<rg>' was not found` for a resource the template itself creates | A latent race condition: an `existing`-typed resource lookup (e.g. `openAiRef`, `keyVaultRef` in `main.bicep`) has no `dependsOn` on the module that creates it, so ARM can resolve the lookup in parallel with (and before) that module completes — masked on `rg-cityops` only because the resource pre-existed there. Add an explicit `dependsOn: [<module>]` directly on the `existing` resource declaration itself (not just on its consumers). |
+| `az role assignment create --scope /subscriptions/...` fails with `MissingSubscription` in Git Bash | Git Bash mangles the leading `/subscriptions/...` into a Windows path. Prefix the command with `MSYS_NO_PATHCONV=1`.                                                                          |
 
 ### Find a region with App Service quota
 
