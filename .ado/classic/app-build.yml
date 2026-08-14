@@ -58,8 +58,9 @@ steps:
       rm -rf "$MIG"
       mkdir -p "$MIG"
       cp -r prisma "$MIG/prisma"
-      cp package.json package-lock.json "$MIG/"
+      cp package.json package-lock.json prisma.config.ts "$MIG/"
       test -f "$MIG/package-lock.json"
+      test -f "$MIG/prisma.config.ts"
       test -d "$MIG/prisma/migrations"
     displayName: 'Assemble and validate DB migration bundle'
 
