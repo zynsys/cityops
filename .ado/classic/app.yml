@@ -38,6 +38,7 @@ steps:
         package.json
         package-lock.json
         next.config.ts
+        prisma.config.ts
       TargetFolder: '$(Build.ArtifactStagingDirectory)'
 
   - task: PublishBuildArtifacts@1
