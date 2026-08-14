@@ -35,9 +35,6 @@ param appServiceSkuTier string = 'Standard'
 @description('alwaysOn (supported on Standard+).')
 param alwaysOn bool = true
 
-@description('Name of the non-production (dev) deployment slot.')
-param devSlotName string = 'dev'
-
 @description('Azure OpenAI (Cognitive Services) account name. Matching an existing resource of this name in this resource group adopts it instead of creating a duplicate.')
 param openAiAccountName string = 'azopenai-cityops'
 
@@ -67,7 +64,6 @@ var pgName = 'pg-${baseName}-${suffix}'
 var dbName = 'cityops'
 var dbNameDev = '${dbName}_dev'
 var appHost = '${appName}.azurewebsites.net'
-var devSlotHost = '${appName}-${devSlotName}.azurewebsites.net'
 
 // ---------------------------------------------------------------------------
 // Azure OpenAI account + model deployment — created (not just referenced). Deterministic
@@ -185,7 +181,7 @@ resource secretOpenAiKey 'Microsoft.KeyVault/vaults/secrets@2023-07-01' = {
 }
 
 // ---------------------------------------------------------------------------
-// Compute layer — App Service plan + Web App (Node 20, code deploy) + dev slot
+// Compute layer — App Service plan + Web App (Node 20, code deploy)
 // ---------------------------------------------------------------------------
 var commonAppSettings = [
   {
@@ -233,34 +229,17 @@ var prodAppSettings = [
   }
 ]
 
-var devAppSettings = [
-  {
-    name: 'NEXTAUTH_URL'
-    value: 'https://${devSlotHost}'
-  }
-  {
-    name: 'DATABASE_URL'
-    value: '@Microsoft.KeyVault(VaultName=${kvName};SecretName=DATABASE-URL-DEV)'
-  }
-  {
-    name: 'AUTH_SECRET'
-    value: '@Microsoft.KeyVault(VaultName=${kvName};SecretName=AUTH-SECRET)'
-  }
-]
-
 module appService 'modules/appservice.bicep' = {
   name: 'appServiceDeploy'
   params: {
     location: location
     planName: planName
     appName: appName
-    devSlotName: devSlotName
     skuName: appServiceSkuName
     skuTier: appServiceSkuTier
     alwaysOn: alwaysOn
     commonAppSettings: commonAppSettings
     prodAppSettings: prodAppSettings
-    devAppSettings: devAppSettings
     stickyAppSettingNames: [
       'DATABASE_URL'
       'NEXTAUTH_URL'
@@ -268,16 +247,15 @@ module appService 'modules/appservice.bicep' = {
   }
   dependsOn: [
     secretDatabaseUrl
-    secretDatabaseUrlDev
     secretAuthSecret
     secretOpenAiKey
   ]
 }
 
-// Grant both the production Web App and the dev slot's managed identity read access
-// to Key Vault secrets (RBAC). 'name'/'scope' must be deterministic, so they're built from
-// the pre-computed appName/devSlotName/kvName variables and the 'existing' vault reference
-// above — not from module outputs (which aren't resolvable until the nested deployment runs).
+// Grant the production Web App's managed identity read access to Key Vault secrets (RBAC).
+// 'name'/'scope' must be deterministic, so they're built from the pre-computed appName/kvName
+// variables and the 'existing' vault reference above — not from module outputs (which aren't
+// resolvable until the nested deployment runs).
 var kvSecretsUserRoleId = '4633458b-17de-408a-b874-0445c86b69e6' // Key Vault Secrets User
 
 resource kvRoleAssignment 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
@@ -293,23 +271,8 @@ resource kvRoleAssignment 'Microsoft.Authorization/roleAssignments@2022-04-01' =
   ]
 }
 
-resource kvRoleAssignmentDevSlot 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
-  name: guid(keyVaultRef.id, resourceId('Microsoft.Web/sites/slots', appName, devSlotName), kvSecretsUserRoleId)
-  scope: keyVaultRef
-  properties: {
-    principalId: appService.outputs.devSlotPrincipalId
-    roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', kvSecretsUserRoleId)
-    principalType: 'ServicePrincipal'
-  }
-  dependsOn: [
-    keyVault
-  ]
-}
-
 output webAppName string = appName
 output webAppUrl string = 'https://${appHost}'
-output devSlotName string = devSlotName
-output devSlotUrl string = 'https://${devSlotHost}'
 output keyVaultName string = kvName
 output postgresFqdn string = postgres.outputs.fqdn
 
