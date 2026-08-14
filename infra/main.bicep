@@ -194,7 +194,7 @@ var commonAppSettings = [
   }
   {
     name: 'WEBSITE_NODE_DEFAULT_VERSION'
-    value: '~20'
+    value: '~22'
   }
   {
     name: 'NODE_ENV'

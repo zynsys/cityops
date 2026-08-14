@@ -55,7 +55,7 @@ resource webApp 'Microsoft.Web/sites@2023-12-01' = {
     serverFarmId: plan.id
     httpsOnly: true
     siteConfig: {
-      linuxFxVersion: 'NODE|20-lts'
+      linuxFxVersion: 'NODE|22-lts'
       alwaysOn: alwaysOn
       ftpsState: 'Disabled'
       appCommandLine: 'node server.js'
@@ -86,7 +86,7 @@ resource devSlot 'Microsoft.Web/sites/slots@2023-12-01' = {
     serverFarmId: plan.id
     httpsOnly: true
     siteConfig: {
-      linuxFxVersion: 'NODE|20-lts'
+      linuxFxVersion: 'NODE|22-lts'
       alwaysOn: alwaysOn
       ftpsState: 'Disabled'
       appCommandLine: 'node server.js'
