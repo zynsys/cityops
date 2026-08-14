@@ -16,7 +16,7 @@ param skuTier string
 @description('alwaysOn (supported on Standard+).')
 param alwaysOn bool
 
-@description('App settings shared by both the production slot and the dev slot.')
+@description('App settings shared across the app (currently just the production slot).')
 param commonAppSettings array
 
 @description('App settings applied only to the production slot (e.g. DATABASE_URL, NEXTAUTH_URL).')

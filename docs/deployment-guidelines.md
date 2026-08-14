@@ -10,21 +10,16 @@ CityOps is a server-side Next.js app (App Router, NextAuth, Prisma) deployed to 
 
 | Component      | Azure resource                                              | Notes                                                                     |
 | -------------- | ----------------------------------------------------------- | ------------------------------------------------------------------------- |
-| Web app (prod) | App Service (Linux, Node 20) — **production slot**          | Runs `node server.js`                                                     |
-| Web app (dev)  | App Service **`dev` deployment slot**                       | Requires Standard (S1)+                                                   |
-| Database       | Azure Database for **PostgreSQL Flexible Server** + PostGIS | Two DBs: `cityops` (prod), `cityops_dev` (dev)                            |
-| AI validation  | Azure OpenAI (`gpt-4o`)                                     | Created by IaC; shared by both slots (not slot-sticky)                    |
-| Secrets        | Azure Key Vault (RBAC)                                      | `DATABASE-URL`, `DATABASE-URL-DEV`, `AUTH-SECRET`, `AZURE-OPENAI-API-KEY` |
-| Identity       | System-assigned managed identity on the web app + dev slot  | Reads Key Vault via `@Microsoft.KeyVault(...)` references                 |
+| Web app (prod) | App Service (Linux, Node 20) — single production site       | Runs `node server.js`, no deployment slots                                |
+| Database       | Azure Database for **PostgreSQL Flexible Server** + PostGIS | `cityops` (prod)                                                          |
+| AI validation  | Azure OpenAI (`gpt-4o`)                                     | Created by IaC                                                            |
+| Secrets        | Azure Key Vault (RBAC)                                      | `DATABASE-URL`, `AUTH-SECRET`, `AZURE-OPENAI-API-KEY`                     |
+| Identity       | System-assigned managed identity on the web app             | Reads Key Vault via `@Microsoft.KeyVault(...)` references                 |
 
-**Environment → slot → database mapping**
-
-| Environment | Slot       | Database      | Key Vault secret   |
-| ----------- | ---------- | ------------- | ------------------ |
-| Dev         | `dev`      | `cityops_dev` | `DATABASE-URL-DEV` |
-| Prod        | production | `cityops`     | `DATABASE-URL`     |
-
-`DATABASE_URL` and `NEXTAUTH_URL` are **slot-sticky**, so they do not travel during a slot swap — each slot always keeps its own database.
+> The App Service **dev deployment slot** has been removed — infra now provisions a single
+> production environment only. The Classic Release deploys straight to production with a manual
+> approval gate instead of a dev-slot + swap flow. (The `cityops_dev` database and
+> `DATABASE-URL-DEV` Key Vault secret still exist but are no longer wired to any compute resource.)
 
 ---
 
@@ -64,7 +59,7 @@ The template is modularized — `infra/main.bicep` orchestrates one module per l
 | [`infra/main.bicep`](../infra/main.bicep)                             | Orchestration: wires modules together, builds Key Vault secrets, app settings, role assignments |
 | [`infra/modules/keyvault.bicep`](../infra/modules/keyvault.bicep)     | Key Vault (RBAC-enabled)                                                                        |
 | [`infra/modules/postgres.bicep`](../infra/modules/postgres.bicep)     | PostgreSQL Flexible Server, `cityops`/`cityops_dev` databases, PostGIS extension, firewall rule |
-| [`infra/modules/appservice.bicep`](../infra/modules/appservice.bicep) | App Service plan, Web App, `dev` slot, slot-sticky config                                       |
+| [`infra/modules/appservice.bicep`](../infra/modules/appservice.bicep) | App Service plan, Web App (single production site, no slots)                                    |
 | [`infra/modules/openai.bicep`](../infra/modules/openai.bicep)         | Azure OpenAI account + `gpt-4o` model deployment                                                |
 
 > Modules are split by **logical concern** (data / security / compute / AI), not one file per resource instance — a Web App and its slot are one cohesive unit and live in the same module.
@@ -78,9 +73,8 @@ Key parameters:
 | `location`                                                        | resource group location            | App Service + Key Vault region                |
 | `dbLocation`                                                      | `uksouth`                          | PostgreSQL region (kept separate)             |
 | `openAiLocation`                                                  | `eastus`                           | Azure OpenAI region (kept separate)           |
-| `appServiceSkuName` / `appServiceSkuTier`                         | `S1` / `Standard`                  | S1+ enables slots                             |
+| `appServiceSkuName` / `appServiceSkuTier`                         | `S1` / `Standard`                  | App Service plan SKU                          |
 | `alwaysOn`                                                        | `true`                             | Keep the app warm (Standard+)                 |
-| `devSlotName`                                                     | `dev`                              | Non-production slot                           |
 | `openAiAccountName`                                               | `azopenai-cityops`                 | Azure OpenAI account name                     |
 | `openAiDeploymentName` / `openAiModelName` / `openAiModelVersion` | `gpt-4o` / `gpt-4o` / `2024-11-20` | Model deployment                              |
 | `openAiSkuName` / `openAiCapacity`                                | `GlobalStandard` / `100`           | Deployment throughput (TPM), subject to quota |
@@ -123,7 +117,7 @@ az deployment group show -g "$RG" -n cityops-infra \
   --query "properties.outputs" -o json
 ```
 
-Outputs include: `webAppName`, `webAppUrl`, `devSlotName`, `devSlotUrl`, `keyVaultName`, `postgresFqdn`.
+Outputs include: `webAppName`, `webAppUrl`, `keyVaultName`, `postgresFqdn`.
 
 ---
 
@@ -155,7 +149,7 @@ MSYS_NO_PATHCONV=1 az role assignment create \
 > own. The Classic Release pipeline (`classic-infra-release`) is used to deploy to **arbitrary new
 > resource groups** as part of this project's Classic-vs-Modern demo (e.g. `rg-cityops-1`), so the SP
 > needs rights beyond the original `rg-cityops`. A RG-scoped grant will fail with a `403 Failed to
-> check the resource group status` error the first time the pipeline targets a resource group the SP
+check the resource group status` error the first time the pipeline targets a resource group the SP
 > has no role on — see §8.
 
 ### 4.2 Environments (approval gates)
@@ -383,7 +377,7 @@ done
 | [`infra/main.bicep`](../infra/main.bicep)                             | Infrastructure orchestrator                                     |
 | [`infra/modules/keyvault.bicep`](../infra/modules/keyvault.bicep)     | Key Vault module                                                |
 | [`infra/modules/postgres.bicep`](../infra/modules/postgres.bicep)     | PostgreSQL Flexible Server module                               |
-| [`infra/modules/appservice.bicep`](../infra/modules/appservice.bicep) | App Service (plan + web app + dev slot) module                  |
+| [`infra/modules/appservice.bicep`](../infra/modules/appservice.bicep) | App Service (plan + web app, single production site) module     |
 | [`infra/modules/openai.bicep`](../infra/modules/openai.bicep)         | Azure OpenAI account + model deployment module                  |
 | [`.ado/modern/app.yml`](../.ado/modern/app.yml)                       | App CI/CD (build, test, deploy dev/prod)                        |
 | [`.ado/modern/infra.yml`](../.ado/modern/infra.yml)                   | Infrastructure pipeline                                         |
