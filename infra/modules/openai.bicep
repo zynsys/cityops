@@ -1,5 +1,5 @@
-@description('Azure region for the Azure OpenAI account. Model/region availability varies — eastus is used because it has broad model availability and known quota on this subscription.')
-param location string = 'eastus'
+@description('Azure region for the Azure OpenAI account. Standalone-use fallback only — main.bicep always passes openAiLocation explicitly (default francecentral, confirmed capacity).')
+param location string = 'francecentral'
 
 @description('Azure OpenAI (Cognitive Services) account name.')
 param name string
@@ -19,9 +19,13 @@ param deploymentSkuName string = 'GlobalStandard'
 @description('Deployment capacity (TPM units) — subject to per-subscription/region quota.')
 param deploymentCapacity int = 100
 
+@description('Tags applied to this resource.')
+param tags object = {}
+
 resource account 'Microsoft.CognitiveServices/accounts@2023-05-01' = {
   name: name
   location: location
+  tags: tags
   kind: 'OpenAI'
   sku: {
     name: 'S0'

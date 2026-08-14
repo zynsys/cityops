@@ -3,17 +3,28 @@
 # "release/CD" is the apply. Both live in ONE multi-stage YAML (not two separate pipelines):
 #   Validate (build)  →  Deploy (release, gated by an environment approval)
 #
-# PREREQUISITES (one-time):
-#   1. ARM service connection 'cityops-azure'
-#      (Project Settings → Service connections → New → Azure Resource Manager).
-#      Its service principal needs Contributor + User Access Administrator (or Owner) on rg-cityops
-#      — User Access Administrator is required because the template creates a role assignment.
-#   2. Variable group 'cityops-infra' (Pipelines → Library) with SECRET, STABLE variables:
+# NO HARDCODING: every environment-specific value (service connection name, resource group,
+# regions, secrets) comes from Library variable groups below, never from literals in this file.
+#
+# PREREQUISITES (one-time — see docs/deployment-guidelines.md §5, or run scripts/setup.sh):
+#   1. ARM service connection named in the 'cityops-env' variable group (azureServiceConnection).
+#      Its service principal needs Contributor + User Access Administrator (or Owner) at the
+#      target scope — User Access Administrator is required because the template creates
+#      Key Vault role assignments.
+#   2. Variable group 'cityops-env' (Library, plain vars) — shared by this pipeline AND
+#      .ado/modern/app.yml: azureServiceConnection, resourceGroup, location, dbLocation.
+#   3. Variable group 'cityops-infra' (Library, SECRET, stable vars) — this pipeline only:
 #        - pgAdminPassword  (fixed — changing it rotates the DB admin password)
-#        - authSecret       (fixed, >= 32 chars — changing it invalidates existing sessions)
-#   3. No separate infra environment — the Deploy stage below is gated by the same 'prod'
-#      environment (and its approval check) used by the app pipeline's Deploy_Prod stage,
-#      since this template provisions/updates production-impacting shared resources.
+#        - authSecret       (fixed, >= 32 chars — changing it invalidates prod sessions)
+#        - authSecretDev    (fixed, >= 32 chars — changing it invalidates dev sessions)
+#   4. Pipelines → Environments: 'dev' (no approval) and 'prod' (approval check). The Deploy
+#      stage below targets 'prod' because a single Bicep apply provisions/updates the shared,
+#      production-impacting resources (Key Vault, PostgreSQL, App Service plan) that both the
+#      dev slot and production sit on.
+#
+# Resource NAMES (web app, key vault, slot) are never hardcoded — they're derived
+# deterministically inside main.bicep and resolved dynamically by naming convention at
+# deploy time in app.yml, so this pipeline never needs to know them either.
 
 trigger:
   branches:
@@ -31,24 +42,17 @@ pr:
       - infra/**
       - .ado/modern/infra.yml
 
-parameters:
-  - name: location
-    displayName: App / Key Vault region
-    type: string
-    default: ukwest
-  - name: dbLocation
-    displayName: PostgreSQL region
-    type: string
-    default: uksouth
-  - name: resourceGroup
-    displayName: Resource group
-    type: string
-    default: rg-cityops
+schedules:
+  - cron: '0 3 * * *' # nightly 03:00 UTC — drift detection (what-if only; Deploy stays manual-gated)
+    displayName: Nightly drift detection
+    branches:
+      include:
+        - main
+    always: true
 
 variables:
-  - group: cityops-infra # secret vars: pgAdminPassword, authSecret
-  - name: azureServiceConnection
-    value: cityops-azure
+  - group: cityops-env # azureServiceConnection, resourceGroup, location, dbLocation
+  - group: cityops-infra # secret vars: pgAdminPassword, authSecret, authSecretDev
 
 stages:
   # -------------------------------------------------------------------------
@@ -65,21 +69,22 @@ stages:
           - task: AzureCLI@2
             displayName: 'Bicep lint + what-if preview'
             inputs:
-              azureSubscription: 'cityops-azure'
+              azureSubscription: '$(azureServiceConnection)'
               scriptType: bash
               scriptLocation: inlineScript
               inlineScript: |
                 set -e
                 az bicep build --file infra/main.bicep
-                az group show -n ${{ parameters.resourceGroup }} >/dev/null 2>&1 || \
-                  az group create -n ${{ parameters.resourceGroup }} -l ${{ parameters.location }} -o none
+                az group show -n "$(resourceGroup)" >/dev/null 2>&1 || \
+                  az group create -n "$(resourceGroup)" -l "$(location)" -o none
                 az deployment group what-if \
-                  -g ${{ parameters.resourceGroup }} \
+                  -g "$(resourceGroup)" \
                   -f infra/main.bicep \
-                  -p location=${{ parameters.location }} \
-                     dbLocation=${{ parameters.dbLocation }} \
+                  -p location="$(location)" \
+                     dbLocation="$(dbLocation)" \
                      pgAdminPassword="$(pgAdminPassword)" \
-                     authSecret="$(authSecret)"
+                     authSecret="$(authSecret)" \
+                     authSecretDev="$(authSecretDev)"
 
   # -------------------------------------------------------------------------
   # DEPLOY = the "release/CD": apply the template. Only runs on a manually-triggered
@@ -97,6 +102,7 @@ stages:
     displayName: 'Deploy (apply)'
     dependsOn: Validate
     condition: and(succeeded(), eq(variables['Build.Reason'], 'Manual'))
+    lockBehavior: sequential # exclusive-lock check on the 'prod' Environment (§11.2) serializes applies
     jobs:
       - deployment: deploy
         environment: prod
@@ -110,17 +116,22 @@ stages:
                 - task: AzureCLI@2
                   displayName: 'az deployment group create'
                   inputs:
-                    azureSubscription: 'cityops-azure'
+                    azureSubscription: '$(azureServiceConnection)'
                     scriptType: bash
                     scriptLocation: inlineScript
                     inlineScript: |
                       set -e
                       az deployment group create \
-                        -g ${{ parameters.resourceGroup }} \
+                        -g "$(resourceGroup)" \
                         -n cityops-infra \
                         -f infra/main.bicep \
-                        -p location=${{ parameters.location }} \
-                           dbLocation=${{ parameters.dbLocation }} \
+                        -p location="$(location)" \
+                           dbLocation="$(dbLocation)" \
                            pgAdminPassword="$(pgAdminPassword)" \
                            authSecret="$(authSecret)" \
-                        --query "properties.outputs" -o json
+                           authSecretDev="$(authSecretDev)" \
+                        --query "properties.outputs" -o json | tee "$(Build.ArtifactStagingDirectory)/infra-outputs.json"
+
+                - publish: '$(Build.ArtifactStagingDirectory)/infra-outputs.json'
+                  artifact: infra-outputs
+                  displayName: 'Publish deployment outputs (webAppName, keyVaultName, etc.)'

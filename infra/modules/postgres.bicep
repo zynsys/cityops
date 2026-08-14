@@ -17,9 +17,13 @@ param dbName string = 'cityops'
 @description('Dev database name.')
 param dbNameDev string = 'cityops_dev'
 
+@description('Tags applied to this resource.')
+param tags object = {}
+
 resource postgres 'Microsoft.DBforPostgreSQL/flexibleServers@2023-06-01-preview' = {
   name: name
   location: location
+  tags: tags
   sku: {
     name: 'Standard_B1ms'
     tier: 'Burstable'

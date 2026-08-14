@@ -6,14 +6,20 @@
 // as an EXISTING resource (provisioned separately) — not created here.
 targetScope = 'resourceGroup'
 
-@description('Azure region for App Service and Key Vault.')
-param location string = resourceGroup().location
+@description('Azure region for App Service and Key Vault. Defaults to francecentral — confirmed capacity for all resource types used by this template.')
+param location string = 'francecentral'
 
-@description('Region for PostgreSQL (kept separate: not all regions offer the Flexible Server SKU).')
-param dbLocation string = 'uksouth'
+@description('Region for PostgreSQL. Defaults to francecentral (same as location) — override independently if a future region lacks the Flexible Server SKU.')
+param dbLocation string = 'francecentral'
 
 @description('Base name used to derive resource names.')
 param baseName string = 'cityops'
+
+@description('Tags applied to every resource this template creates — for cost allocation and ownership tracking.')
+param tags object = {
+  project: 'cityops'
+  managedBy: 'bicep'
+}
 
 @description('PostgreSQL administrator login.')
 param pgAdminLogin string = 'cityopsadmin'
@@ -22,9 +28,13 @@ param pgAdminLogin string = 'cityopsadmin'
 @secure()
 param pgAdminPassword string
 
-@description('Auth.js (NextAuth) secret — at least 32 chars.')
+@description('Auth.js (NextAuth) secret for production — at least 32 chars.')
 @secure()
 param authSecret string
+
+@description('Auth.js (NextAuth) secret for the dev slot — at least 32 chars, distinct from prod.')
+@secure()
+param authSecretDev string
 
 @description('App Service plan SKU name (S1+ required for deployment slots).')
 param appServiceSkuName string = 'S1'
@@ -38,8 +48,8 @@ param alwaysOn bool = true
 @description('Azure OpenAI (Cognitive Services) account name. Matching an existing resource of this name in this resource group adopts it instead of creating a duplicate.')
 param openAiAccountName string = 'azopenai-cityops'
 
-@description('Azure region for Azure OpenAI — model/region availability varies independently of App Service/Postgres regions.')
-param openAiLocation string = 'eastus'
+@description('Azure region for Azure OpenAI. Defaults to francecentral (same as location) — override independently if model/quota availability requires a different region.')
+param openAiLocation string = 'francecentral'
 
 @description('Name of the deployed model used for AI report validation.')
 param openAiDeploymentName string = 'gpt-4o'
@@ -64,6 +74,8 @@ var pgName = 'pg-${baseName}-${suffix}'
 var dbName = 'cityops'
 var dbNameDev = '${dbName}_dev'
 var appHost = '${appName}.azurewebsites.net'
+var devSlotName = 'dev'
+var devHost = '${appName}-${devSlotName}.azurewebsites.net'
 
 // ---------------------------------------------------------------------------
 // Azure OpenAI account + model deployment — created (not just referenced). Deterministic
@@ -79,6 +91,7 @@ module openAi 'modules/openai.bicep' = {
     modelVersion: openAiModelVersion
     deploymentSkuName: openAiSkuName
     deploymentCapacity: openAiCapacity
+    tags: tags
   }
 }
 
@@ -105,6 +118,7 @@ module postgres 'modules/postgres.bicep' = {
     adminPassword: pgAdminPassword
     dbName: dbName
     dbNameDev: dbNameDev
+    tags: tags
   }
 }
 
@@ -119,6 +133,7 @@ module keyVault 'modules/keyvault.bicep' = {
   params: {
     location: location
     name: kvName
+    tags: tags
   }
 }
 
@@ -161,6 +176,18 @@ resource secretAuthSecret 'Microsoft.KeyVault/vaults/secrets@2023-07-01' = {
   name: 'AUTH-SECRET'
   properties: {
     value: authSecret
+  }
+  dependsOn: [
+    keyVault
+  ]
+}
+
+// Dev gets its own Auth.js secret so dev sessions are never valid against prod and vice versa.
+resource secretAuthSecretDev 'Microsoft.KeyVault/vaults/secrets@2023-07-01' = {
+  parent: keyVaultRef
+  name: 'AUTH-SECRET-DEV'
+  properties: {
+    value: authSecretDev
   }
   dependsOn: [
     keyVault
@@ -229,6 +256,23 @@ var prodAppSettings = [
   }
 ]
 
+// Dev slot points at its own dedicated database and its own auth secret — genuine isolation
+// from prod, on the same App Service plan (no extra compute cost).
+var devAppSettings = [
+  {
+    name: 'NEXTAUTH_URL'
+    value: 'https://${devHost}'
+  }
+  {
+    name: 'DATABASE_URL'
+    value: '@Microsoft.KeyVault(VaultName=${kvName};SecretName=DATABASE-URL-DEV)'
+  }
+  {
+    name: 'AUTH_SECRET'
+    value: '@Microsoft.KeyVault(VaultName=${kvName};SecretName=AUTH-SECRET-DEV)'
+  }
+]
+
 module appService 'modules/appservice.bicep' = {
   name: 'appServiceDeploy'
   params: {
@@ -240,14 +284,20 @@ module appService 'modules/appservice.bicep' = {
     alwaysOn: alwaysOn
     commonAppSettings: commonAppSettings
     prodAppSettings: prodAppSettings
+    devAppSettings: devAppSettings
+    devSlotName: devSlotName
+    tags: tags
     stickyAppSettingNames: [
       'DATABASE_URL'
+      'AUTH_SECRET'
       'NEXTAUTH_URL'
     ]
   }
   dependsOn: [
     secretDatabaseUrl
+    secretDatabaseUrlDev
     secretAuthSecret
+    secretAuthSecretDev
     secretOpenAiKey
   ]
 }
@@ -271,8 +321,25 @@ resource kvRoleAssignment 'Microsoft.Authorization/roleAssignments@2022-04-01' =
   ]
 }
 
+// The dev slot has its own managed identity — grant it the same read-only access to Key Vault.
+resource kvRoleAssignmentDevSlot 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
+  name: guid(keyVaultRef.id, resourceId('Microsoft.Web/sites/slots', appName, devSlotName), kvSecretsUserRoleId)
+  scope: keyVaultRef
+  properties: {
+    principalId: appService.outputs.devSlotPrincipalId
+    roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', kvSecretsUserRoleId)
+    principalType: 'ServicePrincipal'
+  }
+  dependsOn: [
+    keyVault
+  ]
+}
+
 output webAppName string = appName
 output webAppUrl string = 'https://${appHost}'
+output devSlotName string = devSlotName
+output devSlotUrl string = 'https://${devHost}'
 output keyVaultName string = kvName
 output postgresFqdn string = postgres.outputs.fqdn
+output resourceGroupName string = resourceGroup().name
 

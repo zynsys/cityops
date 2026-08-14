@@ -1,6 +1,5 @@
-# CityOps CI — build + test pyramid
+# CityOps CI/CD — build + test pyramid, then deploy dev (auto) → prod (manual + approval).
 # Unit + integration gate every push/PR; e2e runs on PRs and nightly only.
-# CD is intentionally omitted for now (see the commented blueprint at the bottom of this file).
 # https://docs.microsoft.com/azure/devops/pipelines/languages/javascript
 
 trigger:
@@ -51,6 +50,14 @@ stages:
 
           - script: npm ci
             displayName: 'Install dependencies'
+
+          - script: npm run lint
+            displayName: 'Lint (warn-only — pre-existing findings not yet triaged)'
+            continueOnError: true
+
+          - script: npm audit --audit-level=high
+            displayName: 'Dependency vulnerability audit (warn-only)'
+            continueOnError: true
 
           - script: mkdir -p reports && npm run test:unit -- --coverage --reporter=default --reporter=junit --outputFile.junit=reports/unit.xml
             displayName: 'Unit tests'
@@ -210,12 +217,20 @@ stages:
 
   # ---------------------------------------------------------------------------
   # DEPLOY (Dev slot) — deploy the built app to the 'dev' slot and migrate the
-  # dev database (cityops_dev). Gated by the 'dev' environment approval.
+  # dev database (cityops_dev). Gated by the 'dev' environment (no approval — fast
+  # continuous feedback).
   #
-  # PREREQUISITES (one-time):
-  #   1. ARM service connection 'cityops-azure' whose SP has Contributor on rg-cityops
-  #      and Key Vault Secrets User on kv-cityops-lagsjw6f.
-  #   2. Pipelines Environments 'dev' and 'prod' (each with an approval check).
+  # NO HARDCODING: resourceGroup/service connection come from the 'cityops-env' Library
+  # variable group; webAppName/keyVaultName are never stored anywhere — they're resolved
+  # at deploy time by naming convention (main.bicep always names them 'app-cityops-*' /
+  # 'kv-cityops-*' in the single resource group), so a re-provisioned or renamed
+  # environment never requires touching this YAML.
+  #
+  # PREREQUISITES (one-time — see docs/deployment-guidelines.md §5, or run scripts/setup.sh):
+  #   1. ARM service connection named in 'cityops-env' (azureServiceConnection), whose SP has
+  #      Contributor on the resource group and Key Vault Secrets User is granted by Bicep.
+  #   2. Variable group 'cityops-env' (Library, plain vars): azureServiceConnection, resourceGroup.
+  #   3. Pipelines Environments 'dev' (no approval) and 'prod' (approval check).
   # ---------------------------------------------------------------------------
   - stage: Deploy_Dev
     displayName: 'Deploy to Dev slot'
@@ -224,14 +239,7 @@ stages:
       - IntegrationTest
     condition: and(succeeded(), in(variables['Build.Reason'], 'IndividualCI', 'Manual'))
     variables:
-      - name: azureServiceConnection
-        value: cityops-azure
-      - name: resourceGroup
-        value: rg-cityops
-      - name: webAppName
-        value: app-cityops-lagsjw6fa5uxc
-      - name: keyVaultName
-        value: kv-cityops-lagsjw6f
+      - group: cityops-env # azureServiceConnection, resourceGroup
       - name: devSlotName
         value: dev
     jobs:
@@ -248,11 +256,15 @@ stages:
                   inputs:
                     versionSpec: $(nodeVersion)
                   displayName: 'Install Node.js'
+                - template: templates/resolve-names.yml
+                  parameters:
+                    azureServiceConnection: '$(azureServiceConnection)'
+                    resourceGroup: '$(resourceGroup)'
                 - task: AzureKeyVault@2
                   displayName: 'Fetch dev DB secret'
                   inputs:
-                    azureSubscription: 'cityops-azure'
-                    KeyVaultName: $(keyVaultName)
+                    azureSubscription: '$(azureServiceConnection)'
+                    KeyVaultName: '$(keyVaultName)'
                     SecretsFilter: 'DATABASE-URL-DEV'
                     RunAsPreJob: false
                 - script: npm ci
@@ -266,12 +278,12 @@ stages:
                 - task: AzureWebApp@1
                   displayName: 'Deploy to dev slot'
                   inputs:
-                    azureSubscription: 'cityops-azure'
+                    azureSubscription: '$(azureServiceConnection)'
                     appType: webAppLinux
-                    appName: $(webAppName)
-                    resourceGroupName: $(resourceGroup)
+                    appName: '$(webAppName)'
+                    resourceGroupName: '$(resourceGroup)'
                     deployToSlotOrASE: true
-                    slotName: $(devSlotName)
+                    slotName: '$(devSlotName)'
                     package: '$(Pipeline.Workspace)/drop'
                     startUpCommand: 'node server.js'
 
@@ -282,7 +294,8 @@ stages:
   # the only trigger where E2ETest also runs in the SAME run, so production can never
   # deploy without E2E passing, without E2E running on every ordinary push.
   # To promote to prod: Pipelines → CityOps-CI → Run pipeline (manually) on main.
-  # Slot-sticky DATABASE_URL/NEXTAUTH_URL keep each slot pointed at its own DB.
+  # Slot-sticky DATABASE_URL/AUTH_SECRET/NEXTAUTH_URL keep each slot pointed at its own
+  # DB and its own Auth.js secret, so a swap never leaks dev config into prod or vice versa.
   # ---------------------------------------------------------------------------
   - stage: Deploy_Prod
     displayName: 'Deploy to Production (swap)'
@@ -290,17 +303,11 @@ stages:
       - Deploy_Dev
       - E2ETest
     condition: and(succeeded(), eq(variables['Build.Reason'], 'Manual'))
+    lockBehavior: sequential # exclusive-lock check on the 'prod' Environment (§11.2) serializes prod deploys
     variables:
-      - name: azureServiceConnection
-        value: cityops-azure
-      - name: resourceGroup
-        value: rg-cityops
-      - name: webAppName
-        value: app-cityops-lagsjw6fa5uxc
+      - group: cityops-env # azureServiceConnection, resourceGroup
       - name: devSlotName
         value: dev
-      - name: keyVaultName
-        value: kv-cityops-lagsjw6f
     jobs:
       - deployment: deploy_prod
         environment: prod
@@ -315,11 +322,15 @@ stages:
                   inputs:
                     versionSpec: $(nodeVersion)
                   displayName: 'Install Node.js'
+                - template: templates/resolve-names.yml
+                  parameters:
+                    azureServiceConnection: '$(azureServiceConnection)'
+                    resourceGroup: '$(resourceGroup)'
                 - task: AzureKeyVault@2
                   displayName: 'Fetch prod DB secret'
                   inputs:
-                    azureSubscription: 'cityops-azure'
-                    KeyVaultName: $(keyVaultName)
+                    azureSubscription: '$(azureServiceConnection)'
+                    KeyVaultName: '$(keyVaultName)'
                     SecretsFilter: 'DATABASE-URL'
                     RunAsPreJob: false
                 - script: npm ci
@@ -331,8 +342,8 @@ stages:
                 - task: AzureAppServiceManage@0
                   displayName: 'Swap dev → production'
                   inputs:
-                    azureSubscription: 'cityops-azure'
+                    azureSubscription: '$(azureServiceConnection)'
                     action: 'Swap Slots'
-                    webAppName: $(webAppName)
-                    resourceGroupName: $(resourceGroup)
-                    sourceSlot: $(devSlotName)
+                    webAppName: '$(webAppName)'
+                    resourceGroupName: '$(resourceGroup)'
+                    sourceSlot: '$(devSlotName)'

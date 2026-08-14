@@ -1,385 +1,515 @@
 # CityOps — Deployment Guidelines
 
-End-to-end instructions to provision the Azure infrastructure and deploy CityOps from scratch, using Bicep (IaC) and Azure DevOps pipelines. Follow this to reproduce the environment on a clean subscription.
+Provision Azure infrastructure and deploy CityOps from scratch, using Bicep (IaC) and Azure
+DevOps pipelines. Follow §1–§5 to reproduce the environment on a clean subscription + a clean
+Azure DevOps project: a working dev + prod environment, gated CI/CD, no secrets in source control.
 
 ---
 
 ## 1. Architecture overview
 
-CityOps is a server-side Next.js app (App Router, NextAuth, Prisma) deployed to **Azure App Service** as **code** (no container) using the Next.js **standalone** output (`node server.js`).
+CityOps is a server-side Next.js app (App Router, NextAuth, Prisma) deployed to **Azure App Service** as **code** (no container), running the Next.js **standalone** output (`node server.js`).
 
-| Component      | Azure resource                                              | Notes                                                                     |
-| -------------- | ----------------------------------------------------------- | ------------------------------------------------------------------------- |
-| Web app (prod) | App Service (Linux, Node 20) — single production site       | Runs `node server.js`, no deployment slots                                |
-| Database       | Azure Database for **PostgreSQL Flexible Server** + PostGIS | `cityops` (prod)                                                          |
-| AI validation  | Azure OpenAI (`gpt-4o`)                                     | Created by IaC                                                            |
-| Secrets        | Azure Key Vault (RBAC)                                      | `DATABASE-URL`, `AUTH-SECRET`, `AZURE-OPENAI-API-KEY`                     |
-| Identity       | System-assigned managed identity on the web app             | Reads Key Vault via `@Microsoft.KeyVault(...)` references                 |
+### 1.1 One resource group, two logical environments
 
-> The App Service **dev deployment slot** has been removed — infra now provisions a single
-> production environment only. The Classic Release deploys straight to production with a manual
-> approval gate instead of a dev-slot + swap flow. (The `cityops_dev` database and
-> `DATABASE-URL-DEV` Key Vault secret still exist but are no longer wired to any compute resource.)
+Dev and prod share a single resource group — separate resource groups would roughly double
+infra cost for a project this size. Isolation is instead achieved **inside** each shared resource:
+
+| Component     | Azure resource                                                                 | Isolation                                                                 |
+| ------------- | ------------------------------------------------------------------------------ | ------------------------------------------------------------------------- |
+| Web app       | One App Service (Linux, Node 24) + a **`dev` deployment slot**                 | Slot-sticky app settings (§6) point each slot at its own DB/secret        |
+| Database      | One PostgreSQL Flexible Server, two databases: `cityops` (prod), `cityops_dev` | Separate databases — dev never touches prod data                          |
+| Secrets       | One Key Vault (RBAC)                                                           | Separate secret names per env: `*-URL` / `*-URL-DEV`, `AUTH-SECRET(-DEV)` |
+| AI validation | One Azure OpenAI account (`gpt-4o`)                                            | Shared — stateless                                                        |
+| Identity      | System-assigned managed identity **per slot**                                  | Each slot's identity is granted Key Vault access independently            |
+
+Full blast-radius isolation (separate resource groups) roughly doubles cost — see the note at the end of §7.2.
+
+### 1.2 Deployment flow at a glance
+
+```mermaid
+flowchart LR
+    subgraph CI["Build (every push/PR)"]
+        A[Build + unit tests] --> B[Integration tests]
+    end
+    subgraph CD["Deploy (CD)"]
+        B --> C["Deploy_Dev\n(dev slot, cityops_dev)\nauto, no approval"]
+        C --> D["E2E tests\n(PR / nightly / manual)"]
+        D --> E["Deploy_Prod\n(migrate cityops, swap)\nmanual + approval"]
+    end
+```
 
 ---
 
 ## 2. Prerequisites
 
-- **Azure subscription** with permissions to create resources and role assignments (Owner, or Contributor + User Access Administrator).
-- **Azure CLI** ≥ 2.60 with the Bicep extension: `az bicep upgrade`.
-- **Node.js 20** and **npm**.
-- **Azure DevOps** organization + project, connected to this GitHub repository.
-- Local login:
+- Azure subscription with rights to create resources and role assignments (Owner, or Contributor + User Access Administrator)
+- Azure CLI ≥ 2.60 with Bicep: `az bicep upgrade`
+- Node.js 20+ and npm
+- Azure DevOps organization + project, connected to this GitHub repository
 
-  ```bash
-  az login
-  az account set --subscription <SUBSCRIPTION_ID>
-  ```
+```bash
+az login
+az account set --subscription <SUBSCRIPTION_ID>
+```
 
-### Region & quota notes (important)
+### Region
 
-This project was provisioned across two UK regions because of subscription constraints:
+All resources default to **`francecentral`** (confirmed capacity for App Service slots,
+PostgreSQL Flexible Server, and Azure OpenAI) via the independent `location`, `dbLocation`,
+`openAiLocation` parameters — override any of them if a subscription lacks capacity there (see
+§9 for a region-scan script).
 
-- **App Service + Key Vault → `ukwest`** — the subscription had **0 App Service compute quota** in several regions (`eastus`, `uksouth`, etc.). `ukwest` had quota.
-- **PostgreSQL Flexible Server → `uksouth`** — the Flexible Server SKU (`Standard_B1ms`) was **not offered in `ukwest`**.
-- **Azure OpenAI → `eastus`** (`openAiLocation` parameter, independent of the above) — model/region availability for Azure OpenAI varies separately again; `eastus` has broad model availability and is the default. Azure OpenAI access must also be enabled on the subscription (a one-time Microsoft approval step outside Bicep's control) before any deployment succeeds.
-
-If you deploy to a fresh subscription, check quota first. To find a region with App Service quota, run a read-only `what-if` per region (see §8 Troubleshooting) and pick one that passes.
-
-> **Deployment slots require Standard (S1) or higher.** Free (F1) and Basic (B1) do **not** support slots.
+> **Deployment slots require Standard (S1) or higher** — Free/Basic tiers don't support them, which is why `appServiceSkuName` defaults to `S1`.
 
 ---
 
-## 3. Provision infrastructure with Bicep
+## 3. Quick start — automated setup
+
+[`scripts/setup.sh`](../scripts/setup.sh) provisions the resource group, deploys Bicep, creates
+the ARM service connection, both Library variable groups, the `dev`/`prod` Environments, and
+registers the 4 YAML pipelines.
+
+```bash
+./scripts/setup.sh
+```
+
+It's interactive by default — prompts for each value below with a sensible default (current
+`az account` subscription, an already-configured `az devops` org/project, etc.); press Enter to
+accept or type a new value: `AZURE_SUBSCRIPTION_ID`, `RESOURCE_GROUP`, `LOCATION`, `DB_LOCATION`,
+`ADO_ORG_URL`, `ADO_PROJECT`, `SERVICE_CONNECTION_NAME`, `SP_SCOPE` (§5.1),
+`AUTHORIZE_FOR_ALL_PIPELINES` (§11.2), `GITHUB_REPO_URL`, `GITHUB_PAT` (§11.1, hidden input).
+Leaving `ADO_ORG_URL` blank skips Azure DevOps entirely (Azure infra only). Pre-set any of these
+as environment variables to change the default shown, or run non-interactively (e.g. in CI) to
+skip all prompts:
+
+```bash
+AZURE_SUBSCRIPTION_ID=<subscription-id> ADO_ORG_URL=https://dev.azure.com/<org> ADO_PROJECT=<project> \
+  ./scripts/setup.sh </dev/null
+```
+
+`PG_ADMIN_PASSWORD`, `AUTH_SECRET`, `AUTH_SECRET_DEV` are auto-generated if omitted (not
+prompted for). Safe to re-run — every step checks for an existing target first.
+
+**Not automated** (need interactive Graph lookups, have no YAML/ARM form, or shouldn't be
+changed silently by a script): the `prod` approval's approver, the Classic Release pipelines,
+Branch control / Exclusive lock checks, GitHub branch protection — see §5.2, §5.6, §11.
+
+---
+
+## 4. Provision infrastructure with Bicep (deep dive)
 
 The template is modularized — `infra/main.bicep` orchestrates one module per logical concern:
 
-| File                                                                  | Owns                                                                                            |
-| --------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------- |
-| [`infra/main.bicep`](../infra/main.bicep)                             | Orchestration: wires modules together, builds Key Vault secrets, app settings, role assignments |
-| [`infra/modules/keyvault.bicep`](../infra/modules/keyvault.bicep)     | Key Vault (RBAC-enabled)                                                                        |
-| [`infra/modules/postgres.bicep`](../infra/modules/postgres.bicep)     | PostgreSQL Flexible Server, `cityops`/`cityops_dev` databases, PostGIS extension, firewall rule |
-| [`infra/modules/appservice.bicep`](../infra/modules/appservice.bicep) | App Service plan, Web App (single production site, no slots)                                    |
-| [`infra/modules/openai.bicep`](../infra/modules/openai.bicep)         | Azure OpenAI account + `gpt-4o` model deployment                                                |
+| File                                                                  | Owns                                                            |
+| --------------------------------------------------------------------- | --------------------------------------------------------------- |
+| [`infra/main.bicep`](../infra/main.bicep)                             | Orchestration: modules, Key Vault secrets, app settings, RBAC   |
+| [`infra/modules/keyvault.bicep`](../infra/modules/keyvault.bicep)     | Key Vault (RBAC-enabled)                                        |
+| [`infra/modules/postgres.bicep`](../infra/modules/postgres.bicep)     | Flexible Server, `cityops`/`cityops_dev` DBs, PostGIS, firewall |
+| [`infra/modules/appservice.bicep`](../infra/modules/appservice.bicep) | Plan, Web App **+ `dev` deployment slot**                       |
+| [`infra/modules/openai.bicep`](../infra/modules/openai.bicep)         | Azure OpenAI account + `gpt-4o` model deployment                |
 
-> Modules are split by **logical concern** (data / security / compute / AI), not one file per resource instance — a Web App and its slot are one cohesive unit and live in the same module.
->
-> Resource names are derived deterministically (`uniqueString(resourceGroup().id)` for the app/DB/vault; a fixed default name for the OpenAI account). Re-running a deployment with the same names **adopts and updates** existing resources rather than creating duplicates — this is how the OpenAI account and model deployment, originally created manually, were brought under Bicep management without disruption.
+Resource names are derived deterministically (`uniqueString(resourceGroup().id)`), so re-running a deployment on the same resource group **adopts and updates** existing resources rather than creating duplicates.
 
 Key parameters:
 
-| Parameter                                                         | Default                            | Purpose                                       |
-| ----------------------------------------------------------------- | ---------------------------------- | --------------------------------------------- |
-| `location`                                                        | resource group location            | App Service + Key Vault region                |
-| `dbLocation`                                                      | `uksouth`                          | PostgreSQL region (kept separate)             |
-| `openAiLocation`                                                  | `eastus`                           | Azure OpenAI region (kept separate)           |
-| `appServiceSkuName` / `appServiceSkuTier`                         | `S1` / `Standard`                  | App Service plan SKU                          |
-| `alwaysOn`                                                        | `true`                             | Keep the app warm (Standard+)                 |
-| `openAiAccountName`                                               | `azopenai-cityops`                 | Azure OpenAI account name                     |
-| `openAiDeploymentName` / `openAiModelName` / `openAiModelVersion` | `gpt-4o` / `gpt-4o` / `2024-11-20` | Model deployment                              |
-| `openAiSkuName` / `openAiCapacity`                                | `GlobalStandard` / `100`           | Deployment throughput (TPM), subject to quota |
-| `pgAdminPassword`                                                 | _(secure)_                         | PostgreSQL admin password                     |
-| `authSecret`                                                      | _(secure)_                         | NextAuth `AUTH_SECRET` (≥ 32 chars)           |
+| Parameter                                                         | Default                            | Purpose                            |
+| ----------------------------------------------------------------- | ---------------------------------- | ---------------------------------- |
+| `location` / `dbLocation` / `openAiLocation`                      | `francecentral`                    | Region per resource type           |
+| `appServiceSkuName` / `appServiceSkuTier`                         | `S1` / `Standard`                  | App Service plan SKU               |
+| `alwaysOn`                                                        | `true`                             | Keep the app warm (Standard+)      |
+| `openAiAccountName`                                               | `azopenai-cityops`                 | Azure OpenAI account name          |
+| `openAiDeploymentName` / `openAiModelName` / `openAiModelVersion` | `gpt-4o` / `gpt-4o` / `2024-11-20` | Model deployment                   |
+| `openAiSkuName` / `openAiCapacity`                                | `GlobalStandard` / `100`           | Throughput (TPM), subject to quota |
+| `pgAdminPassword`                                                 | _(secure)_                         | PostgreSQL admin password          |
+| `authSecret` / `authSecretDev`                                    | _(secure)_                         | Prod / dev-slot `AUTH_SECRET`      |
 
-### 3.1 Generate stable secrets
-
-Generate these **once** and keep them stable (store in a variable group / Key Vault). Rotating `pgAdminPassword` resets the DB admin password; rotating `authSecret` invalidates existing sessions.
+### 4.1 Generate stable secrets
 
 ```bash
-# PostgreSQL admin password (alphanumeric, meets complexity)
 PGPASS="$(openssl rand -hex 20)Aa1"
-
-# NextAuth secret (>= 32 chars)
 AUTHSECRET="$(openssl rand -base64 32)"
+AUTHSECRETDEV="$(openssl rand -base64 32)"
 ```
 
-### 3.2 Deploy
+Store these; rotating `pgAdminPassword` resets the DB admin password, rotating an `authSecret*` invalidates sessions in that environment.
+
+### 4.2 Deploy
 
 ```bash
 RG=rg-cityops
-az group create -n "$RG" -l ukwest   # or your chosen region
+az group create -n "$RG" -l francecentral
 
 az deployment group create \
   -g "$RG" -n cityops-infra \
   -f infra/main.bicep \
-  -p location=ukwest dbLocation=uksouth \
-     pgAdminPassword="$PGPASS" \
-     authSecret="$AUTHSECRET" \
+  -p location=francecentral dbLocation=francecentral \
+     pgAdminPassword="$PGPASS" authSecret="$AUTHSECRET" authSecretDev="$AUTHSECRETDEV" \
   --query "properties.outputs" -o json
 ```
 
-### 3.3 Capture outputs
-
-Resource names are derived from `uniqueString(resourceGroup().id)`, so they differ per resource group. Retrieve them:
+### 4.3 Capture outputs
 
 ```bash
-az deployment group show -g "$RG" -n cityops-infra \
-  --query "properties.outputs" -o json
+az deployment group show -g "$RG" -n cityops-infra --query "properties.outputs" -o json
 ```
 
-Outputs include: `webAppName`, `webAppUrl`, `keyVaultName`, `postgresFqdn`.
+Outputs: `webAppName`, `webAppUrl`, `devSlotName`, `devSlotUrl`, `keyVaultName`, `postgresFqdn`, `resourceGroupName`.
 
 ---
 
-## 4. Azure DevOps setup (one-time)
+## 5. Azure DevOps setup (one-time)
 
-### 4.1 Service connection
+### 5.1 Service connection
 
-Create an **Azure Resource Manager** service connection named **`cityops-azure`**
-(Project Settings → Service connections → New → Azure Resource Manager).
+Create an **Azure Resource Manager** service connection named **`cityops-azure`** (Project Settings → Service connections → New → Azure Resource Manager) whose service principal has, at the chosen scope:
 
-Its service principal needs, at **subscription scope**:
-
-- **Contributor** — deploy the web app, swap slots, and create/update whole resource groups.
-- **User Access Administrator** — the Bicep template creates its own role assignments (Key Vault Secrets User grants to the App Service/slot identities); the deploying principal must be able to grant roles too.
+- **Contributor** — deploy the web app/slot, swap slots, update resources
+- **User Access Administrator** — Bicep grants Key Vault roles to each slot's identity, so the deploying principal must be able to grant roles too
 
 ```bash
-# Grant the service connection's SP subscription-wide Contributor + User Access Administrator.
-# Git Bash mangles "/subscriptions/..." into a Windows path — prefix with MSYS_NO_PATHCONV=1.
-MSYS_NO_PATHCONV=1 az role assignment create \
-  --assignee <SERVICE_PRINCIPAL_APP_ID> --role "Contributor" \
-  --scope "/subscriptions/<SUBSCRIPTION_ID>"
-MSYS_NO_PATHCONV=1 az role assignment create \
-  --assignee <SERVICE_PRINCIPAL_APP_ID> --role "User Access Administrator" \
-  --scope "/subscriptions/<SUBSCRIPTION_ID>"
+# Resource-group scope (default, least privilege). Prefix MSYS_NO_PATHCONV=1 in Git Bash.
+az role assignment create --assignee <SERVICE_PRINCIPAL_APP_ID> --role "Contributor" \
+  --scope "/subscriptions/<SUBSCRIPTION_ID>/resourceGroups/rg-cityops"
+az role assignment create --assignee <SERVICE_PRINCIPAL_APP_ID> --role "User Access Administrator" \
+  --scope "/subscriptions/<SUBSCRIPTION_ID>/resourceGroups/rg-cityops"
 ```
 
-> **Why subscription scope, not just `rg-cityops`:** the ADO service connection itself is registered
-> at `scopeLevel: Subscription`, but that's only ADO metadata — it doesn't grant any Azure RBAC on its
-> own. The Classic Release pipeline (`classic-infra-release`) is used to deploy to **arbitrary new
-> resource groups** as part of this project's Classic-vs-Modern demo (e.g. `rg-cityops-1`), so the SP
-> needs rights beyond the original `rg-cityops`. A RG-scoped grant will fail with a `403 Failed to
-check the resource group status` error the first time the pipeline targets a resource group the SP
-> has no role on — see §8.
+> Use `SP_SCOPE=subscription` (in `scripts/setup.sh`) only if you'll run `classic-infra-release` against arbitrary new resource groups — otherwise you'll hit a `403` (see §9).
 
-### 4.2 Environments (approval gates)
+### 5.2 Environments (approval gates)
 
-Only **two** ADO Environments exist, matching the only two real deployment targets — both the app pipeline and the infra pipeline reuse them (no separate "infra" environment):
+Two ADO Environments, shared by both the app and infra pipelines:
 
-- **`dev`** — deploy target for the dev slot (app) and shared by the infra pipeline's Deploy stage. **No approval gate** — dev deploys continuously and automatically on every push to `main`, for fast feedback.
-- **`prod`** — deploy target for production (app); the infra pipeline's Deploy stage also targets **`prod`**, since a single Bicep apply provisions/updates the shared, production-impacting resources (Key Vault, PostgreSQL, App Service plan) alongside both slots. **Has an approval gate.**
+- **`dev`** — no approval gate; deploys continuously on every push to `main`
+- **`prod`** — **Approval check**, 5-minute timeout, single required approver, "requester cannot approve their own run" enabled
 
-Create them under Pipelines → **Environments**.
+Create under Pipelines → **Environments** → _(environment)_ → **Approvals and checks** → **+ Add check** → **Approvals**.
 
-The `prod` environment has an **Approval check with a 5-minute timeout** (not the platform default of 30 days), approved by a single required approver. A pending approval does **not** consume agent minutes — the stage sits in a "Waiting" state and no agent is allocated until it's approved. If it isn't approved within 5 minutes, the check times out and the stage fails (no indefinite hang).
+REST equivalent: `POST https://dev.azure.com/{org}/{project}/_apis/pipelines/checks/configurations?api-version=7.2-preview`
 
-> This asymmetry — no gate on dev, a gate on prod — is standard practice: lower environments favor fast, continuous feedback; production favors deliberate, reviewed releases.
+```json
+{
+  "type": { "id": "8C6F20A7-A545-4486-9777-F762FAFE0D4D", "name": "Approval" },
+  "settings": {
+    "approvers": [{ "id": "<identity storage key>" }],
+    "executionOrder": "anyOrder",
+    "minRequiredApprovers": 1,
+    "requesterCannotBeApprover": true
+  },
+  "resource": { "type": "environment", "id": "<environment id>" },
+  "timeout": 5
+}
+```
 
-To add or inspect an approval check:
+The approver `id` is the Identity **storage key** (a GUID) — resolve via `Graph/Users` then `Graph/StorageKeys`.
 
-- **UI**: Pipelines → Environments → _(environment)_ → **Approvals and checks** → **+ Add check** → **Approvals** → set **Timeout** to 5 minutes → choose approver(s).
-- **API** (used to create these): `POST https://dev.azure.com/{org}/{project}/_apis/pipelines/checks/configurations?api-version=7.2-preview` with a body of:
+### 5.3 Variable groups — the "no hardcoding" mechanism
 
-  ```json
-  {
-    "type": { "id": "8C6F20A7-A545-4486-9777-F762FAFE0D4D", "name": "Approval" },
-    "settings": {
-      "approvers": [{ "id": "<identity storage key>" }],
-      "executionOrder": "anyOrder",
-      "minRequiredApprovers": 1,
-      "requesterCannotBeApprover": false
-    },
-    "resource": { "type": "environment", "id": "<environment id>" },
-    "timeout": 5
-  }
-  ```
+Every environment-specific pipeline value lives in a Library variable group, never a YAML literal:
 
-  The approver `id` must be the Identity service **storage key** (a GUID), not the Graph profile id. Resolve it via `Graph/Users` (find the descriptor for the target account) then `Graph/StorageKeys` with that descriptor.
+| Variable group  | Contents                                                            | Secret? | Used by                   |
+| --------------- | ------------------------------------------------------------------- | ------- | ------------------------- |
+| `cityops-env`   | `azureServiceConnection`, `resourceGroup`, `location`, `dbLocation` | No      | app.yml **and** infra.yml |
+| `cityops-infra` | `pgAdminPassword`, `authSecret`, `authSecretDev`                    | Yes     | infra.yml only            |
 
-### 4.3 Variable group (infra pipeline)
+Bicep-generated resource **names** (`app-cityops-<hash>`, `kv-cityops-<hash>`) aren't stored anywhere — each deploy job resolves them at runtime by naming convention:
 
-Pipelines → **Library** → variable group **`cityops-infra`** with **secret**, **stable** variables:
+```bash
+webAppName=$(az webapp list -g "$(resourceGroup)" --query "[?starts_with(name,'app-cityops-')].name | [0]" -o tsv)
+keyVaultName=$(az keyvault list -g "$(resourceGroup)" --query "[?starts_with(name,'kv-cityops-')].name | [0]" -o tsv)
+```
 
-- `pgAdminPassword`
-- `authSecret`
+`scripts/setup.sh` creates both groups; by hand:
 
-> Naming note: `cityops-infra` here is a **Library variable group**, unrelated to ADO Environments — there is no `cityops-infra` _environment_. The similarly-named `-n cityops-infra` in the `az deployment group create` commands (§3.2) is just the ARM deployment's name, also unrelated. Three different things share this name by coincidence; only the variable group and the ARM deployment name remain.
+```bash
+az pipelines variable-group create --name cityops-env --authorize true \
+  --variables azureServiceConnection=cityops-azure resourceGroup=rg-cityops location=francecentral dbLocation=francecentral
 
-### 4.4 Register pipelines
+az pipelines variable-group create --name cityops-infra --authorize true --variables placeholder=x
+az pipelines variable-group variable create --group-id <id> --name pgAdminPassword --value "<value>" --secret true
+az pipelines variable-group variable create --group-id <id> --name authSecret --value "<value>" --secret true
+az pipelines variable-group variable create --group-id <id> --name authSecretDev --value "<value>" --secret true
+```
+
+### 5.4 Register pipelines — Modern (YAML)
 
 Pipelines → New pipeline → Existing YAML file:
 
-| Pipeline       | YAML file                                           | Purpose                                                  |
-| -------------- | --------------------------------------------------- | -------------------------------------------------------- |
-| `modern-app`   | [`.ado/modern/app.yml`](../.ado/modern/app.yml)     | App build, tests, coverage, **Deploy_Dev → Deploy_Prod** |
-| `modern-infra` | [`.ado/modern/infra.yml`](../.ado/modern/infra.yml) | Infra **Validate → Deploy**                              |
+| Pipeline       | YAML file                                           | Purpose                                             |
+| -------------- | --------------------------------------------------- | --------------------------------------------------- |
+| `modern-app`   | [`.ado/modern/app.yml`](../.ado/modern/app.yml)     | Build, test, coverage, **Deploy_Dev → Deploy_Prod** |
+| `modern-infra` | [`.ado/modern/infra.yml`](../.ado/modern/infra.yml) | **Validate (what-if) → Deploy (apply)**             |
 
-The project also demonstrates the older **Classic (Build + Release)** paradigm side by side with the
-modern YAML pipelines above — same underlying app/infra, different pipeline model:
+### 5.5 Register pipelines — Classic build (YAML)
 
-| Pipeline                | Type                                       | Source                                                            | Purpose                                                                                                   |
-| ----------------------- | ------------------------------------------ | ----------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------- |
-| `classic-app-build`     | Classic-style YAML build (`trigger: none`) | [`.ado/classic/app-build.yml`](../.ado/classic/app-build.yml)     | Builds, publishes `drop` artifact                                                                         |
-| `classic-ui-app-build`  | True Classic (UI-designer, no YAML)        | n/a — configured entirely in the ADO UI                           | Same build, demonstrating the no-YAML designer experience                                                 |
-| `classic-infra-build`   | Classic-style YAML build (`trigger: none`) | [`.ado/classic/infra-build.yml`](../.ado/classic/infra-build.yml) | Compiles `infra/main.bicep` → `main.json`, publishes `infra-arm` artifact                                 |
-| `classic-app-release`   | Classic Release (UI-defined)               | Artifact: `classic-app-build`/`classic-ui-app-build`              | Deploys `drop` to the Web App                                                                             |
-| `classic-infra-release` | Classic Release (UI-defined)               | Artifact: `classic-infra-build` (`infra-arm`)                     | Applies `main.json` via the **ARM Template Deployment** task (`AzureResourceManagerTemplateDeployment@3`) |
+Same app/infra, older Build+Release model, demonstrated side by side. Only the _build_ half is YAML (Classic _Release_ has no YAML equivalent — §5.6):
 
-All four Classic builds use `trigger: none` (manual only) deliberately — see the comments at the top
-of each YAML file. This keeps them from double-deploying alongside the Modern pipelines' automatic
-CI/CD on every push to `main`; Classic Release deployments are always started by hand (**Create
-release** → **Deploy stage**), independent of the build trigger.
+| Pipeline              | YAML file                                                         | Purpose                                                          |
+| --------------------- | ----------------------------------------------------------------- | ---------------------------------------------------------------- |
+| `classic-app-build`   | [`.ado/classic/app-build.yml`](../.ado/classic/app-build.yml)     | Builds, publishes `drop` + `migrations` artifacts                |
+| `classic-infra-build` | [`.ado/classic/infra-build.yml`](../.ado/classic/infra-build.yml) | Compiles `infra/main.bicep` → `main.json`, publishes `infra-arm` |
+
+Both use `trigger: none` (manual only), so they never double-deploy alongside the Modern pipelines' automatic CI/CD.
+
+### 5.6 Classic Release pipelines (UI-only — no YAML) — full steps
+
+Azure DevOps Classic **Release** pipelines have no YAML or ARM representation, so these must be
+built by hand in the UI. This section is the complete, from-scratch script for doing that.
+
+#### `classic-app-release`
+
+1. **Pipelines → Releases → New pipeline → Empty job.**
+2. **Artifacts:** Add an artifact → Source type **Build** → Source (build pipeline) =
+   `classic-app-build` → Default version = **Latest**. Continuous deployment trigger: **OFF**
+   (this project promotes manually, matching the Modern pipeline's manual-prod design).
+3. **Stage 1 — "Dev":**
+   - Set the stage's **Environment** to the ADO Environment `dev` — no approval configured.
+   - Add task **Azure CLI** (`AzureCLI@2`) — "Resolve web app / key vault names":
+     - Azure subscription: `cityops-azure`
+     - Script type: Bash, inline:
+       ```bash
+       webAppName=$(az webapp list -g "$(resourceGroup)" --query "[?starts_with(name,'app-cityops-')].name | [0]" -o tsv)
+       keyVaultName=$(az keyvault list -g "$(resourceGroup)" --query "[?starts_with(name,'kv-cityops-')].name | [0]" -o tsv)
+       echo "##vso[task.setvariable variable=webAppName]$webAppName"
+       echo "##vso[task.setvariable variable=keyVaultName]$keyVaultName"
+       ```
+   - Add task **Azure Key Vault** (`AzureKeyVault@2`): Key Vault name = `$(keyVaultName)`,
+     Secrets filter = `DATABASE-URL-DEV`.
+   - Add task **npm** → `ci` (working dir = `_classic-app-build/migrations`).
+   - Add task **Bash script** → `npm run db:migrate:deploy`, working directory =
+     `_classic-app-build/migrations`, environment variable `DATABASE_URL` = `$(DATABASE-URL-DEV)`.
+   - Add task **Azure App Service Deploy** (`AzureWebApp@1`): App type = Web App on Linux, App
+     service name = `$(webAppName)`, Slot = `dev`, Package =
+     `$(System.DefaultWorkingDirectory)/_classic-app-build/drop`, Startup command = `node server.js`.
+   - Link variable group **`cityops-env`** to this stage (Variables tab → Variable groups →
+     Link) so `resourceGroup` resolves.
+4. **Stage 2 — "Prod":**
+   - Set the stage's **Environment** to `prod` (inherits the approval check from §5.2 —
+     Classic Release stages automatically respect an Environment's approval checks the same way
+     YAML deployment jobs do).
+   - Same "Resolve names" Azure CLI task as Stage 1.
+   - Add task **Azure Key Vault**: Secrets filter = `DATABASE-URL`.
+   - Add task **npm ci** + **Bash script** `npm run db:migrate:deploy` with `DATABASE_URL` =
+     `$(DATABASE-URL)`, working directory = migrations artifact.
+   - Add task **Azure App Service Manage** (`AzureAppServiceManage@0`): Action = **Swap Slots**,
+     App Service name = `$(webAppName)`, Source slot = `dev`.
+   - Link variable group **`cityops-env`** to this stage too.
+5. Save. To release: **Create release** → select the desired build → the release runs Stage 1
+   automatically, then waits for approval before Stage 2.
+
+#### `classic-infra-release`
+
+1. **Pipelines → Releases → New pipeline → Empty job.**
+2. **Artifacts:** Source type **Build** → Source = `classic-infra-build` (artifact `infra-arm`).
+3. **Single stage — "Apply":**
+   - Environment: `prod` (same approval gate as everything else production-impacting).
+   - Link variable groups **`cityops-env`** and **`cityops-infra`** to this stage.
+   - Add task **ARM Template Deployment** (`AzureResourceManagerTemplateDeployment@3`):
+     - Scope: Resource Group | Azure subscription: `cityops-azure`
+     - Resource group: `$(resourceGroup)`
+     - Location: `$(location)`
+     - Template location: Linked artifact → `main.json` (from the `infra-arm` artifact)
+     - Override template parameters:
+       `-location $(location) -dbLocation $(dbLocation) -pgAdminPassword $(pgAdminPassword) -authSecret $(authSecret) -authSecretDev $(authSecretDev)`
+     - Deployment mode: **Incremental**
+4. Save. To apply: **Create release** manually (never automatic), approve the `prod` gate.
+
+#### `classic-ui-app-build` (optional — no-YAML designer demo)
+
+To also demonstrate the **true** Classic experience end to end (no YAML anywhere, including the
+build), recreate `classic-app-build.yml`'s steps using **Pipelines → New pipeline → Use the
+classic editor → Empty job**, adding each task (Node.js tool installer, npm, Bash script,
+Publish Build Artifacts ×2) through the designer UI instead of a YAML file. Functionally
+identical; purely illustrates the pre-YAML authoring model.
 
 ---
 
-## 5. Application configuration (env vars) & secrets model
+## 6. Application configuration (env vars) & secrets model
 
-Runtime configuration mirrors [`.env.example`](../.env.example). In Azure these are set as **App Service application settings**; secrets use **Key Vault references** resolved by the managed identity.
+Runtime config mirrors [`.env.example`](../.env.example): non-secret values are App Service settings; secrets are **Key Vault references** resolved by each slot's managed identity.
 
-| Variable                                            | Source in Azure                                                        | Required                   |
-| --------------------------------------------------- | ---------------------------------------------------------------------- | -------------------------- |
-| `DATABASE_URL`                                      | Key Vault reference (`DATABASE-URL` / `DATABASE-URL-DEV`), slot-sticky | ✅                         |
-| `AUTH_SECRET`                                       | Key Vault reference (`AUTH-SECRET`)                                    | ✅ (prod)                  |
-| `NEXTAUTH_URL`                                      | App setting per slot (slot-sticky)                                     | ✅ (prod)                  |
-| `NODE_ENV`                                          | `production`                                                           | ✅                         |
-| `STORAGE_PROVIDER`                                  | `local` (or `azure` + storage vars)                                    | default `local`            |
-| `AZURE_OPENAI_ENDPOINT` / `AZURE_OPENAI_DEPLOYMENT` | App setting (not secret), shared by both slots                         | required for AI validation |
-| `AZURE_OPENAI_API_KEY`                              | Key Vault reference (`AZURE-OPENAI-API-KEY`), shared by both slots     | required for AI validation |
+| Variable                                            | Source in Azure                                              |
+| --------------------------------------------------- | ------------------------------------------------------------ |
+| `DATABASE_URL`                                      | Key Vault ref (`DATABASE-URL` / `-DEV`), slot-sticky         |
+| `AUTH_SECRET`                                       | Key Vault ref (`AUTH-SECRET` / `-DEV`), slot-sticky          |
+| `NEXTAUTH_URL`                                      | App setting per slot, slot-sticky                            |
+| `NODE_ENV`                                          | `production`                                                 |
+| `STORAGE_PROVIDER`                                  | `local` (or `azure` + storage vars)                          |
+| `AZURE_OPENAI_ENDPOINT` / `AZURE_OPENAI_DEPLOYMENT` | App setting, shared by both slots                            |
+| `AZURE_OPENAI_API_KEY`                              | Key Vault ref (`AZURE-OPENAI-API-KEY`), shared by both slots |
 
-Config is validated at startup by `validateEnv()` (via `src/instrumentation.ts`); a missing required variable fails fast with a clear message.
+Config is validated at startup by `validateEnv()` (`src/instrumentation.ts`) — a missing required variable fails fast.
 
-### Two-tier secrets model
+### Secrets model — three tiers
 
-There are two distinct categories of secret, stored in two distinct places — do not mix them up:
+| Tier                             | Used by             | Stored in                                  | Examples                                                            |
+| -------------------------------- | ------------------- | ------------------------------------------ | ------------------------------------------------------------------- |
+| **Provisioning-time**            | Infra pipeline only | `cityops-infra` variable group (secret)    | `pgAdminPassword`, `authSecret`, `authSecretDev`                    |
+| **Runtime**                      | The running app     | Azure Key Vault, read via managed identity | `DATABASE-URL(-DEV)`, `AUTH-SECRET(-DEV)`, `AZURE-OPENAI-API-KEY`   |
+| **Pipeline config (non-secret)** | Both pipelines      | `cityops-env` variable group               | `resourceGroup`, `location`, `dbLocation`, `azureServiceConnection` |
 
-| Category              | Used by                                        | Stored in                                                                         | Examples                                                                  |
-| --------------------- | ---------------------------------------------- | --------------------------------------------------------------------------------- | ------------------------------------------------------------------------- |
-| **Provisioning-time** | The _infra pipeline_, once, to seed everything | ADO variable group `cityops-infra` (Library, secret-flagged — not an Environment) | `pgAdminPassword`, `authSecret`                                           |
-| **Runtime**           | The _running application_                      | Azure Key Vault, read via managed identity                                        | `DATABASE-URL`, `DATABASE-URL-DEV`, `AUTH-SECRET`, `AZURE-OPENAI-API-KEY` |
-
-No secret is ever stored in pipeline YAML or as a plaintext App Service setting — runtime secrets are always `@Microsoft.KeyVault(VaultName=...;SecretName=...)` references, resolved by each slot's own system-assigned managed identity (granted **Key Vault Secrets User** via RBAC). The `AZURE-OPENAI-API-KEY` secret value is pulled from the OpenAI account with `listKeys()` inside Bicep and written straight into Key Vault — it is never exposed as a deployment output.
-
-> Currently a single Key Vault holds secrets for both environments (differentiated by name, e.g. `DATABASE-URL` vs `DATABASE-URL-DEV`). For stronger isolation, a future hardening step is to split into per-environment vaults (`kv-cityops-dev`, `kv-cityops-prod`).
+No secret is ever a plaintext App Service setting or a pipeline YAML literal — always `@Microsoft.KeyVault(VaultName=...;SecretName=...)`, resolved via **Key Vault Secrets User** RBAC. `AZURE-OPENAI-API-KEY` is pulled from the OpenAI account with `listKeys()` inside Bicep, never exposed as an output.
 
 ---
 
-## 6. Deployment flow (CI/CD)
+## 7. Deployment flow (CI/CD)
 
-### 6.1 App pipeline (`CityOps-CI`)
-
-```
-Build & Unit tests  →  Integration tests  →  Deploy_Dev (dev slot, migrate cityops_dev)  [env: dev, no approval]
-                                          ↘  E2E tests (PR / nightly / manual only)
-
-Manual run only:  ... → E2E tests (passes) → Deploy_Prod (migrate cityops, swap dev→prod)  [env: prod, approval]
-```
-
-- **Build** produces an environment-agnostic **standalone** artifact (`drop`). No runtime config needed — the Prisma client is lazily instantiated.
-- **Deploy_Dev** deploys `drop` to the **dev slot** and runs `db:migrate:deploy` against `cityops_dev` automatically on every push to `main` — **no approval gate**, for fast continuous feedback.
-- **E2E tests** run on **PRs** (pre-merge safety net), the **nightly schedule** (health check), and **manual runs** — deliberately **not** on every push to `main`, to keep the continuous dev-deploy path fast.
-- **Deploy_Prod** only runs as part of a **manually triggered pipeline run** (Pipelines → `CityOps-CI` → **Run pipeline**) — the one trigger where `E2ETest` also runs in the same run. It depends on both `Deploy_Dev` and `E2ETest` succeeding, so **production can never deploy without E2E passing**, without E2E ever running on ordinary pushes. It migrates `cityops` (prod) then **swaps** dev → production (zero-downtime), gated by the `prod` approval.
-
-`Deploy_Dev` runs automatically on every push to `main` (and on manual runs). `Deploy_Prod` runs **only** on manual runs — there is no automatic path to production.
-
-### 6.2 Infra pipeline (`CityOps-Infra`)
+### 7.1 App pipeline (`modern-app` / `classic-app-build` + `classic-app-release`)
 
 ```
-Validate (bicep lint + what-if, every push/PR)  →  Deploy (manual run only)  [env: prod, approval]
+Build & Unit tests → Integration tests → Deploy_Dev (dev slot, migrate cityops_dev) [env: dev, no approval]
+                                       ↘ E2E tests (PR / nightly / manual only)
+
+Manual run only: ... → E2E tests (passes) → Deploy_Prod (migrate cityops, swap dev→prod) [env: prod, approval]
 ```
 
-`what-if` is the infra "build/preview" and runs automatically on every push/PR to `infra/**` — read this diff before applying. **`Deploy` only runs on a manually-triggered pipeline run** (Pipelines → `CityOps-Infra` → **Run pipeline**), never automatically, and is gated by the **same `prod` environment/approval** the app pipeline uses.
+- **Build** produces an environment-agnostic standalone artifact (`drop`) — no runtime config needed.
+- **Deploy_Dev** auto-deploys to the dev slot + migrates `cityops_dev` on every push to `main`, no approval.
+- **E2E tests** run on PRs, nightly, and manual runs only — not on every push, to keep dev-deploy fast.
+- **Deploy_Prod** only runs on a manually-triggered run (the one trigger where E2E also runs), depends on `Deploy_Dev` + `E2ETest`, migrates `cityops`, then **swaps** dev → production. Gated by the `prod` approval — there is no automatic path to production.
 
-> **Why infra doesn't have a "test in dev first" step like the app does:** the app builds one artifact and deploys it twice (dev slot, then swap to prod) — genuine dev-first validation of the same bits. Infra instead provisions **shared** resources in a single apply (one Key Vault, one Postgres server, one App Service plan serving both dev and prod slots at once) — there's no separate "dev infra" to isolate and test first; a change to the Postgres SKU, for example, affects the one server both databases sit on. Requiring a manual run (reviewed against the automatic `what-if` diff) plus the `prod` approval is the closest equivalent this shared architecture supports: infra never applies without deliberate human review. True dev/prod infra isolation would require separate resource groups (its own Key Vault, Postgres server, App Service per environment) — roughly doubling infra cost and retiring the current slot-swap design in favor of two separate Web Apps. Not implemented; revisit if full isolation becomes a requirement.
+### 7.2 Infra pipeline (`modern-infra` / `classic-infra-build` + `classic-infra-release`)
+
+```
+Validate (bicep lint + what-if, every push/PR) → Deploy (manual run only) [env: prod, approval]
+```
+
+`what-if` runs automatically on every push/PR — read the diff before applying. `Deploy` only runs on a manual pipeline run, gated by the same `prod` approval.
+
+> Infra provisions **shared** resources in one apply (one Key Vault, one Postgres server, one plan for both slots), so there's no separate "dev infra" to test first the way the app tests in the dev slot before promoting — the automatic `what-if` diff plus the manual-run + approval gate is the equivalent safeguard. Full dev/prod infra isolation (separate resource groups) would enable that, but roughly doubles cost and retires the slot-swap design (§1.1) — not implemented by default.
 
 ---
 
-## 7. Manual operations
-
-### Run migrations against a database
+## 8. Manual operations
 
 ```bash
-# Dev
-DATABASE_URL="<cityops_dev connection string>" npm run db:migrate:deploy
-# Prod
-DATABASE_URL="<cityops connection string>" npm run db:migrate:deploy
-```
+# Run migrations
+DATABASE_URL="<cityops_dev connection string>" npm run db:migrate:deploy   # dev
+DATABASE_URL="<cityops connection string>" npm run db:migrate:deploy       # prod
 
-### Seed data (non-production only)
-
-```bash
+# Seed data (non-production only)
 DATABASE_URL="<cityops_dev connection string>" npm run db:seed
-```
 
-### Roll back a production release
+# Roll back production (previous build is still in the dev slot after a swap)
+az webapp deployment slot swap -g rg-cityops -n <WEB_APP_NAME> --slot dev --target-slot production
 
-Swap the slots back (the previous build is still in the `dev` slot after a swap):
-
-```bash
-az webapp deployment slot swap \
-  -g rg-cityops -n <WEB_APP_NAME> \
-  --slot dev --target-slot production
-```
-
-### Verify the deployment
-
-```bash
+# Verify
 curl -I https://<WEB_APP_NAME>.azurewebsites.net          # production
 curl -I https://<WEB_APP_NAME>-dev.azurewebsites.net       # dev slot
 ```
 
 ---
 
-## 8. Troubleshooting
+## 9. Troubleshooting
 
-| Symptom                                                                                                                                              | Cause / Fix                                                                                                                                                                                                                                                                                                                                                                                                                                          |
-| ---------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `SubscriptionIsOverQuotaForSku … Total VMs: 0`                                                                                                       | No App Service compute quota in that region. Try another region or request a quota increase. Slots also require S1+.                                                                                                                                                                                                                                                                                                                                 |
-| PostgreSQL `Version should be in: []`                                                                                                                | Flexible Server SKU not offered in that region. Use a supported region (e.g. `uksouth`) via `dbLocation`.                                                                                                                                                                                                                                                                                                                                            |
-| `NetworkAcls is required for this resouce` (Azure OpenAI)                                                                                            | The `Microsoft.CognitiveServices/accounts` PUT requires `networkAcls` explicitly, even though `what-if` may show it as informational. Ensure `networkAcls.defaultAction` is set in the module.                                                                                                                                                                                                                                                       |
-| `COPY .next/standalone … not found` (Docker) or missing server.js                                                                                    | `output: 'standalone'` must be set in [`next.config.ts`](../next.config.ts).                                                                                                                                                                                                                                                                                                                                                                         |
-| Migration can't reach the DB from the agent                                                                                                          | Ensure the "Allow Azure services" firewall rule exists, or add the agent IP to the server firewall.                                                                                                                                                                                                                                                                                                                                                  |
-| Key Vault reference shows unresolved                                                                                                                 | The slot's managed identity needs **Key Vault Secrets User**; confirm the role assignment exists.                                                                                                                                                                                                                                                                                                                                                    |
-| `next build` fails type-check on config                                                                                                              | Run `npx tsc --noEmit` locally to catch config type errors before pushing.                                                                                                                                                                                                                                                                                                                                                                           |
-| `az devops invoke` errors `could not convert string to float`                                                                                        | Known bug with revision-numbered preview API versions (e.g. `7.1-preview.1`). Use the bare preview format instead (e.g. `7.2-preview`, no trailing `.N`).                                                                                                                                                                                                                                                                                            |
-| `az devops invoke` GET ignores `resourceType`/`resourceId`                                                                                           | Those are query-string args, not path segments — pass them via `--query-parameters`, not `--route-parameters`.                                                                                                                                                                                                                                                                                                                                       |
-| `az devops invoke` JSON output fails to parse (`Expecting value`)                                                                                    | The CLI sometimes prints a `Please wait…` status line before the JSON on stdout; strip the first line, or redirect stdout/stderr to separate files and parse the file directly.                                                                                                                                                                                                                                                                      |
-| ARM Template Deployment task fails: `Failed to check the resource group status. Error: {"statusCode":403}`                                           | The `cityops-azure` service principal has no RBAC role on the **target** resource group (e.g. a new one like `rg-cityops-1`). Grant it Contributor + User Access Administrator at **subscription** scope (§4.1), not just on `rg-cityops`.                                                                                                                                                                                                           |
-| ARM deployment fails: `ResourceNotFound: The Resource '<name>' under resource group '<rg>' was not found` for a resource the template itself creates | A latent race condition: an `existing`-typed resource lookup (e.g. `openAiRef`, `keyVaultRef` in `main.bicep`) has no `dependsOn` on the module that creates it, so ARM can resolve the lookup in parallel with (and before) that module completes — masked on `rg-cityops` only because the resource pre-existed there. Add an explicit `dependsOn: [<module>]` directly on the `existing` resource declaration itself (not just on its consumers). |
-| `az role assignment create --scope /subscriptions/...` fails with `MissingSubscription` in Git Bash                                                  | Git Bash mangles the leading `/subscriptions/...` into a Windows path. Prefix the command with `MSYS_NO_PATHCONV=1`.                                                                                                                                                                                                                                                                                                                                 |
+| Symptom                                                                                 | Cause / Fix                                                                                                                                    |
+| --------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
+| `SubscriptionIsOverQuotaForSku … Total VMs: 0`                                          | No App Service quota in that region — try another region or request an increase. Slots need S1+.                                               |
+| PostgreSQL `Version should be in: []`                                                   | Flexible Server SKU not offered in that region — change `dbLocation`.                                                                          |
+| `NetworkAcls is required for this resouce` (Azure OpenAI)                               | Set `networkAcls.defaultAction` explicitly in the module.                                                                                      |
+| Missing `server.js` / standalone output not found                                       | `output: 'standalone'` must be set in [`next.config.ts`](../next.config.ts).                                                                   |
+| Migration can't reach the DB from the agent                                             | Ensure the "Allow Azure services" firewall rule exists, or add the agent IP.                                                                   |
+| Key Vault reference unresolved                                                          | Confirm **Key Vault Secrets User** is granted to that specific slot's managed identity.                                                        |
+| Dynamic name lookup (`az webapp list ... starts_with`) returns empty                    | Infra not deployed yet, or `resourceGroup` in `cityops-env` is wrong. Run the infra pipeline / `scripts/setup.sh` first.                       |
+| `az devops invoke` errors `could not convert string to float`                           | Use the bare preview API version (e.g. `7.2-preview`, no `.N` suffix).                                                                         |
+| `az devops invoke` GET ignores `resourceType`/`resourceId`                              | Pass them via `--query-parameters`, not `--route-parameters`.                                                                                  |
+| `az devops invoke` JSON output fails to parse (`Expecting value`)                       | CLI sometimes prints a status line before the JSON — strip the first line or parse stdout/stderr separately.                                   |
+| ARM Template Deployment fails: `403 Failed to check the resource group status`          | SP has no RBAC on the target resource group — grant it (§5.1), or use `SP_SCOPE=subscription` for arbitrary new RGs.                           |
+| ARM deployment fails: `ResourceNotFound` for a resource the template itself creates     | An `existing`-typed lookup (e.g. `openAiRef`, `keyVaultRef`) is racing the module that creates it — add an explicit `dependsOn` on the lookup. |
+| `az role assignment create --scope /subscriptions/...` fails with `MissingSubscription` | Git Bash mangles the path — prefix `MSYS_NO_PATHCONV=1`.                                                                                       |
 
-### Find a region with App Service quota
+### Find a region with capacity
 
 ```bash
-for r in ukwest westeurope northeurope francecentral; do
+for r in francecentral ukwest westeurope northeurope; do
   echo "== $r =="
   az deployment group what-if -g rg-cityops -f infra/main.bicep -n quotacheck \
-    -p location=$r dbLocation=uksouth \
+    -p location=$r dbLocation=$r \
        pgAdminPassword="Throwaway$(openssl rand -hex 8)Aa1" \
        authSecret="throwaway-validate-secret-0123456789abcd" \
+       authSecretDev="throwaway-validate-secret-dev-0123456789ab" \
     2>&1 | grep -iE "quota|SubscriptionIsOver" || echo "OK (no quota error)"
 done
 ```
 
 ---
 
-## 9. Cost & teardown
+## 10. Cost & teardown
 
-- **S1 Standard** ≈ **$70/month** (required for slots). To pause costs, downgrade the plan to F1 (this removes slots):
+- **S1 Standard** ≈ $70/month (required for slots). Downgrade to F1 to pause costs (removes the dev slot — F1 doesn't support slots):
 
   ```bash
   az appservice plan update -g rg-cityops -n asp-cityops --sku F1
   ```
 
-- **Full teardown** (deletes everything in the resource group — irreversible):
+- Full teardown (irreversible — deletes everything in the resource group, incl. `azopenai-cityops` (§4)):
 
   ```bash
   az group delete -n rg-cityops --yes --no-wait
   ```
 
-> ⚠️ `rg-cityops` may contain other resources. Delete individual resources instead of the whole group if you need to keep them — note that `azopenai-cityops` is now managed by this Bicep template (§3), so it **will** be deleted along with everything else in a full teardown.
+Delete individual resources instead of the whole group if `rg-cityops` contains anything you need to keep.
 
 ---
 
-## 10. Reference files
+## 11. Additional hardening & best practices
 
-| File                                                                  | Purpose                                                         |
-| --------------------------------------------------------------------- | --------------------------------------------------------------- |
-| [`infra/main.bicep`](../infra/main.bicep)                             | Infrastructure orchestrator                                     |
-| [`infra/modules/keyvault.bicep`](../infra/modules/keyvault.bicep)     | Key Vault module                                                |
-| [`infra/modules/postgres.bicep`](../infra/modules/postgres.bicep)     | PostgreSQL Flexible Server module                               |
-| [`infra/modules/appservice.bicep`](../infra/modules/appservice.bicep) | App Service (plan + web app, single production site) module     |
-| [`infra/modules/openai.bicep`](../infra/modules/openai.bicep)         | Azure OpenAI account + model deployment module                  |
-| [`.ado/modern/app.yml`](../.ado/modern/app.yml)                       | App CI/CD (build, test, deploy dev/prod)                        |
-| [`.ado/modern/infra.yml`](../.ado/modern/infra.yml)                   | Infrastructure pipeline                                         |
-| [`.env.example`](../.env.example)                                     | Full list of runtime environment variables                      |
-| [`Dockerfile`](../Dockerfile)                                         | Optional container build (not used for App Service code deploy) |
+§1–§10 cover the core requirements. This section covers extra hardening that's standard practice but easy to miss.
+
+### 11.1 GitHub repository connection & branch protection
+
+The repo lives on **GitHub**, not Azure Repos, so two things that don't show up anywhere else
+in this document need setting up:
+
+- **GitHub service connection** — pipelines trigger on GitHub push/PR, which needs a service connection. `scripts/setup.sh` creates one if `GITHUB_PAT` (a PAT with `repo` scope) is set. Otherwise: Project Settings → Service connections → New → **GitHub**.
+- **Branch protection on `main`** — this is a GitHub setting (ADO branch policies don't apply to a GitHub-hosted repo):
+
+  ```bash
+  gh api repos/zynsys/cityops/branches/main/protection -X PUT --input - <<'EOF'
+  {
+    "required_status_checks": { "strict": true, "contexts": ["modern-app"] },
+    "enforce_admins": true,
+    "required_pull_request_reviews": { "required_approving_review_count": 1 },
+    "restrictions": null
+  }
+  EOF
+  ```
+
+### 11.2 Environment hardening beyond the approval check
+
+- **Requester cannot approve their own run** — already enabled in §5.2 (separation of duties).
+- **Branch control check** — restricts `prod` deploys to `main` only: Environments → `prod` → Approvals and checks → **Branch control** → `refs/heads/main`.
+- **Exclusive lock check** — serializes concurrent `prod` deploys: Approvals and checks → **Exclusive lock**. YAML side already set: `Deploy_Prod`/`Deploy` set `lockBehavior: sequential`.
+- **Least-privilege service connection** — `scripts/setup.sh` leaves `AUTHORIZE_FOR_ALL_PIPELINES=false` by default; explicitly authorize `modern-app`/`modern-infra` (and Classic Releases) under Service connections → `cityops-azure` → Security.
+
+### 11.3 Pipeline hygiene
+
+- **Lint** and **`npm audit --audit-level=high`** run in `Build_and_UnitTest` as **warn-only** — the repo has 9 pre-existing lint errors; fix those, then make it blocking.
+- **Shared resolve-names template** — [`.ado/modern/templates/resolve-names.yml`](../.ado/modern/templates/resolve-names.yml), used by both `Deploy_Dev` and `Deploy_Prod`.
+- **Nightly drift detection** — `infra.yml`'s `Validate` stage also runs on a nightly schedule; `Deploy` stays manual-gated, so nothing auto-applies.
+
+### 11.4 Retention & cost governance
+
+- **Retention** — set once: Project Settings → Pipelines → Settings → **Retention** (not scriptable via a verified REST endpoint).
+- **Resource tagging** — every resource in `infra/main.bicep` carries a `tags` object (default `{ project: 'cityops', managedBy: 'bicep' }`, overridable) for cost allocation.
+
+---
+
+## 12. Reference files
+
+| File                                                                                    | Purpose                                                         |
+| --------------------------------------------------------------------------------------- | --------------------------------------------------------------- |
+| [`scripts/setup.sh`](../scripts/setup.sh)                                               | One-shot Azure + Azure DevOps bootstrap (§3)                    |
+| [`infra/main.bicep`](../infra/main.bicep)                                               | Infrastructure orchestrator                                     |
+| [`infra/modules/keyvault.bicep`](../infra/modules/keyvault.bicep)                       | Key Vault module                                                |
+| [`infra/modules/postgres.bicep`](../infra/modules/postgres.bicep)                       | PostgreSQL Flexible Server module                               |
+| [`infra/modules/appservice.bicep`](../infra/modules/appservice.bicep)                   | App Service (plan + web app + dev slot) module                  |
+| [`infra/modules/openai.bicep`](../infra/modules/openai.bicep)                           | Azure OpenAI account + model deployment module                  |
+| [`.ado/modern/app.yml`](../.ado/modern/app.yml)                                         | Modern app CI/CD (build, test, deploy dev/prod)                 |
+| [`.ado/modern/infra.yml`](../.ado/modern/infra.yml)                                     | Modern infra pipeline                                           |
+| [`.ado/modern/templates/resolve-names.yml`](../.ado/modern/templates/resolve-names.yml) | Shared web app / Key Vault name resolution step (§11.3)         |
+| [`.ado/classic/app-build.yml`](../.ado/classic/app-build.yml)                           | Classic app build (paired with a UI-defined Release, §5.6)      |
+| [`.ado/classic/infra-build.yml`](../.ado/classic/infra-build.yml)                       | Classic infra build (paired with a UI-defined Release, §5.6)    |
+| [`.env.example`](../.env.example)                                                       | Full list of runtime environment variables                      |
+| [`Dockerfile`](../Dockerfile)                                                           | Optional container build (not used for App Service code deploy) |
