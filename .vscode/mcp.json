@@ -6,16 +6,45 @@
     },
     "playwright": {
       "command": "npx",
-      "args": ["@playwright/mcp@latest"]
+      "args": ["@playwright/mcp@latest"],
+      "type": "stdio"
     },
-    "azure-devops": {
-      "type": "http",
-      "url": "https://mcp.dev.azure.com/hp-gmail-org",
-      "headers": {
-        "X-MCP-Toolsets": "pipelines",
-        "X-MCP-Readonly": "true"
-      }
+    "microsoft/azure-devops-mcp": {
+      "type": "stdio",
+      "command": "npx",
+      "args": [
+        "-y",
+        "@azure-devops/mcp@latest",
+        "${input:ado_org}",
+        "--authentication",
+        "azcli",
+        "--tenant",
+        "${input:ado_tenant}",
+        "-d",
+        "${input:ado_domain}"
+      ],
+      "gallery": "https://api.mcp.github.com",
+      "version": "1.0.0"
     }
   },
-  "inputs": []
+  "inputs": [
+    {
+      "id": "ado_org",
+      "type": "promptString",
+      "description": "Azure DevOps organization name (e.g., contoso).",
+      "password": false
+    },
+    {
+      "id": "ado_tenant",
+      "type": "promptString",
+      "description": "Microsoft Entra tenant ID used for Azure DevOps authentication.",
+      "password": false
+    },
+    {
+      "id": "ado_domain",
+      "type": "promptString",
+      "description": "Repeat to enable specific domains: core, work, work-items, search, test-plans, repositories, wiki, pipelines, advanced-security.",
+      "password": false
+    }
+  ]
 }
