@@ -112,8 +112,8 @@ module postgres 'modules/postgres.bicep' = {
   }
 }
 
-var databaseUrlProd = 'postgresql://${pgAdminLogin}:${pgAdminPassword}@${postgres.outputs.fqdn}:5432/${dbName}?sslmode=require'
-var databaseUrlDev = 'postgresql://${pgAdminLogin}:${pgAdminPassword}@${postgres.outputs.fqdn}:5432/${dbNameDev}?sslmode=require'
+var databaseUrlProd = 'postgresql://${pgAdminLogin}:${uriComponent(pgAdminPassword)}@${postgres.outputs.fqdn}:5432/${dbName}?sslmode=require'
+var databaseUrlDev = 'postgresql://${pgAdminLogin}:${uriComponent(pgAdminPassword)}@${postgres.outputs.fqdn}:5432/${dbNameDev}?sslmode=require'
 
 // ---------------------------------------------------------------------------
 // Security layer — Key Vault (RBAC) + secrets
