@@ -49,3 +49,23 @@ steps:
       PathtoPublish: '$(Build.ArtifactStagingDirectory)'
       ArtifactName: 'drop'
       publishLocation: 'Container'
+
+  - script: |
+      set -e
+      # Standalone bundle excludes Prisma CLI + migration SQL, so ship them in a
+      # separate bundle the Classic Release runs `npm ci && db:migrate:deploy` against.
+      MIG="$(Agent.TempDirectory)/migrations"
+      rm -rf "$MIG"
+      mkdir -p "$MIG"
+      cp -r prisma "$MIG/prisma"
+      cp package.json package-lock.json "$MIG/"
+      test -f "$MIG/package-lock.json"
+      test -d "$MIG/prisma/migrations"
+    displayName: 'Assemble and validate DB migration bundle'
+
+  - task: PublishBuildArtifacts@1
+    displayName: 'Publish migration bundle (consumed by Classic Release)'
+    inputs:
+      PathtoPublish: '$(Agent.TempDirectory)/migrations'
+      ArtifactName: 'migrations'
+      publishLocation: 'Container'
