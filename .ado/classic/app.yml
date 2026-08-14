@@ -13,7 +13,7 @@ pool:
   vmImage: ubuntu-latest
 
 variables:
-  nodeVersion: '22.x'
+  nodeVersion: '24.x'
 
 steps:
   - task: NodeTool@0
