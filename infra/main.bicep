@@ -88,8 +88,13 @@ module openAi 'modules/openai.bicep' = {
 
 // Existing-resource lookup (openAiAccountName is a deterministic top-level variable) so we can
 // call listKeys()/read .properties.endpoint — module outputs alone can't do that.
+// dependsOn is required here (not just on consumers): without it, ARM resolves this reference
+// in parallel with openAiDeploy and can race it on a brand-new resource group.
 resource openAiRef 'Microsoft.CognitiveServices/accounts@2023-05-01' existing = {
   name: openAiAccountName
+  dependsOn: [
+    openAi
+  ]
 }
 
 // ---------------------------------------------------------------------------
@@ -124,8 +129,13 @@ module keyVault 'modules/keyvault.bicep' = {
 // Existing-resource lookup so child secrets/role assignments can use a proper 'scope'/'parent'.
 // kvName is a deterministic top-level variable (not a module output), so this is valid here
 // even though the vault itself is created by the module above (ordered via dependsOn).
+// dependsOn is required here too — see openAiRef for why relying on consumers' dependsOn alone
+// isn't sufficient to prevent ARM from racing this lookup against keyVaultDeploy.
 resource keyVaultRef 'Microsoft.KeyVault/vaults@2023-07-01' existing = {
   name: kvName
+  dependsOn: [
+    keyVault
+  ]
 }
 
 resource secretDatabaseUrl 'Microsoft.KeyVault/vaults/secrets@2023-07-01' = {
