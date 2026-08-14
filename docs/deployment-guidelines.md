@@ -214,11 +214,11 @@ modern YAML pipelines above — same underlying app/infra, different pipeline mo
 
 | Pipeline               | Type                                     | Source                                    | Purpose                                                   |
 | ----------------------- | ----------------------------------------- | ------------------------------------------ | ----------------------------------------------------------- |
-| `classic-app`           | Classic-style YAML build (`trigger: none`) | [`.ado/classic/app.yml`](../.ado/classic/app.yml)     | Builds, publishes `drop` artifact                          |
-| `classic-ui-app`        | True Classic (UI-designer, no YAML)       | n/a — configured entirely in the ADO UI    | Same build, demonstrating the no-YAML designer experience   |
-| `classic-infra`         | Classic-style YAML build (`trigger: none`) | [`.ado/classic/infra.yml`](../.ado/classic/infra.yml) | Compiles `infra/main.bicep` → `main.json`, publishes `infra-arm` artifact |
-| `classic-app-release`   | Classic Release (UI-defined)              | Artifact: `classic-app`/`classic-ui-app`   | Deploys `drop` to the Web App                              |
-| `classic-infra-release` | Classic Release (UI-defined)              | Artifact: `classic-infra` (`infra-arm`)    | Applies `main.json` via the **ARM Template Deployment** task (`AzureResourceManagerTemplateDeployment@3`) |
+| `classic-app-build`     | Classic-style YAML build (`trigger: none`) | [`.ado/classic/app-build.yml`](../.ado/classic/app-build.yml)     | Builds, publishes `drop` artifact                          |
+| `classic-ui-app-build`  | True Classic (UI-designer, no YAML)       | n/a — configured entirely in the ADO UI    | Same build, demonstrating the no-YAML designer experience   |
+| `classic-infra-build`   | Classic-style YAML build (`trigger: none`) | [`.ado/classic/infra-build.yml`](../.ado/classic/infra-build.yml) | Compiles `infra/main.bicep` → `main.json`, publishes `infra-arm` artifact |
+| `classic-app-release`   | Classic Release (UI-defined)              | Artifact: `classic-app-build`/`classic-ui-app-build`   | Deploys `drop` to the Web App                              |
+| `classic-infra-release` | Classic Release (UI-defined)              | Artifact: `classic-infra-build` (`infra-arm`)    | Applies `main.json` via the **ARM Template Deployment** task (`AzureResourceManagerTemplateDeployment@3`) |
 
 All four Classic builds use `trigger: none` (manual only) deliberately — see the comments at the top
 of each YAML file. This keeps them from double-deploying alongside the Modern pipelines' automatic
