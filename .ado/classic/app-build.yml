@@ -28,18 +28,20 @@ steps:
     displayName: 'Build'
     # Environment-agnostic: no runtime config needed (Prisma client is lazy).
 
-  - task: CopyFiles@2
-    displayName: 'Stage build output'
-    inputs:
-      Contents: |
-        .next/**
-        public/**
-        prisma/**
-        package.json
-        package-lock.json
-        next.config.ts
-        prisma.config.ts
-      TargetFolder: '$(Build.ArtifactStagingDirectory)'
+  - script: |
+      set -e
+      APP="$(Build.ArtifactStagingDirectory)"
+      # App Service starts `node server.js` from /home/site/wwwroot, so flatten
+      # the standalone directory into the artifact root rather than publishing
+      # it under .next/standalone.
+      cp -r .next/standalone/. "$APP/"
+      mkdir -p "$APP/.next"
+      cp -r .next/static "$APP/.next/static"
+      cp -r public "$APP/public"
+      test -f "$APP/server.js"
+      test -d "$APP/.next/static"
+      test -d "$APP/public"
+    displayName: 'Assemble and validate standalone deploy package'
 
   - task: PublishBuildArtifacts@1
     displayName: 'Publish build artifact (consumed by Classic Release)'
