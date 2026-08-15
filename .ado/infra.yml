@@ -7,9 +7,9 @@
 # variable groups below. The service connection name IS a literal ('cityops-azure-service-connection') rather than
 # a variable-group macro — ADO's static resource-authorization check for 'azureSubscription:'
 # inputs can't resolve a runtime '$(...)' macro (it checks the literal unexpanded string), so it
-# must be compile-time-known. If you rename it (setup.sh's SERVICE_CONNECTION_NAME), update here too.
+# must be compile-time-known. If you rename it, update here too (see docs/deployment-guidelines.md §5.3).
 #
-# PREREQUISITES (one-time — see docs/deployment-guidelines.md §5, or run scripts/setup.sh):
+# PREREQUISITES (one-time — see docs/deployment-guidelines.md §3):
 #   1. ARM service connection named 'cityops-azure-service-connection' (see above). Its service principal needs
 #      Contributor + User Access Administrator (or Owner) at the target scope — User Access
 #      Administrator is required because the template creates Key Vault role assignments.
