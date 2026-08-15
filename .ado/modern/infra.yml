@@ -82,6 +82,8 @@ stages:
                   -f infra/main.bicep \
                   -p location="$(location)" \
                      dbLocation="$(dbLocation)" \
+                     baseName="$(baseName)" \
+                     openAiAccountName="$(openAiAccountName)" \
                      pgAdminPassword="$(pgAdminPassword)" \
                      authSecret="$(authSecret)" \
                      authSecretDev="$(authSecretDev)"
@@ -127,6 +129,8 @@ stages:
                         -f infra/main.bicep \
                         -p location="$(location)" \
                            dbLocation="$(dbLocation)" \
+                           baseName="$(baseName)" \
+                           openAiAccountName="$(openAiAccountName)" \
                            pgAdminPassword="$(pgAdminPassword)" \
                            authSecret="$(authSecret)" \
                            authSecretDev="$(authSecretDev)" \

@@ -6,6 +6,9 @@ parameters:
     type: string
   - name: resourceGroup
     type: string
+  - name: baseName
+    type: string
+    default: cityops
 
 steps:
   - task: AzureCLI@2
@@ -16,8 +19,8 @@ steps:
       scriptLocation: inlineScript
       inlineScript: |
         set -e
-        webAppName=$(az webapp list -g "${{ parameters.resourceGroup }}" --query "[?starts_with(name,'app-cityops-')].name | [0]" -o tsv)
-        keyVaultName=$(az keyvault list -g "${{ parameters.resourceGroup }}" --query "[?starts_with(name,'kv-cityops-')].name | [0]" -o tsv)
+        webAppName=$(az webapp list -g "${{ parameters.resourceGroup }}" --query "[?starts_with(name,'app-${{ parameters.baseName }}-')].name | [0]" -o tsv)
+        keyVaultName=$(az keyvault list -g "${{ parameters.resourceGroup }}" --query "[?starts_with(name,'kv-${{ parameters.baseName }}-')].name | [0]" -o tsv)
         test -n "$webAppName" && test -n "$keyVaultName"
         echo "##vso[task.setvariable variable=webAppName]$webAppName"
         echo "##vso[task.setvariable variable=keyVaultName]$keyVaultName"

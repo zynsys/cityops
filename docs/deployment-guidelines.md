@@ -76,7 +76,9 @@ registers the 4 YAML pipelines.
 
 It's interactive by default — prompts for each value below with a sensible default (current
 `az account` subscription, an already-configured `az devops` org/project, etc.); press Enter to
-accept or type a new value: `AZURE_SUBSCRIPTION_ID`, `RESOURCE_GROUP`, `LOCATION`, `DB_LOCATION`,
+accept or type a new value: `AZURE_SUBSCRIPTION_ID`, `BASE_NAME` (prefix for every generated
+resource name — §4), `RESOURCE_GROUP` (defaults to `rg-<BASE_NAME>-<hash>`, same deterministic
+hash convention as the resources inside it), `OPENAI_ACCOUNT_NAME`, `LOCATION`, `DB_LOCATION`,
 `ADO_ORG_URL`, `ADO_PROJECT`, `SERVICE_CONNECTION_NAME`, `SP_SCOPE` (§5.1),
 `AUTHORIZE_FOR_ALL_PIPELINES` (§11.2), `GITHUB_REPO_URL`, `GITHUB_PAT` (§11.1, hidden input).
 Leaving `ADO_ORG_URL` blank skips Azure DevOps entirely (Azure infra only). Pre-set any of these
@@ -113,16 +115,17 @@ Resource names are derived deterministically (`uniqueString(resourceGroup().id)`
 
 Key parameters:
 
-| Parameter                                                         | Default                            | Purpose                            |
-| ----------------------------------------------------------------- | ---------------------------------- | ---------------------------------- |
-| `location` / `dbLocation` / `openAiLocation`                      | `francecentral`                    | Region per resource type           |
-| `appServiceSkuName` / `appServiceSkuTier`                         | `S1` / `Standard`                  | App Service plan SKU               |
-| `alwaysOn`                                                        | `true`                             | Keep the app warm (Standard+)      |
-| `openAiAccountName`                                               | `azopenai-cityops`                 | Azure OpenAI account name          |
-| `openAiDeploymentName` / `openAiModelName` / `openAiModelVersion` | `gpt-4o` / `gpt-4o` / `2024-11-20` | Model deployment                   |
-| `openAiSkuName` / `openAiCapacity`                                | `GlobalStandard` / `100`           | Throughput (TPM), subject to quota |
-| `pgAdminPassword`                                                 | _(secure)_                         | PostgreSQL admin password          |
-| `authSecret` / `authSecretDev`                                    | _(secure)_                         | Prod / dev-slot `AUTH_SECRET`      |
+| Parameter                                                         | Default                            | Purpose                                                                                                                     |
+| ----------------------------------------------------------------- | ---------------------------------- | --------------------------------------------------------------------------------------------------------------------------- |
+| `baseName`                                                        | `cityops`                          | Prefix for every generated resource name (`app-<baseName>-<hash>`, etc.)                                                    |
+| `location` / `dbLocation` / `openAiLocation`                      | `francecentral`                    | Region per resource type                                                                                                    |
+| `appServiceSkuName` / `appServiceSkuTier`                         | `S1` / `Standard`                  | App Service plan SKU                                                                                                        |
+| `alwaysOn`                                                        | `true`                             | Keep the app warm (Standard+)                                                                                               |
+| `openAiAccountName`                                               | `azopenai-cityops`                 | Azure OpenAI account name (`scripts/setup.sh` defaults it to `azopenai-<baseName>-<hash>`, same hash as the resource group) |
+| `openAiDeploymentName` / `openAiModelName` / `openAiModelVersion` | `gpt-4o` / `gpt-4o` / `2024-11-20` | Model deployment                                                                                                            |
+| `openAiSkuName` / `openAiCapacity`                                | `GlobalStandard` / `100`           | Throughput (TPM), subject to quota                                                                                          |
+| `pgAdminPassword`                                                 | _(secure)_                         | PostgreSQL admin password                                                                                                   |
+| `authSecret` / `authSecretDev`                                    | _(secure)_                         | Prod / dev-slot `AUTH_SECRET`                                                                                               |
 
 ### 4.1 Generate stable secrets
 
@@ -208,23 +211,30 @@ The approver `id` is the Identity **storage key** (a GUID) — resolve via `Grap
 
 Every environment-specific pipeline value lives in a Library variable group, never a YAML literal:
 
-| Variable group  | Contents                                                            | Secret? | Used by                   |
-| --------------- | ------------------------------------------------------------------- | ------- | ------------------------- |
-| `cityops-env`   | `azureServiceConnection`, `resourceGroup`, `location`, `dbLocation` | No      | app.yml **and** infra.yml |
-| `cityops-infra` | `pgAdminPassword`, `authSecret`, `authSecretDev`                    | Yes     | infra.yml only            |
+| Variable group  | Contents                                                                                             | Secret? | Used by                   |
+| --------------- | ---------------------------------------------------------------------------------------------------- | ------- | ------------------------- |
+| `cityops-env`   | `azureServiceConnection`, `resourceGroup`, `location`, `dbLocation`, `baseName`, `openAiAccountName` | No      | app.yml **and** infra.yml |
+| `cityops-infra` | `pgAdminPassword`, `authSecret`, `authSecretDev`                                                     | Yes     | infra.yml only            |
 
-Bicep-generated resource **names** (`app-cityops-<hash>`, `kv-cityops-<hash>`) aren't stored anywhere — each deploy job resolves them at runtime by naming convention:
+`baseName` (default `cityops`) is what `infra/main.bicep` prefixes every generated resource name
+with (`app-<baseName>-<hash>`, `kv-<baseName>-<hash>`, etc.) — `scripts/setup.sh` prompts for it
+and passes it through to both the Bicep deployment and this variable group, so a customized name
+stays consistent across the infra pipeline and the app pipeline's name lookups below.
+
+Bicep-generated resource **names** aren't stored anywhere beyond `baseName` — each deploy job
+resolves the actual name at runtime by naming convention:
 
 ```bash
-webAppName=$(az webapp list -g "$(resourceGroup)" --query "[?starts_with(name,'app-cityops-')].name | [0]" -o tsv)
-keyVaultName=$(az keyvault list -g "$(resourceGroup)" --query "[?starts_with(name,'kv-cityops-')].name | [0]" -o tsv)
+webAppName=$(az webapp list -g "$(resourceGroup)" --query "[?starts_with(name,'app-$(baseName)-')].name | [0]" -o tsv)
+keyVaultName=$(az keyvault list -g "$(resourceGroup)" --query "[?starts_with(name,'kv-$(baseName)-')].name | [0]" -o tsv)
 ```
 
 `scripts/setup.sh` creates both groups; by hand:
 
 ```bash
 az pipelines variable-group create --name cityops-env --authorize true \
-  --variables azureServiceConnection=cityops-azure resourceGroup=rg-cityops location=francecentral dbLocation=francecentral
+  --variables azureServiceConnection=cityops-azure resourceGroup=rg-cityops location=francecentral \
+              dbLocation=francecentral baseName=cityops openAiAccountName=azopenai-cityops
 
 az pipelines variable-group create --name cityops-infra --authorize true --variables placeholder=x
 az pipelines variable-group variable create --group-id <id> --name pgAdminPassword --value "<value>" --secret true
@@ -269,8 +279,8 @@ built by hand in the UI. This section is the complete, from-scratch script for d
      - Azure subscription: `cityops-azure`
      - Script type: Bash, inline:
        ```bash
-       webAppName=$(az webapp list -g "$(resourceGroup)" --query "[?starts_with(name,'app-cityops-')].name | [0]" -o tsv)
-       keyVaultName=$(az keyvault list -g "$(resourceGroup)" --query "[?starts_with(name,'kv-cityops-')].name | [0]" -o tsv)
+       webAppName=$(az webapp list -g "$(resourceGroup)" --query "[?starts_with(name,'app-$(baseName)-')].name | [0]" -o tsv)
+       keyVaultName=$(az keyvault list -g "$(resourceGroup)" --query "[?starts_with(name,'kv-$(baseName)-')].name | [0]" -o tsv)
        echo "##vso[task.setvariable variable=webAppName]$webAppName"
        echo "##vso[task.setvariable variable=keyVaultName]$keyVaultName"
        ```
@@ -311,7 +321,7 @@ built by hand in the UI. This section is the complete, from-scratch script for d
      - Location: `$(location)`
      - Template location: Linked artifact → `main.json` (from the `infra-arm` artifact)
      - Override template parameters:
-       `-location $(location) -dbLocation $(dbLocation) -pgAdminPassword $(pgAdminPassword) -authSecret $(authSecret) -authSecretDev $(authSecretDev)`
+       `-location $(location) -dbLocation $(dbLocation) -baseName $(baseName) -openAiAccountName $(openAiAccountName) -pgAdminPassword $(pgAdminPassword) -authSecret $(authSecret) -authSecretDev $(authSecretDev)`
      - Deployment mode: **Incremental**
 4. Save. To apply: **Create release** manually (never automatic), approve the `prod` gate.
 

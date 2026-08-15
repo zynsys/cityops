@@ -222,14 +222,14 @@ stages:
   #
   # NO HARDCODING: resourceGroup/service connection come from the 'cityops-env' Library
   # variable group; webAppName/keyVaultName are never stored anywhere — they're resolved
-  # at deploy time by naming convention (main.bicep always names them 'app-cityops-*' /
-  # 'kv-cityops-*' in the single resource group), so a re-provisioned or renamed
-  # environment never requires touching this YAML.
+  # at deploy time by naming convention (main.bicep always names them 'app-<baseName>-*' /
+  # 'kv-<baseName>-*' in the single resource group, baseName also from 'cityops-env'), so a
+  # re-provisioned or renamed environment never requires touching this YAML.
   #
   # PREREQUISITES (one-time — see docs/deployment-guidelines.md §5, or run scripts/setup.sh):
   #   1. ARM service connection named in 'cityops-env' (azureServiceConnection), whose SP has
   #      Contributor on the resource group and Key Vault Secrets User is granted by Bicep.
-  #   2. Variable group 'cityops-env' (Library, plain vars): azureServiceConnection, resourceGroup.
+  #   2. Variable group 'cityops-env' (Library, plain vars): azureServiceConnection, resourceGroup, baseName.
   #   3. Pipelines Environments 'dev' (no approval) and 'prod' (approval check).
   # ---------------------------------------------------------------------------
   - stage: Deploy_Dev
@@ -239,7 +239,7 @@ stages:
       - IntegrationTest
     condition: and(succeeded(), in(variables['Build.Reason'], 'IndividualCI', 'Manual'))
     variables:
-      - group: cityops-env # azureServiceConnection, resourceGroup
+      - group: cityops-env # azureServiceConnection, resourceGroup, baseName
       - name: devSlotName
         value: dev
     jobs:
@@ -260,6 +260,7 @@ stages:
                   parameters:
                     azureServiceConnection: '$(azureServiceConnection)'
                     resourceGroup: '$(resourceGroup)'
+                    baseName: '$(baseName)'
                 - task: AzureKeyVault@2
                   displayName: 'Fetch dev DB secret'
                   inputs:
@@ -305,7 +306,7 @@ stages:
     condition: and(succeeded(), eq(variables['Build.Reason'], 'Manual'))
     lockBehavior: sequential # exclusive-lock check on the 'prod' Environment (§11.2) serializes prod deploys
     variables:
-      - group: cityops-env # azureServiceConnection, resourceGroup
+      - group: cityops-env # azureServiceConnection, resourceGroup, baseName
       - name: devSlotName
         value: dev
     jobs:
@@ -326,6 +327,7 @@ stages:
                   parameters:
                     azureServiceConnection: '$(azureServiceConnection)'
                     resourceGroup: '$(resourceGroup)'
+                    baseName: '$(baseName)'
                 - task: AzureKeyVault@2
                   displayName: 'Fetch prod DB secret'
                   inputs:
