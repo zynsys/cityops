@@ -64,7 +64,7 @@ AUTHORIZE_FOR_ALL_PIPELINES="${AUTHORIZE_FOR_ALL_PIPELINES:-false}" # least priv
 # GitHub CLI ('gh') when available; only truly optional if you plan to do §3b/§6 manually.
 GITHUB_REPO_URL="${GITHUB_REPO_URL:-https://github.com/zynsys/cityops}"
 GITHUB_PAT="${GITHUB_PAT:-}"
-GITHUB_SERVICE_CONNECTION_NAME="${GITHUB_SERVICE_CONNECTION_NAME:-cityops-github}"
+GITHUB_SERVICE_CONNECTION_NAME="${GITHUB_SERVICE_CONNECTION_NAME:-cityops-github-service-connection}"
 
 # Secrets: auto-generated if not supplied. Capture the printed values somewhere safe —
 # rotating pgAdminPassword resets the DB admin password; rotating authSecret(Dev)
