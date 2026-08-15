@@ -3,16 +3,18 @@
 # "release/CD" is the apply. Both live in ONE multi-stage YAML (not two separate pipelines):
 #   Validate (build)  →  Deploy (release, gated by an environment approval)
 #
-# NO HARDCODING: every environment-specific value (service connection name, resource group,
-# regions, secrets) comes from Library variable groups below, never from literals in this file.
+# NO HARDCODING: environment-specific values (resource group, regions, secrets) come from Library
+# variable groups below. The service connection name IS a literal ('cityops-azure') rather than
+# a variable-group macro — ADO's static resource-authorization check for 'azureSubscription:'
+# inputs can't resolve a runtime '$(...)' macro (it checks the literal unexpanded string), so it
+# must be compile-time-known. If you rename it (setup.sh's SERVICE_CONNECTION_NAME), update here too.
 #
 # PREREQUISITES (one-time — see docs/deployment-guidelines.md §5, or run scripts/setup.sh):
-#   1. ARM service connection named in the 'cityops-env' variable group (azureServiceConnection).
-#      Its service principal needs Contributor + User Access Administrator (or Owner) at the
-#      target scope — User Access Administrator is required because the template creates
-#      Key Vault role assignments.
+#   1. ARM service connection named 'cityops-azure' (see above). Its service principal needs
+#      Contributor + User Access Administrator (or Owner) at the target scope — User Access
+#      Administrator is required because the template creates Key Vault role assignments.
 #   2. Variable group 'cityops-env' (Library, plain vars) — shared by this pipeline AND
-#      .ado/modern/app.yml: azureServiceConnection, resourceGroup, location, dbLocation.
+#      .ado/modern/app.yml: resourceGroup, location, dbLocation.
 #   3. Variable group 'cityops-infra' (Library, SECRET, stable vars) — this pipeline only:
 #        - pgAdminPassword  (fixed — changing it rotates the DB admin password)
 #        - authSecret       (fixed, >= 32 chars — changing it invalidates prod sessions)
@@ -69,7 +71,7 @@ stages:
           - task: AzureCLI@2
             displayName: 'Bicep lint + what-if preview'
             inputs:
-              azureSubscription: '$(azureServiceConnection)'
+              azureSubscription: 'cityops-azure'
               scriptType: bash
               scriptLocation: inlineScript
               inlineScript: |
@@ -118,7 +120,7 @@ stages:
                 - task: AzureCLI@2
                   displayName: 'az deployment group create'
                   inputs:
-                    azureSubscription: '$(azureServiceConnection)'
+                    azureSubscription: 'cityops-azure'
                     scriptType: bash
                     scriptLocation: inlineScript
                     inlineScript: |

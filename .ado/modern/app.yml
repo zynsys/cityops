@@ -220,16 +220,20 @@ stages:
   # dev database (cityops_dev). Gated by the 'dev' environment (no approval — fast
   # continuous feedback).
   #
-  # NO HARDCODING: resourceGroup/service connection come from the 'cityops-env' Library
-  # variable group; webAppName/keyVaultName are never stored anywhere — they're resolved
-  # at deploy time by naming convention (main.bicep always names them 'app-<baseName>-*' /
-  # 'kv-<baseName>-*' in the single resource group, baseName also from 'cityops-env'), so a
-  # re-provisioned or renamed environment never requires touching this YAML.
+  # NO HARDCODING: resourceGroup/baseName come from the 'cityops-env' Library variable group;
+  # webAppName/keyVaultName are never stored anywhere — they're resolved at deploy time by
+  # naming convention (main.bicep always names them 'app-<baseName>-*' / 'kv-<baseName>-*' in the
+  # single resource group, baseName also from 'cityops-env'), so a re-provisioned or renamed
+  # environment never requires touching this YAML. The service connection name IS a literal below
+  # ('cityops-azure') rather than '$(azureServiceConnection)' — ADO's static resource-authorization
+  # check can't resolve a variable-group-sourced macro for 'azureSubscription:' inputs (it checks
+  # the literal unexpanded string), so it must be a compile-time-known value. If you rename the
+  # service connection (setup.sh's SERVICE_CONNECTION_NAME), update it here too.
   #
   # PREREQUISITES (one-time — see docs/deployment-guidelines.md §5, or run scripts/setup.sh):
-  #   1. ARM service connection named in 'cityops-env' (azureServiceConnection), whose SP has
-  #      Contributor on the resource group and Key Vault Secrets User is granted by Bicep.
-  #   2. Variable group 'cityops-env' (Library, plain vars): azureServiceConnection, resourceGroup, baseName.
+  #   1. ARM service connection named 'cityops-azure' (see above), whose SP has Contributor on
+  #      the resource group and Key Vault Secrets User is granted by Bicep.
+  #   2. Variable group 'cityops-env' (Library, plain vars): resourceGroup, baseName.
   #   3. Pipelines Environments 'dev' (no approval) and 'prod' (approval check).
   # ---------------------------------------------------------------------------
   - stage: Deploy_Dev
@@ -258,13 +262,13 @@ stages:
                   displayName: 'Install Node.js'
                 - template: templates/resolve-names.yml
                   parameters:
-                    azureServiceConnection: '$(azureServiceConnection)'
+                    azureServiceConnection: 'cityops-azure'
                     resourceGroup: '$(resourceGroup)'
                     baseName: '$(baseName)'
                 - task: AzureKeyVault@2
                   displayName: 'Fetch dev DB secret'
                   inputs:
-                    azureSubscription: '$(azureServiceConnection)'
+                    azureSubscription: 'cityops-azure'
                     KeyVaultName: '$(keyVaultName)'
                     SecretsFilter: 'DATABASE-URL-DEV'
                     RunAsPreJob: false
@@ -279,7 +283,7 @@ stages:
                 - task: AzureWebApp@1
                   displayName: 'Deploy to dev slot'
                   inputs:
-                    azureSubscription: '$(azureServiceConnection)'
+                    azureSubscription: 'cityops-azure'
                     appType: webAppLinux
                     appName: '$(webAppName)'
                     resourceGroupName: '$(resourceGroup)'
@@ -325,13 +329,13 @@ stages:
                   displayName: 'Install Node.js'
                 - template: templates/resolve-names.yml
                   parameters:
-                    azureServiceConnection: '$(azureServiceConnection)'
+                    azureServiceConnection: 'cityops-azure'
                     resourceGroup: '$(resourceGroup)'
                     baseName: '$(baseName)'
                 - task: AzureKeyVault@2
                   displayName: 'Fetch prod DB secret'
                   inputs:
-                    azureSubscription: '$(azureServiceConnection)'
+                    azureSubscription: 'cityops-azure'
                     KeyVaultName: '$(keyVaultName)'
                     SecretsFilter: 'DATABASE-URL'
                     RunAsPreJob: false
@@ -344,7 +348,7 @@ stages:
                 - task: AzureAppServiceManage@0
                   displayName: 'Swap dev → production'
                   inputs:
-                    azureSubscription: '$(azureServiceConnection)'
+                    azureSubscription: 'cityops-azure'
                     action: 'Swap Slots'
                     webAppName: '$(webAppName)'
                     resourceGroupName: '$(resourceGroup)'
