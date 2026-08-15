@@ -28,9 +28,14 @@
 # deterministically inside main.bicep and resolved dynamically by naming convention at
 # deploy time in app.yml, so this pipeline never needs to know them either.
 #
+# main.bicep is subscription-scoped: it creates the resource group itself (via
+# modules/resourcegroup.bicep) before deploying everything else into it, so there's no manual
+# 'az group create' step before this pipeline can run — hence 'az deployment sub ...' below,
+# not 'az deployment group ...', and '--location' instead of '-g'.
+#
 # Run this pipeline FIRST (before app.yml ever needs to deploy anything) — it provisions the
-# App Service (+ dev slot), PostgreSQL, Key Vault, and Azure OpenAI, and wires up the RBAC
-# between them, so the app pipeline always finds a ready-to-deploy-to environment.
+# resource group, App Service (+ dev slot), PostgreSQL, Key Vault, and Azure OpenAI, and wires up
+# the RBAC between them, so the app pipeline always finds a ready-to-deploy-to environment.
 
 trigger:
   branches:
@@ -81,12 +86,11 @@ stages:
               inlineScript: |
                 set -e
                 az bicep build --file infra/main.bicep
-                az group show -n "$(resourceGroup)" >/dev/null 2>&1 || \
-                  az group create -n "$(resourceGroup)" -l "$(location)" -o none
-                az deployment group what-if \
-                  -g "$(resourceGroup)" \
+                az deployment sub what-if \
+                  --location "$(location)" \
                   -f infra/main.bicep \
-                  -p location="$(location)" \
+                  -p resourceGroupName="$(resourceGroup)" \
+                     location="$(location)" \
                      dbLocation="$(dbLocation)" \
                      baseName="$(baseName)" \
                      openAiAccountName="$(openAiAccountName)" \
@@ -129,11 +133,12 @@ stages:
                     scriptLocation: inlineScript
                     inlineScript: |
                       set -e
-                      az deployment group create \
-                        -g "$(resourceGroup)" \
+                      az deployment sub create \
+                        --location "$(location)" \
                         -n cityops-infra \
                         -f infra/main.bicep \
-                        -p location="$(location)" \
+                        -p resourceGroupName="$(resourceGroup)" \
+                           location="$(location)" \
                            dbLocation="$(dbLocation)" \
                            baseName="$(baseName)" \
                            openAiAccountName="$(openAiAccountName)" \

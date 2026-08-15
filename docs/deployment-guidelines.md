@@ -80,9 +80,16 @@ connection named **`cityops-azure-service-connection`** — this exact name is h
 `.ado/infra.yml`'s `azureSubscription:` inputs (see §5.3 for why it can't come from a variable
 group).
 
+`infra/main.bicep` is **subscription-scoped** — it creates the resource group itself (there's no
+`rg-cityops` to pre-create), so the service connection's underlying identity needs
+**subscription-level** roles, not resource-group-level ones (you can't scope a role assignment
+to a resource group that doesn't exist yet).
+
 **UI:** Project Settings → Service connections → New service connection → Azure Resource
-Manager → Service principal (automatic) → select your subscription and resource group
-(`rg-cityops`, created if it doesn't exist yet) → name it `cityops-azure-service-connection` → Save.
+Manager → App registration (automatic) → Workload identity federation (recommended — no secret
+to manage) → Scope level **Subscription** → select your subscription → Resource group:
+**All resource groups** (leave unrestricted — the resource group is created by Bicep, not you)
+→ name it `cityops-azure-service-connection` → Save.
 
 **CLI equivalent:**
 
@@ -90,9 +97,6 @@ Manager → Service principal (automatic) → select your subscription and resou
 SP_JSON=$(az ad sp create-for-rbac --name cityops-azure-service-connection -o json)
 SP_APP_ID=$(echo "$SP_JSON" | jq -r '.appId')
 SUBSCRIPTION_ID=$(az account show --query id -o tsv)
-RG=rg-cityops
-
-az group create -n "$RG" -l francecentral
 
 az devops service-endpoint azurerm create \
   --name cityops-azure-service-connection \
@@ -102,12 +106,12 @@ az devops service-endpoint azurerm create \
   --azure-rm-tenant-id "$(az account show --query tenantId -o tsv)"
 ```
 
-Whichever path you use, the service principal needs **3 role assignments** at the resource
-group scope — the automatic UI wizard and `az ad sp create-for-rbac` only grant Contributor, so
-grant the other two explicitly:
+Whichever path you use, the service principal needs **3 role assignments** at the
+**subscription** scope — the automatic UI wizard and `az ad sp create-for-rbac` only grant
+Contributor, so grant the other two explicitly:
 
 ```bash
-SCOPE="/subscriptions/$SUBSCRIPTION_ID/resourceGroups/$RG"
+SCOPE="/subscriptions/$SUBSCRIPTION_ID"
 
 az role assignment create --assignee "$SP_APP_ID" --role "Contributor" --scope "$SCOPE"
 # Bicep grants Key Vault roles to each slot's managed identity — the deploying principal
@@ -215,8 +219,10 @@ Pipelines → `infra` → **Run pipeline** → branch `main` → Run.
 
 This runs **Validate** (Bicep lint + `what-if` preview) then, because it was triggered manually,
 **Deploy** — gated by the `prod` approval you configured in §3.3. Approve it when prompted. The
-`Deploy` stage runs `az deployment group create` against `infra/main.bicep`, provisioning:
+`Deploy` stage runs `az deployment sub create` against `infra/main.bicep` (subscription-scoped —
+it creates the resource group itself), provisioning:
 
+- The resource group (if it doesn't already exist)
 - App Service (Linux, Node 24) + `dev` deployment slot
 - PostgreSQL Flexible Server with `cityops`/`cityops_dev` databases + PostGIS
 - Key Vault (RBAC) with the DB/auth secrets, and RBAC grants to each slot's managed identity
@@ -264,15 +270,19 @@ curl -I https://<webAppName>.azurewebsites.net       # production, after the swa
 This section documents what the `infra` pipeline's `Deploy` stage actually runs (§4.1) — useful
 for understanding or modifying the template, not a separate manual step.
 
-The template is modularized — `infra/main.bicep` orchestrates one module per logical concern:
+The template is modularized — `infra/main.bicep` is a thin **subscription-scoped** orchestrator
+that creates the resource group, then deploys everything else into it via a nested
+resource-group-scoped module:
 
-| File                                                                  | Owns                                                            |
-| --------------------------------------------------------------------- | --------------------------------------------------------------- |
-| [`infra/main.bicep`](../infra/main.bicep)                             | Orchestration: modules, Key Vault secrets, app settings, RBAC   |
-| [`infra/modules/keyvault.bicep`](../infra/modules/keyvault.bicep)     | Key Vault (RBAC-enabled)                                        |
-| [`infra/modules/postgres.bicep`](../infra/modules/postgres.bicep)     | Flexible Server, `cityops`/`cityops_dev` DBs, PostGIS, firewall |
-| [`infra/modules/appservice.bicep`](../infra/modules/appservice.bicep) | Plan, Web App **+ `dev` deployment slot**                       |
-| [`infra/modules/openai.bicep`](../infra/modules/openai.bicep)         | Azure OpenAI account + `gpt-4o` model deployment                |
+| File                                                                        | Owns                                                                                     |
+| ---------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------- |
+| [`infra/main.bicep`](../infra/main.bicep)                                   | Subscription-scoped orchestrator: creates the resource group, invokes `resources.bicep` |
+| [`infra/modules/resourcegroup.bicep`](../infra/modules/resourcegroup.bicep) | Creates (or adopts) the resource group                                                  |
+| [`infra/modules/resources.bicep`](../infra/modules/resources.bicep)         | Resource-group-scoped orchestration: modules, Key Vault secrets, app settings, RBAC      |
+| [`infra/modules/keyvault.bicep`](../infra/modules/keyvault.bicep)           | Key Vault (RBAC-enabled)                                                                 |
+| [`infra/modules/postgres.bicep`](../infra/modules/postgres.bicep)           | Flexible Server, `cityops`/`cityops_dev` DBs, PostGIS, firewall                          |
+| [`infra/modules/appservice.bicep`](../infra/modules/appservice.bicep)       | Plan, Web App **+ `dev` deployment slot**                                                |
+| [`infra/modules/openai.bicep`](../infra/modules/openai.bicep)               | Azure OpenAI account + `gpt-4o` model deployment                                         |
 
 Resource names are derived deterministically (`uniqueString(resourceGroup().id)`), so re-running a deployment on the same resource group **adopts and updates** existing resources rather than creating duplicates.
 
@@ -280,6 +290,7 @@ Key parameters (set via the `cityops-env`/`cityops-infra` variable groups, §3.2
 
 | Parameter                                                         | Default                            | Purpose                                                                  |
 | ----------------------------------------------------------------- | ---------------------------------- | ------------------------------------------------------------------------ |
+| `resourceGroupName`                                               | `rg-cityops`                       | Name of the resource group to create (if missing) and deploy into       |
 | `baseName`                                                        | `cityops`                          | Prefix for every generated resource name (`app-<baseName>-<hash>`, etc.) |
 | `location` / `dbLocation` / `openAiLocation`                      | `francecentral`                    | Region per resource type                                                 |
 | `appServiceSkuName` / `appServiceSkuTier`                         | `S1` / `Standard`                  | App Service plan SKU                                                     |
@@ -302,10 +313,10 @@ If you ever need to deploy the template directly (bypassing the pipeline, e.g. f
 
 ```bash
 RG=rg-cityops
-az deployment group create \
-  -g "$RG" -n cityops-infra \
+az deployment sub create \
+  --location francecentral -n cityops-infra \
   -f infra/main.bicep \
-  -p location=francecentral dbLocation=francecentral \
+  -p resourceGroupName="$RG" location=francecentral dbLocation=francecentral \
      pgAdminPassword="$PGPASS" authSecret="$AUTHSECRET" authSecretDev="$AUTHSECRETDEV" \
   --query "properties.outputs" -o json
 ```
@@ -429,8 +440,8 @@ curl -I https://<WEB_APP_NAME>-dev.azurewebsites.net       # dev slot
 ```bash
 for r in francecentral ukwest westeurope northeurope; do
   echo "== $r =="
-  az deployment group what-if -g rg-cityops -f infra/main.bicep -n quotacheck \
-    -p location=$r dbLocation=$r \
+  az deployment sub what-if --location "$r" -f infra/main.bicep -n quotacheck \
+    -p resourceGroupName=rg-cityops location=$r dbLocation=$r \
        pgAdminPassword="Throwaway$(openssl rand -hex 8)Aa1" \
        authSecret="throwaway-validate-secret-0123456789abcd" \
        authSecretDev="throwaway-validate-secret-dev-0123456789ab" \
@@ -505,7 +516,9 @@ in this document need setting up:
 
 | File                                                                      | Purpose                                                         |
 | ------------------------------------------------------------------------- | --------------------------------------------------------------- |
-| [`infra/main.bicep`](../infra/main.bicep)                                 | Infrastructure orchestrator                                     |
+| [`infra/main.bicep`](../infra/main.bicep)                                 | Subscription-scoped infrastructure orchestrator                 |
+| [`infra/modules/resourcegroup.bicep`](../infra/modules/resourcegroup.bicep) | Creates (or adopts) the resource group                        |
+| [`infra/modules/resources.bicep`](../infra/modules/resources.bicep)       | Resource-group-scoped orchestrator (modules, secrets, RBAC)     |
 | [`infra/modules/keyvault.bicep`](../infra/modules/keyvault.bicep)         | Key Vault module                                                |
 | [`infra/modules/postgres.bicep`](../infra/modules/postgres.bicep)         | PostgreSQL Flexible Server module                               |
 | [`infra/modules/appservice.bicep`](../infra/modules/appservice.bicep)     | App Service (plan + web app + dev slot) module                  |
