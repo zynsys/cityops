@@ -35,10 +35,10 @@ set -euo pipefail
 # ---------------------------------------------------------------------------
 RESOURCE_GROUP_ENV="${RESOURCE_GROUP:-}"      # explicit caller override, if any (empty = derive from BASE_NAME + hash)
 BASE_NAME="${BASE_NAME:-cityops}"                # prefix for all derived resource names (app-<base>-<hash>, kv-<base>-<hash>, rg-<base>-<hash>, azopenai-<base>-<hash>, etc.)
-NAME_HASH="${NAME_HASH:-}"                       # resource-name hash suffix override; blank = derive deterministically
-                                                  # from subscription+BASE_NAME (see hash8 below). Reuse an existing
-                                                  # value to target/update that deployment; type a new one (or change
-                                                  # BASE_NAME) to provision a separate, independent deployment.
+NAME_HASH="${NAME_HASH:-}"                       # resource-name hash suffix override; blank = generate a fresh
+                                                  # random 8-char suffix at prompt time. Reuse an existing value
+                                                  # to target/update that deployment; leave blank or type a new
+                                                  # one to provision a separate, independent deployment.
 OPENAI_ACCOUNT_NAME="${OPENAI_ACCOUNT_NAME:-}"  # defaults to azopenai-<BASE_NAME>-<hash> below, once BASE_NAME/hash are known
 LOCATION="${LOCATION:-francecentral}"         # App Service + Key Vault region (confirmed capacity)
 DB_LOCATION="${DB_LOCATION:-francecentral}"   # PostgreSQL Flexible Server region (confirmed capacity)
@@ -97,11 +97,6 @@ prompt() {
   printf -v "$var_name" '%s' "${input:-$default_value}"
 }
 
-# 8-char deterministic hash (sha256 of subscription + base name) — mirrors Bicep's own
-# uniqueString(resourceGroup().id) suffixing for app/kv/pg names, so the resource group name
-# follows the same '<prefix>-<base>-<hash>' convention as everything inside it.
-hash8() { printf '%s' "$1" | openssl dgst -sha256 | awk '{print $NF}' | cut -c1-8; }
-
 # Sets a variable-group variable to the given value, creating it first if the group predates
 # this variable. Used so re-running against an existing NAME_HASH always reconciles the group
 # to the current run's config/secrets instead of leaving stale values in place.
@@ -130,8 +125,12 @@ CURRENT_ADO_PROJECT="$(az devops configure --list 2>/dev/null | sed -n 's/^proje
 
 prompt AZURE_SUBSCRIPTION_ID "Azure subscription ID" "${AZURE_SUBSCRIPTION_ID:-$CURRENT_SUB_ID}"
 prompt BASE_NAME "Base name for Azure resources (app-<base>-<hash>, kv-<base>-<hash>, rg-<base>-<hash>, etc.)" "$BASE_NAME"
-DEFAULT_NAME_HASH="$(hash8 "${AZURE_SUBSCRIPTION_ID}${BASE_NAME}")"
-prompt NAME_HASH "Resource name hash suffix — reuse an existing value to target/update that deployment, or press Enter to derive a fresh one for this subscription+base name" "${NAME_HASH:-$DEFAULT_NAME_HASH}"
+# Fresh random suffix each run, so pressing Enter always starts a NEW, independent deployment.
+# To target/update an existing one, paste its suffix (or pre-set NAME_HASH / the full RESOURCE_GROUP).
+# Note: this only names the resource group (and OpenAI account); App Service/Key Vault/Postgres get
+# their own suffix from Bicep's uniqueString(resourceGroup().id), read back from the deploy outputs.
+DEFAULT_NAME_HASH="$(openssl rand -hex 4)"
+prompt NAME_HASH "Resource name hash suffix — reuse an existing value to target/update that deployment, or press Enter to generate a fresh one for a new deployment" "${NAME_HASH:-$DEFAULT_NAME_HASH}"
 prompt RESOURCE_GROUP "Resource group name" "${RESOURCE_GROUP_ENV:-rg-$BASE_NAME-$NAME_HASH}"
 prompt OPENAI_ACCOUNT_NAME "Azure OpenAI account name" "${OPENAI_ACCOUNT_NAME:-azopenai-$BASE_NAME-$NAME_HASH}"
 prompt LOCATION "App Service / Key Vault region" "$LOCATION"
