@@ -108,7 +108,14 @@ az devops service-endpoint azurerm create \
 
 Whichever path you use, the service principal needs **3 role assignments** at the
 **subscription** scope — the automatic UI wizard and `az ad sp create-for-rbac` only grant
-Contributor, so grant the other two explicitly:
+Contributor, so grant the other two explicitly. If you used the UI wizard, you won't have
+`$SP_APP_ID` from an `az ad sp create-for-rbac` call — retrieve it from the connection itself
+(works the same regardless of which path created it):
+
+```bash
+SC_ID=$(az devops service-endpoint list --query "[?name=='cityops-azure-service-connection'].id | [0]" -o tsv)
+SP_APP_ID=$(az devops service-endpoint show --id "$SC_ID" --query "authorization.parameters.serviceprincipalid" -o tsv)
+```
 
 ```bash
 SCOPE="/subscriptions/$SUBSCRIPTION_ID"
