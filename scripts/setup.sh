@@ -247,6 +247,12 @@ MSYS_NO_PATHCONV=1 az role assignment create --assignee "$SP_APP_ID" --role "Con
 # User Access Administrator at the same scope.
 MSYS_NO_PATHCONV=1 az role assignment create --assignee "$SP_APP_ID" --role "User Access Administrator" --scope "$SP_SCOPE_ID" -o none 2>/dev/null || \
   warn "Could not grant User Access Administrator (may already be assigned)."
+# Key Vault (RBAC mode) treats secret data-plane ops (get/list) separately from control-plane
+# management — Contributor alone does NOT grant them. The pipeline's own AzureKeyVault@2 tasks
+# (Fetch dev/prod DB secret in app.yml) run as this SP, not the App Service's managed identity,
+# so it needs its own Key Vault Secrets User grant or every deploy fails with 403 Forbidden.
+MSYS_NO_PATHCONV=1 az role assignment create --assignee "$SP_APP_ID" --role "Key Vault Secrets User" --scope "$SP_SCOPE_ID" -o none 2>/dev/null || \
+  warn "Could not grant Key Vault Secrets User (may already be assigned)."
 
 log "Creating/updating ARM service connection '$SERVICE_CONNECTION_NAME'"
 if ! az devops service-endpoint list --query "[?name=='$SERVICE_CONNECTION_NAME']" -o tsv | grep -q .; then
