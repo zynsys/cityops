@@ -5,13 +5,9 @@
 # everything documented in docs/deployment-guidelines.md: the shared resource group
 # (App Service w/ dev slot, PostgreSQL w/ dev+prod databases, one Key Vault, Azure OpenAI),
 # the Library variable groups, the 'dev'/'prod' Environments (+ approval on prod), the
-# ARM service connection, and pipeline registration for the 4 YAML pipelines.
+# ARM service connection, and pipeline registration for the 2 YAML pipelines (infra, app).
 #
 # What this script does NOT do (by design — see docs/deployment-guidelines.md §5 & §9):
-#   - Create the Classic Release pipelines (classic-app-release / classic-infra-release).
-#     Classic Releases have no YAML/ARM representation; they must be built in the ADO UI.
-#     Full click-by-click steps are in docs/deployment-guidelines.md §5.6.
-#   - Create the true no-YAML 'classic-ui-app-build' pipeline (UI designer only, same reason).
 #   - Attach the 'prod' approval check's approver (needs an interactive Graph identity lookup).
 #   - Configure the Branch control / Exclusive lock checks on 'prod' (no safe, verified REST
 #     check-type IDs to script blindly — see docs/deployment-guidelines.md §11.2, 2 minutes in the UI).
@@ -53,7 +49,7 @@ ADO_PROJECT="${ADO_PROJECT:-}"                # e.g. CityOps
 SERVICE_CONNECTION_NAME="${SERVICE_CONNECTION_NAME:-cityops-azure}"
 SP_SCOPE="${SP_SCOPE:-resource-group}"        # 'resource-group' (least privilege) or 'subscription'
                                                # (subscription needed only if you'll target arbitrary
-                                               # new resource groups from classic-infra-release, §5.1)
+                                               # new resource groups outside this one, e.g. multi-env)
 AUTHORIZE_FOR_ALL_PIPELINES="${AUTHORIZE_FOR_ALL_PIPELINES:-false}" # least privilege: off by default
                                                # (§11.2) — leave false and explicitly authorize only
                                                # the pipelines that need this service connection.
@@ -276,7 +272,7 @@ if ! az devops service-endpoint list --query "[?name=='$SERVICE_CONNECTION_NAME'
     if [[ "$AUTHORIZE_FOR_ALL_PIPELINES" != "true" ]]; then
       warn "Service connection is NOT authorized for all pipelines (least privilege). Authorize each"
       warn "pipeline explicitly: Project Settings → Service connections → $SERVICE_CONNECTION_NAME →"
-      warn "Security → add 'modern-app' and 'modern-infra' (and Classic Releases once created)."
+      warn "Security → add 'app' and 'infra'."
     fi
   fi
 else
@@ -378,11 +374,11 @@ warn "run' (separation of duties). Full REST alternative in §5.2."
 # 6. Register pipelines
 # ---------------------------------------------------------------------------
 log "Registering YAML pipelines"
+# 'infra' first: it provisions/updates the shared Azure resources (App Service + dev slot,
+# PostgreSQL, Key Vault, Azure OpenAI) so 'app' always has somewhere ready to deploy to.
 declare -A PIPELINES=(
-  [modern-app]=".ado/modern/app.yml"
-  [modern-infra]=".ado/modern/infra.yml"
-  [classic-app-build]=".ado/classic/app-build.yml"
-  [classic-infra-build]=".ado/classic/infra-build.yml"
+  [infra]=".ado/infra.yml"
+  [app]=".ado/app.yml"
 )
 # The repo lives on GitHub, so auto-detection ("no Azure DevOps remote found") can't resolve the
 # source repo — pass it explicitly, plus the GitHub service connection if one was created above.
@@ -404,13 +400,11 @@ done
 
 log "Done. Remaining manual steps (documented in docs/deployment-guidelines.md):"
 echo "  §5.2   Add the approval check + approver on the 'prod' Environment (set requester-cannot-approve-own-run)."
-echo "  §5.6   Build the Classic Release pipelines (classic-app-release, classic-infra-release) in the ADO UI."
-echo "  §5.6   Build the no-YAML 'classic-ui-app-build' pipeline in the ADO UI (Classic designer demo)."
 echo "  §11.1  Set up GitHub branch protection on main (required PR + required status check)."
 echo "  §11.2  Add Branch control + Exclusive lock checks on the 'prod' Environment."
 echo "  §11.4  Set pipeline run/artifact retention policy (Project Settings → Pipelines → Settings)."
 if [[ "$AUTHORIZE_FOR_ALL_PIPELINES" != "true" ]]; then
-  echo "  §11.2  Explicitly authorize 'modern-app'/'modern-infra' to use the '$SERVICE_CONNECTION_NAME' connection."
+  echo "  §11.2  Explicitly authorize 'app'/'infra' to use the '$SERVICE_CONNECTION_NAME' connection."
 fi
 echo
 echo "Secrets generated this run (store them securely — needed again only if you rotate them):"

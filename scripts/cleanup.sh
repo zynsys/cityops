@@ -2,15 +2,10 @@
 # CityOps — teardown counterpart to scripts/setup.sh. Deletes everything that script creates,
 # so you can re-run setup.sh against a truly clean Azure DevOps project + subscription.
 #
-# Deletes: the 4 YAML pipelines (modern-app, modern-infra, classic-app-build, classic-infra-build),
-# both Library variable groups (cityops-env, cityops-infra), the ARM + GitHub service connections
-# and their service principal/app registration, and (unless DELETE_RESOURCE_GROUP=false) the Azure
-# resource group itself. The Azure DevOps project itself is never deleted — only the resources
-# setup.sh created inside it.
-#
-# Also best-effort deletes things setup.sh does NOT create but that block a clean re-run if left
-# behind: the Classic Release definitions (classic-app-release, classic-infra-release) and the
-# no-YAML 'classic-ui-app-build' pipeline, if they exist (see docs/deployment-guidelines.md §5.6).
+# Deletes: the 2 YAML pipelines (infra, app), both Library variable groups (cityops-env,
+# cityops-infra), the ARM + GitHub service connections and their service principal/app
+# registration, and (unless DELETE_RESOURCE_GROUP=false) the Azure resource group itself. The
+# Azure DevOps project itself is never deleted — only the resources setup.sh created inside it.
 #
 # What this script does NOT do:
 #   - Delete the 'dev'/'prod' Environments. The azure-devops CLI extension has no working
@@ -106,9 +101,7 @@ echo "  Subscription:        $SUBSCRIPTION_ID"
 [[ "$DELETE_RESOURCE_GROUP" == "true" ]] && echo "  Resource group:      $RESOURCE_GROUP (ALL resources inside it)"
 if [[ "$DO_ADO" == "true" ]]; then
   echo "  ADO project (NOT deleted — only these resources within it): $ADO_ORG_URL/$ADO_PROJECT"
-  echo "  Pipelines:            modern-app, modern-infra, classic-app-build, classic-infra-build,"
-  echo "                        classic-ui-app-build (if present)"
-  echo "  Release definitions:  classic-app-release, classic-infra-release (if present)"
+  echo "  Pipelines:            infra, app"
   echo "  Variable groups:      cityops-env, cityops-infra"
   echo "  Service connections:  $SERVICE_CONNECTION_NAME, $GITHUB_SERVICE_CONNECTION_NAME (+ SP/app registration)"
 fi
@@ -123,21 +116,8 @@ fi
 # 1. Azure DevOps cleanup
 # ---------------------------------------------------------------------------
 if [[ "$DO_ADO" == "true" ]]; then
-  log "Deleting Classic Release definitions (unblocks build-pipeline deletion)"
-  for NAME in classic-app-release classic-infra-release; do
-    ID="$(az pipelines release definition list --query "[?name=='$NAME'].id | [0]" -o tsv 2>/dev/null || true)"
-    if [[ -n "$ID" && "$ID" != "None" ]]; then
-      az devops invoke --area release --resource definitions --route-parameters project="$ADO_PROJECT" definitionId="$ID" \
-        --http-method delete --api-version "7.2-preview" -o none \
-        && echo "  Deleted release definition '$NAME' (id=$ID)" \
-        || warn "Could not delete release definition '$NAME' — delete it manually in Releases."
-    else
-      echo "  '$NAME' not found — skipping."
-    fi
-  done
-
   log "Deleting pipelines"
-  for NAME in modern-app modern-infra classic-app-build classic-infra-build classic-ui-app-build; do
+  for NAME in infra app; do
     ID="$(az pipelines list --query "[?name=='$NAME'].id | [0]" -o tsv 2>/dev/null || true)"
     if [[ -n "$ID" && "$ID" != "None" ]]; then
       az pipelines delete --id "$ID" --yes \

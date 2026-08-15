@@ -298,7 +298,7 @@ stages:
   # only runs on a manually-triggered pipeline run (Build.Reason == 'Manual') — that is
   # the only trigger where E2ETest also runs in the SAME run, so production can never
   # deploy without E2E passing, without E2E running on every ordinary push.
-  # To promote to prod: Pipelines → CityOps-CI → Run pipeline (manually) on main.
+  # To promote to prod: Pipelines → app → Run pipeline (manually) on main.
   # Slot-sticky DATABASE_URL/AUTH_SECRET/NEXTAUTH_URL keep each slot pointed at its own
   # DB and its own Auth.js secret, so a swap never leaks dev config into prod or vice versa.
   # ---------------------------------------------------------------------------

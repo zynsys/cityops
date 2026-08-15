@@ -14,7 +14,7 @@
 #      Contributor + User Access Administrator (or Owner) at the target scope — User Access
 #      Administrator is required because the template creates Key Vault role assignments.
 #   2. Variable group 'cityops-env' (Library, plain vars) — shared by this pipeline AND
-#      .ado/modern/app.yml: resourceGroup, location, dbLocation.
+#      .ado/app.yml: resourceGroup, location, dbLocation.
 #   3. Variable group 'cityops-infra' (Library, SECRET, stable vars) — this pipeline only:
 #        - pgAdminPassword  (fixed — changing it rotates the DB admin password)
 #        - authSecret       (fixed, >= 32 chars — changing it invalidates prod sessions)
@@ -27,6 +27,10 @@
 # Resource NAMES (web app, key vault, slot) are never hardcoded — they're derived
 # deterministically inside main.bicep and resolved dynamically by naming convention at
 # deploy time in app.yml, so this pipeline never needs to know them either.
+#
+# Run this pipeline FIRST (before app.yml ever needs to deploy anything) — it provisions the
+# App Service (+ dev slot), PostgreSQL, Key Vault, and Azure OpenAI, and wires up the RBAC
+# between them, so the app pipeline always finds a ready-to-deploy-to environment.
 
 trigger:
   branches:
@@ -34,7 +38,7 @@ trigger:
   paths:
     include:
       - infra/**
-      - .ado/modern/infra.yml
+      - .ado/infra.yml
 
 pr:
   branches:
@@ -42,7 +46,7 @@ pr:
   paths:
     include:
       - infra/**
-      - .ado/modern/infra.yml
+      - .ado/infra.yml
 
 schedules:
   - cron: '0 3 * * *' # nightly 03:00 UTC — drift detection (what-if only; Deploy stays manual-gated)
@@ -100,7 +104,7 @@ stages:
   # output — which runs automatically on every push/PR — IS the pre-apply review: a
   # human must read that diff and deliberately run this pipeline to apply it. Still
   # gated by the SAME 'prod' environment/approval used by the app's Deploy_Prod stage.
-  # To apply: Pipelines → CityOps-Infra → Run pipeline (manually) on main.
+  # To apply: Pipelines → infra → Run pipeline (manually) on main.
   # -------------------------------------------------------------------------
   - stage: Deploy
     displayName: 'Deploy (apply)'
