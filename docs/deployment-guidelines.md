@@ -21,9 +21,9 @@ infra cost for a project this size. Isolation is instead achieved **inside** eac
 | ------------- | ------------------------------------------------------------------------------ | ------------------------------------------------------------------------- |
 | Web app       | One App Service (Linux, Node 24) + a **`dev` deployment slot**                 | Slot-sticky app settings (§6) point each slot at its own DB/secret        |
 | Database      | One PostgreSQL Flexible Server, two databases: `cityops` (prod), `cityops_dev` | Separate databases — dev never touches prod data                          |
-| Secrets       | One Key Vault (RBAC)                                                          | Separate secret names per env: `*-URL` / `*-URL-DEV`, `AUTH-SECRET(-DEV)` |
+| Secrets       | One Key Vault (RBAC)                                                           | Separate secret names per env: `*-URL` / `*-URL-DEV`, `AUTH-SECRET(-DEV)` |
 | AI validation | One Azure OpenAI account (`gpt-4o`)                                            | Shared — stateless                                                        |
-| Identity      | System-assigned managed identity **per slot**                                 | Each slot's identity is granted Key Vault access independently            |
+| Identity      | System-assigned managed identity **per slot**                                  | Each slot's identity is granted Key Vault access independently            |
 
 Full blast-radius isolation (separate resource groups) roughly doubles cost — see the note at the end of §7.2.
 
@@ -76,18 +76,18 @@ equivalents (`az devops`/`az pipelines`) are given alongside for scripting or au
 ### 3.1 Create the ARM service connection
 
 The pipelines need an identity to deploy to Azure. Create an **Azure Resource Manager** service
-connection named **`cityops-azure`** — this exact name is hardcoded in `.ado/app.yml` and
+connection named **`cityops-azure-service-connection`** — this exact name is hardcoded in `.ado/app.yml` and
 `.ado/infra.yml`'s `azureSubscription:` inputs (see §5.3 for why it can't come from a variable
 group).
 
 **UI:** Project Settings → Service connections → New service connection → Azure Resource
 Manager → Service principal (automatic) → select your subscription and resource group
-(`rg-cityops`, created if it doesn't exist yet) → name it `cityops-azure` → Save.
+(`rg-cityops`, created if it doesn't exist yet) → name it `cityops-azure-service-connection` → Save.
 
 **CLI equivalent:**
 
 ```bash
-SP_JSON=$(az ad sp create-for-rbac --name cityops-azure -o json)
+SP_JSON=$(az ad sp create-for-rbac --name cityops-azure-service-connection -o json)
 SP_APP_ID=$(echo "$SP_JSON" | jq -r '.appId')
 SUBSCRIPTION_ID=$(az account show --query id -o tsv)
 RG=rg-cityops
@@ -95,7 +95,7 @@ RG=rg-cityops
 az group create -n "$RG" -l francecentral
 
 az devops service-endpoint azurerm create \
-  --name cityops-azure \
+  --name cityops-azure-service-connection \
   --azure-rm-service-principal-id "$SP_APP_ID" \
   --azure-rm-subscription-id "$SUBSCRIPTION_ID" \
   --azure-rm-subscription-name "$(az account show --query name -o tsv)" \
@@ -134,7 +134,7 @@ literal (see §5.3 for details on why).
 
 ```bash
 az pipelines variable-group create --name cityops-env --authorize true \
-  --variables azureServiceConnection=cityops-azure resourceGroup=rg-cityops \
+  --variables azureServiceConnection=cityops-azure-service-connection resourceGroup=rg-cityops \
               location=francecentral dbLocation=francecentral \
               baseName=cityops openAiAccountName=azopenai-cityops
 ```
@@ -198,9 +198,9 @@ az pipelines create --name app --yml-path .ado/app.yml \
   --service-connection "$GITHUB_SC_ID" --skip-first-run true
 ```
 
-By default the `cityops-azure` service connection is **not** authorized for all pipelines
+By default the `cityops-azure-service-connection` service connection is **not** authorized for all pipelines
 (least privilege — see §11.2). Authorize `infra` and `app` explicitly: Project Settings →
-Service connections → `cityops-azure` → Security → add both pipelines. (Or set **"Grant access
+Service connections → `cityops-azure-service-connection` → Security → add both pipelines. (Or set **"Grant access
 permission to all pipelines"** on the connection if you'd rather skip this per-pipeline step.)
 
 ---
@@ -278,17 +278,17 @@ Resource names are derived deterministically (`uniqueString(resourceGroup().id)`
 
 Key parameters (set via the `cityops-env`/`cityops-infra` variable groups, §3.2):
 
-| Parameter                                                         | Default                            | Purpose                                                                                                                     |
-| ------------------------------------------------------------------ | ----------------------------------- | ------------------------------------------------------------------------------------------------------------------------- |
-| `baseName`                                                        | `cityops`                          | Prefix for every generated resource name (`app-<baseName>-<hash>`, etc.)                                                    |
-| `location` / `dbLocation` / `openAiLocation`                      | `francecentral`                    | Region per resource type                                                                                                    |
-| `appServiceSkuName` / `appServiceSkuTier`                         | `S1` / `Standard`                  | App Service plan SKU                                                                                                        |
-| `alwaysOn`                                                        | `true`                             | Keep the app warm (Standard+)                                                                                               |
-| `openAiAccountName`                                               | `azopenai-cityops`                 | Azure OpenAI account name                                                                                                    |
-| `openAiDeploymentName` / `openAiModelName` / `openAiModelVersion` | `gpt-4o` / `gpt-4o` / `2024-11-20` | Model deployment                                                                                                            |
-| `openAiSkuName` / `openAiCapacity`                                | `GlobalStandard` / `100`           | Throughput (TPM), subject to quota                                                                                          |
-| `pgAdminPassword`                                                 | _(secure)_                         | PostgreSQL admin password                                                                                                   |
-| `authSecret` / `authSecretDev`                                    | _(secure)_                         | Prod / dev-slot `AUTH_SECRET`                                                                                               |
+| Parameter                                                         | Default                            | Purpose                                                                  |
+| ----------------------------------------------------------------- | ---------------------------------- | ------------------------------------------------------------------------ |
+| `baseName`                                                        | `cityops`                          | Prefix for every generated resource name (`app-<baseName>-<hash>`, etc.) |
+| `location` / `dbLocation` / `openAiLocation`                      | `francecentral`                    | Region per resource type                                                 |
+| `appServiceSkuName` / `appServiceSkuTier`                         | `S1` / `Standard`                  | App Service plan SKU                                                     |
+| `alwaysOn`                                                        | `true`                             | Keep the app warm (Standard+)                                            |
+| `openAiAccountName`                                               | `azopenai-cityops`                 | Azure OpenAI account name                                                |
+| `openAiDeploymentName` / `openAiModelName` / `openAiModelVersion` | `gpt-4o` / `gpt-4o` / `2024-11-20` | Model deployment                                                         |
+| `openAiSkuName` / `openAiCapacity`                                | `GlobalStandard` / `100`           | Throughput (TPM), subject to quota                                       |
+| `pgAdminPassword`                                                 | _(secure)_                         | PostgreSQL admin password                                                |
+| `authSecret` / `authSecretDev`                                    | _(secure)_                         | Prod / dev-slot `AUTH_SECRET`                                            |
 
 Bicep-generated resource **names** aren't stored anywhere beyond `baseName` — each deploy job in
 `app.yml` resolves the actual name at runtime by naming convention:
@@ -316,7 +316,7 @@ Outputs: `webAppName`, `webAppUrl`, `devSlotName`, `devSlotUrl`, `keyVaultName`,
 
 Every other environment-specific value (`resourceGroup`, `baseName`, `location`, secrets) comes
 from the `cityops-env`/`cityops-infra` variable groups — **except** the service connection name,
-which is hardcoded as the literal string `'cityops-azure'` in both `.ado/app.yml` and
+which is hardcoded as the literal string `'cityops-azure-service-connection'` in both `.ado/app.yml` and
 `.ado/infra.yml`'s `azureSubscription:` inputs. This isn't an oversight: Azure DevOps performs a
 **static resource-authorization check** on `azureSubscription:` inputs at YAML-compile time, and
 that check can't resolve a variable-group-sourced runtime macro like `$(azureServiceConnection)`
@@ -344,11 +344,11 @@ Config is validated at startup by `validateEnv()` (`src/instrumentation.ts`) —
 
 ### Secrets model — three tiers
 
-| Tier                             | Used by             | Stored in                                  | Examples                                                            |
-| -------------------------------- | ------------------- | ------------------------------------------ | ------------------------------------------------------------------- |
-| **Provisioning-time**            | Infra pipeline only | `cityops-infra` variable group (secret)    | `pgAdminPassword`, `authSecret`, `authSecretDev`                    |
-| **Runtime**                      | The running app     | Azure Key Vault, read via managed identity | `DATABASE-URL(-DEV)`, `AUTH-SECRET(-DEV)`, `AZURE-OPENAI-API-KEY`   |
-| **Pipeline config (non-secret)** | Both pipelines      | `cityops-env` variable group               | `resourceGroup`, `location`, `dbLocation`, `baseName`               |
+| Tier                             | Used by             | Stored in                                  | Examples                                                          |
+| -------------------------------- | ------------------- | ------------------------------------------ | ----------------------------------------------------------------- |
+| **Provisioning-time**            | Infra pipeline only | `cityops-infra` variable group (secret)    | `pgAdminPassword`, `authSecret`, `authSecretDev`                  |
+| **Runtime**                      | The running app     | Azure Key Vault, read via managed identity | `DATABASE-URL(-DEV)`, `AUTH-SECRET(-DEV)`, `AZURE-OPENAI-API-KEY` |
+| **Pipeline config (non-secret)** | Both pipelines      | `cityops-env` variable group               | `resourceGroup`, `location`, `dbLocation`, `baseName`             |
 
 No secret is ever a plaintext App Service setting or a pipeline YAML literal — always `@Microsoft.KeyVault(VaultName=...;SecretName=...)`, resolved via **Key Vault Secrets User** RBAC. `AZURE-OPENAI-API-KEY` is pulled from the OpenAI account with `listKeys()` inside Bicep, never exposed as an output.
 
@@ -404,25 +404,25 @@ curl -I https://<WEB_APP_NAME>-dev.azurewebsites.net       # dev slot
 
 ## 9. Troubleshooting
 
-| Symptom                                                                                 | Cause / Fix                                                                                                                                    |
-| --------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
-| `SubscriptionIsOverQuotaForSku … Total VMs: 0`                                          | No App Service quota in that region — try another region or request an increase. Slots need S1+.                                               |
-| PostgreSQL `Version should be in: []`                                                   | Flexible Server SKU not offered in that region — change `dbLocation`.                                                                          |
-| `NetworkAcls is required for this resouce` (Azure OpenAI)                               | Set `networkAcls.defaultAction` explicitly in the module.                                                                                      |
-| Missing `server.js` / standalone output not found                                       | `output: 'standalone'` must be set in [`next.config.ts`](../next.config.ts).                                                                   |
-| Migration can't reach the DB from the agent                                             | Ensure the "Allow Azure services" firewall rule exists, or add the agent IP.                                                                   |
-| Key Vault reference unresolved (app can't read a secret at runtime)                     | Confirm **Key Vault Secrets User** is granted to that specific slot's managed identity (Bicep does this — check the RBAC blade if it's missing). |
-| Pipeline's `AzureKeyVault@2` task fails with `403 Forbidden` on `getSecret`             | The service connection's SP itself needs **Key Vault Secrets User** at the resource group scope (§3.1) — separate from the slot's managed identity. |
-| `azureSubscription: '$(azureServiceConnection)'` fails validation: "could not be found" | ADO can't statically resolve a variable-group macro for this input — must be the literal connection name (see §5.3).                           |
-| Dynamic name lookup (`az webapp list ... starts_with`) returns empty                    | Infra not deployed yet, or `resourceGroup` in `cityops-env` is wrong. Run the `infra` pipeline first (§4.1).                                    |
-| `az devops invoke` errors `could not convert string to float`                           | Use the bare preview API version (e.g. `7.2-preview`, no `.N` suffix).                                                                         |
-| `az devops invoke` GET ignores `resourceType`/`resourceId`                              | Pass them via `--query-parameters`, not `--route-parameters`.                                                                                  |
-| `az devops invoke` JSON output fails to parse (`Expecting value`)                       | CLI sometimes prints a status line before the JSON — strip the first line or parse stdout/stderr separately.                                   |
+| Symptom                                                                                 | Cause / Fix                                                                                                                                                                                   |
+| --------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `SubscriptionIsOverQuotaForSku … Total VMs: 0`                                          | No App Service quota in that region — try another region or request an increase. Slots need S1+.                                                                                              |
+| PostgreSQL `Version should be in: []`                                                   | Flexible Server SKU not offered in that region — change `dbLocation`.                                                                                                                         |
+| `NetworkAcls is required for this resouce` (Azure OpenAI)                               | Set `networkAcls.defaultAction` explicitly in the module.                                                                                                                                     |
+| Missing `server.js` / standalone output not found                                       | `output: 'standalone'` must be set in [`next.config.ts`](../next.config.ts).                                                                                                                  |
+| Migration can't reach the DB from the agent                                             | Ensure the "Allow Azure services" firewall rule exists, or add the agent IP.                                                                                                                  |
+| Key Vault reference unresolved (app can't read a secret at runtime)                     | Confirm **Key Vault Secrets User** is granted to that specific slot's managed identity (Bicep does this — check the RBAC blade if it's missing).                                              |
+| Pipeline's `AzureKeyVault@2` task fails with `403 Forbidden` on `getSecret`             | The service connection's SP itself needs **Key Vault Secrets User** at the resource group scope (§3.1) — separate from the slot's managed identity.                                           |
+| `azureSubscription: '$(azureServiceConnection)'` fails validation: "could not be found" | ADO can't statically resolve a variable-group macro for this input — must be the literal connection name (see §5.3).                                                                          |
+| Dynamic name lookup (`az webapp list ... starts_with`) returns empty                    | Infra not deployed yet, or `resourceGroup` in `cityops-env` is wrong. Run the `infra` pipeline first (§4.1).                                                                                  |
+| `az devops invoke` errors `could not convert string to float`                           | Use the bare preview API version (e.g. `7.2-preview`, no `.N` suffix).                                                                                                                        |
+| `az devops invoke` GET ignores `resourceType`/`resourceId`                              | Pass them via `--query-parameters`, not `--route-parameters`.                                                                                                                                 |
+| `az devops invoke` JSON output fails to parse (`Expecting value`)                       | CLI sometimes prints a status line before the JSON — strip the first line or parse stdout/stderr separately.                                                                                  |
 | `az rest` against `hp-gmail-org`-style (MSA-backed) orgs returns an HTML sign-in page   | AAD resource-token auth isn't accepted the way the `az devops`/`az pipelines` extension's own auth flow is — use `az devops`/`az pipelines` commands instead of raw `az rest` where possible. |
-| ARM Template Deployment fails: `403 Failed to check the resource group status`          | SP has no RBAC on the target resource group — grant it (§3.1).                                                                                  |
-| ARM deployment fails: `ResourceNotFound` for a resource the template itself creates     | An `existing`-typed lookup (e.g. `openAiRef`, `keyVaultRef`) is racing the module that creates it — add an explicit `dependsOn` on the lookup. |
-| `az role assignment create --scope /subscriptions/...` fails with `MissingSubscription` | Git Bash mangles the path — prefix `MSYS_NO_PATHCONV=1`.                                                                                       |
-| Key Vault/Cognitive Services deployment fails: resource "has been soft-deleted"        | A same-named resource was deleted recently and Azure retains it for a retention period — `az keyvault purge` / `az cognitiveservices account purge`, or pick a different name. |
+| ARM Template Deployment fails: `403 Failed to check the resource group status`          | SP has no RBAC on the target resource group — grant it (§3.1).                                                                                                                                |
+| ARM deployment fails: `ResourceNotFound` for a resource the template itself creates     | An `existing`-typed lookup (e.g. `openAiRef`, `keyVaultRef`) is racing the module that creates it — add an explicit `dependsOn` on the lookup.                                                |
+| `az role assignment create --scope /subscriptions/...` fails with `MissingSubscription` | Git Bash mangles the path — prefix `MSYS_NO_PATHCONV=1`.                                                                                                                                      |
+| Key Vault/Cognitive Services deployment fails: resource "has been soft-deleted"         | A same-named resource was deleted recently and Azure retains it for a retention period — `az keyvault purge` / `az cognitiveservices account purge`, or pick a different name.                |
 
 ### Find a region with capacity
 
@@ -486,7 +486,7 @@ in this document need setting up:
 - **Requester cannot approve their own run** — already enabled in §3.3 (separation of duties).
 - **Branch control check** — restricts `prod` deploys to `main` only: Environments → `prod` → Approvals and checks → **Branch control** → `refs/heads/main`.
 - **Exclusive lock check** — serializes concurrent `prod` deploys: Approvals and checks → **Exclusive lock**. YAML side already set: `Deploy_Prod`/`Deploy` set `lockBehavior: sequential`.
-- **Least-privilege service connection** — leave `cityops-azure` NOT authorized for all pipelines by default; explicitly authorize `app`/`infra` under Service connections → `cityops-azure` → Security (§3.4).
+- **Least-privilege service connection** — leave `cityops-azure-service-connection` NOT authorized for all pipelines by default; explicitly authorize `app`/`infra` under Service connections → `cityops-azure-service-connection` → Security (§3.4).
 
 ### 11.3 Pipeline hygiene
 
@@ -503,15 +503,15 @@ in this document need setting up:
 
 ## 12. Reference files
 
-| File                                                                                    | Purpose                                                         |
-| --------------------------------------------------------------------------------------- | --------------------------------------------------------------- |
-| [`infra/main.bicep`](../infra/main.bicep)                                               | Infrastructure orchestrator                                     |
-| [`infra/modules/keyvault.bicep`](../infra/modules/keyvault.bicep)                       | Key Vault module                                                |
-| [`infra/modules/postgres.bicep`](../infra/modules/postgres.bicep)                       | PostgreSQL Flexible Server module                               |
-| [`infra/modules/appservice.bicep`](../infra/modules/appservice.bicep)                   | App Service (plan + web app + dev slot) module                  |
-| [`infra/modules/openai.bicep`](../infra/modules/openai.bicep)                           | Azure OpenAI account + model deployment module                  |
-| [`.ado/app.yml`](../.ado/app.yml)                                                       | App CI/CD (build, test, deploy dev/prod)                        |
-| [`.ado/infra.yml`](../.ado/infra.yml)                                                   | Infra pipeline (validate + apply)                                |
-| [`.ado/templates/resolve-names.yml`](../.ado/templates/resolve-names.yml)               | Shared web app / Key Vault name resolution step (§11.3)         |
-| [`.env.example`](../.env.example)                                                       | Full list of runtime environment variables                      |
-| [`Dockerfile`](../Dockerfile)                                                           | Optional container build (not used for App Service code deploy) |
+| File                                                                      | Purpose                                                         |
+| ------------------------------------------------------------------------- | --------------------------------------------------------------- |
+| [`infra/main.bicep`](../infra/main.bicep)                                 | Infrastructure orchestrator                                     |
+| [`infra/modules/keyvault.bicep`](../infra/modules/keyvault.bicep)         | Key Vault module                                                |
+| [`infra/modules/postgres.bicep`](../infra/modules/postgres.bicep)         | PostgreSQL Flexible Server module                               |
+| [`infra/modules/appservice.bicep`](../infra/modules/appservice.bicep)     | App Service (plan + web app + dev slot) module                  |
+| [`infra/modules/openai.bicep`](../infra/modules/openai.bicep)             | Azure OpenAI account + model deployment module                  |
+| [`.ado/app.yml`](../.ado/app.yml)                                         | App CI/CD (build, test, deploy dev/prod)                        |
+| [`.ado/infra.yml`](../.ado/infra.yml)                                     | Infra pipeline (validate + apply)                               |
+| [`.ado/templates/resolve-names.yml`](../.ado/templates/resolve-names.yml) | Shared web app / Key Vault name resolution step (§11.3)         |
+| [`.env.example`](../.env.example)                                         | Full list of runtime environment variables                      |
+| [`Dockerfile`](../Dockerfile)                                             | Optional container build (not used for App Service code deploy) |
