@@ -68,7 +68,7 @@ PostgreSQL Flexible Server, and Azure OpenAI) via the independent `location`, `d
 
 [`scripts/setup.sh`](../scripts/setup.sh) provisions the resource group, deploys Bicep, creates
 the ARM service connection, both Library variable groups, the `dev`/`prod` Environments, and
-registers the 4 YAML pipelines.
+registers the 2 YAML pipelines (`infra`, `app`).
 
 ```bash
 ./scripts/setup.sh
@@ -94,8 +94,8 @@ AZURE_SUBSCRIPTION_ID=<subscription-id> ADO_ORG_URL=https://dev.azure.com/<org> 
 prompted for). Safe to re-run — every step checks for an existing target first.
 
 **Not automated** (need interactive Graph lookups, have no YAML/ARM form, or shouldn't be
-changed silently by a script): the `prod` approval's approver, the Classic Release pipelines,
-Branch control / Exclusive lock checks, GitHub branch protection — see §5.2, §5.6, §11.
+changed silently by a script): the `prod` approval's approver, Branch control / Exclusive lock
+checks, GitHub branch protection — see §5.2, §11.
 
 ---
 
@@ -178,7 +178,7 @@ az role assignment create --assignee <SERVICE_PRINCIPAL_APP_ID> --role "User Acc
   --scope "/subscriptions/<SUBSCRIPTION_ID>/resourceGroups/rg-cityops"
 ```
 
-> Use `SP_SCOPE=subscription` (in `scripts/setup.sh`) only if you'll run `classic-infra-release` against arbitrary new resource groups — otherwise you'll hit a `403` (see §9).
+> Use `SP_SCOPE=subscription` (in `scripts/setup.sh`) only if the pipelines will target arbitrary new resource groups — otherwise you'll hit a `403` (see §9).
 
 ### 5.2 Environments (approval gates)
 
@@ -242,96 +242,17 @@ az pipelines variable-group variable create --group-id <id> --name authSecret --
 az pipelines variable-group variable create --group-id <id> --name authSecretDev --value "<value>" --secret true
 ```
 
-### 5.4 Register pipelines — Modern (YAML)
+### 5.4 Register pipelines (YAML)
 
 Pipelines → New pipeline → Existing YAML file:
 
-| Pipeline       | YAML file                                           | Purpose                                             |
-| -------------- | --------------------------------------------------- | --------------------------------------------------- |
-| `modern-app`   | [`.ado/modern/app.yml`](../.ado/modern/app.yml)     | Build, test, coverage, **Deploy_Dev → Deploy_Prod** |
-| `modern-infra` | [`.ado/modern/infra.yml`](../.ado/modern/infra.yml) | **Validate (what-if) → Deploy (apply)**             |
+| Pipeline | YAML file                             | Purpose                                                     |
+| -------- | -------------------------------------- | ------------------------------------------------------------- |
+| `infra`  | [`.ado/infra.yml`](../.ado/infra.yml) | **Validate (what-if) → Deploy (apply)** — run this one first  |
+| `app`    | [`.ado/app.yml`](../.ado/app.yml)     | Build, test, coverage, **Deploy_Dev → Deploy_Prod**          |
 
-### 5.5 Register pipelines — Classic build (YAML)
-
-Same app/infra, older Build+Release model, demonstrated side by side. Only the _build_ half is YAML (Classic _Release_ has no YAML equivalent — §5.6):
-
-| Pipeline              | YAML file                                                         | Purpose                                                          |
-| --------------------- | ----------------------------------------------------------------- | ---------------------------------------------------------------- |
-| `classic-app-build`   | [`.ado/classic/app-build.yml`](../.ado/classic/app-build.yml)     | Builds, publishes `drop` + `migrations` artifacts                |
-| `classic-infra-build` | [`.ado/classic/infra-build.yml`](../.ado/classic/infra-build.yml) | Compiles `infra/main.bicep` → `main.json`, publishes `infra-arm` |
-
-Both use `trigger: none` (manual only), so they never double-deploy alongside the Modern pipelines' automatic CI/CD.
-
-### 5.6 Classic Release pipelines (UI-only — no YAML) — full steps
-
-Azure DevOps Classic **Release** pipelines have no YAML or ARM representation, so these must be
-built by hand in the UI. This section is the complete, from-scratch script for doing that.
-
-#### `classic-app-release`
-
-1. **Pipelines → Releases → New pipeline → Empty job.**
-2. **Artifacts:** Add an artifact → Source type **Build** → Source (build pipeline) =
-   `classic-app-build` → Default version = **Latest**. Continuous deployment trigger: **OFF**
-   (this project promotes manually, matching the Modern pipeline's manual-prod design).
-3. **Stage 1 — "Dev":**
-   - Set the stage's **Environment** to the ADO Environment `dev` — no approval configured.
-   - Add task **Azure CLI** (`AzureCLI@2`) — "Resolve web app / key vault names":
-     - Azure subscription: `cityops-azure`
-     - Script type: Bash, inline:
-       ```bash
-       webAppName=$(az webapp list -g "$(resourceGroup)" --query "[?starts_with(name,'app-$(baseName)-')].name | [0]" -o tsv)
-       keyVaultName=$(az keyvault list -g "$(resourceGroup)" --query "[?starts_with(name,'kv-$(baseName)-')].name | [0]" -o tsv)
-       echo "##vso[task.setvariable variable=webAppName]$webAppName"
-       echo "##vso[task.setvariable variable=keyVaultName]$keyVaultName"
-       ```
-   - Add task **Azure Key Vault** (`AzureKeyVault@2`): Key Vault name = `$(keyVaultName)`,
-     Secrets filter = `DATABASE-URL-DEV`.
-   - Add task **npm** → `ci` (working dir = `_classic-app-build/migrations`).
-   - Add task **Bash script** → `npm run db:migrate:deploy`, working directory =
-     `_classic-app-build/migrations`, environment variable `DATABASE_URL` = `$(DATABASE-URL-DEV)`.
-   - Add task **Azure App Service Deploy** (`AzureWebApp@1`): App type = Web App on Linux, App
-     service name = `$(webAppName)`, Slot = `dev`, Package =
-     `$(System.DefaultWorkingDirectory)/_classic-app-build/drop`, Startup command = `node server.js`.
-   - Link variable group **`cityops-env`** to this stage (Variables tab → Variable groups →
-     Link) so `resourceGroup` resolves.
-4. **Stage 2 — "Prod":**
-   - Set the stage's **Environment** to `prod` (inherits the approval check from §5.2 —
-     Classic Release stages automatically respect an Environment's approval checks the same way
-     YAML deployment jobs do).
-   - Same "Resolve names" Azure CLI task as Stage 1.
-   - Add task **Azure Key Vault**: Secrets filter = `DATABASE-URL`.
-   - Add task **npm ci** + **Bash script** `npm run db:migrate:deploy` with `DATABASE_URL` =
-     `$(DATABASE-URL)`, working directory = migrations artifact.
-   - Add task **Azure App Service Manage** (`AzureAppServiceManage@0`): Action = **Swap Slots**,
-     App Service name = `$(webAppName)`, Source slot = `dev`.
-   - Link variable group **`cityops-env`** to this stage too.
-5. Save. To release: **Create release** → select the desired build → the release runs Stage 1
-   automatically, then waits for approval before Stage 2.
-
-#### `classic-infra-release`
-
-1. **Pipelines → Releases → New pipeline → Empty job.**
-2. **Artifacts:** Source type **Build** → Source = `classic-infra-build` (artifact `infra-arm`).
-3. **Single stage — "Apply":**
-   - Environment: `prod` (same approval gate as everything else production-impacting).
-   - Link variable groups **`cityops-env`** and **`cityops-infra`** to this stage.
-   - Add task **ARM Template Deployment** (`AzureResourceManagerTemplateDeployment@3`):
-     - Scope: Resource Group | Azure subscription: `cityops-azure`
-     - Resource group: `$(resourceGroup)`
-     - Location: `$(location)`
-     - Template location: Linked artifact → `main.json` (from the `infra-arm` artifact)
-     - Override template parameters:
-       `-location $(location) -dbLocation $(dbLocation) -baseName $(baseName) -openAiAccountName $(openAiAccountName) -pgAdminPassword $(pgAdminPassword) -authSecret $(authSecret) -authSecretDev $(authSecretDev)`
-     - Deployment mode: **Incremental**
-4. Save. To apply: **Create release** manually (never automatic), approve the `prod` gate.
-
-#### `classic-ui-app-build` (optional — no-YAML designer demo)
-
-To also demonstrate the **true** Classic experience end to end (no YAML anywhere, including the
-build), recreate `classic-app-build.yml`'s steps using **Pipelines → New pipeline → Use the
-classic editor → Empty job**, adding each task (Node.js tool installer, npm, Bash script,
-Publish Build Artifacts ×2) through the designer UI instead of a YAML file. Functionally
-identical; purely illustrates the pre-YAML authoring model.
+Run `infra` first: it provisions/updates the shared Azure resources (App Service + dev slot,
+PostgreSQL, Key Vault, Azure OpenAI) so `app` always has somewhere ready to deploy to.
 
 ---
 
@@ -365,7 +286,7 @@ No secret is ever a plaintext App Service setting or a pipeline YAML literal —
 
 ## 7. Deployment flow (CI/CD)
 
-### 7.1 App pipeline (`modern-app` / `classic-app-build` + `classic-app-release`)
+### 7.1 App pipeline (`app`)
 
 ```
 Build & Unit tests → Integration tests → Deploy_Dev (dev slot, migrate cityops_dev) [env: dev, no approval]
@@ -379,7 +300,7 @@ Manual run only: ... → E2E tests (passes) → Deploy_Prod (migrate cityops, sw
 - **E2E tests** run on PRs, nightly, and manual runs only — not on every push, to keep dev-deploy fast.
 - **Deploy_Prod** only runs on a manually-triggered run (the one trigger where E2E also runs), depends on `Deploy_Dev` + `E2ETest`, migrates `cityops`, then **swaps** dev → production. Gated by the `prod` approval — there is no automatic path to production.
 
-### 7.2 Infra pipeline (`modern-infra` / `classic-infra-build` + `classic-infra-release`)
+### 7.2 Infra pipeline (`infra`)
 
 ```
 Validate (bicep lint + what-if, every push/PR) → Deploy (manual run only) [env: prod, approval]
@@ -478,7 +399,7 @@ in this document need setting up:
   ```bash
   gh api repos/zynsys/cityops/branches/main/protection -X PUT --input - <<'EOF'
   {
-    "required_status_checks": { "strict": true, "contexts": ["modern-app"] },
+    "required_status_checks": { "strict": true, "contexts": ["app"] },
     "enforce_admins": true,
     "required_pull_request_reviews": { "required_approving_review_count": 1 },
     "restrictions": null
@@ -491,12 +412,12 @@ in this document need setting up:
 - **Requester cannot approve their own run** — already enabled in §5.2 (separation of duties).
 - **Branch control check** — restricts `prod` deploys to `main` only: Environments → `prod` → Approvals and checks → **Branch control** → `refs/heads/main`.
 - **Exclusive lock check** — serializes concurrent `prod` deploys: Approvals and checks → **Exclusive lock**. YAML side already set: `Deploy_Prod`/`Deploy` set `lockBehavior: sequential`.
-- **Least-privilege service connection** — `scripts/setup.sh` leaves `AUTHORIZE_FOR_ALL_PIPELINES=false` by default; explicitly authorize `modern-app`/`modern-infra` (and Classic Releases) under Service connections → `cityops-azure` → Security.
+- **Least-privilege service connection** — `scripts/setup.sh` leaves `AUTHORIZE_FOR_ALL_PIPELINES=false` by default; explicitly authorize `app`/`infra` under Service connections → `cityops-azure` → Security.
 
 ### 11.3 Pipeline hygiene
 
 - **Lint** and **`npm audit --audit-level=high`** run in `Build_and_UnitTest` as **warn-only** — the repo has 9 pre-existing lint errors; fix those, then make it blocking.
-- **Shared resolve-names template** — [`.ado/modern/templates/resolve-names.yml`](../.ado/modern/templates/resolve-names.yml), used by both `Deploy_Dev` and `Deploy_Prod`.
+- **Shared resolve-names template** — [`.ado/templates/resolve-names.yml`](../.ado/templates/resolve-names.yml), used by both `Deploy_Dev` and `Deploy_Prod`.
 - **Nightly drift detection** — `infra.yml`'s `Validate` stage also runs on a nightly schedule; `Deploy` stays manual-gated, so nothing auto-applies.
 
 ### 11.4 Retention & cost governance
@@ -516,10 +437,8 @@ in this document need setting up:
 | [`infra/modules/postgres.bicep`](../infra/modules/postgres.bicep)                       | PostgreSQL Flexible Server module                               |
 | [`infra/modules/appservice.bicep`](../infra/modules/appservice.bicep)                   | App Service (plan + web app + dev slot) module                  |
 | [`infra/modules/openai.bicep`](../infra/modules/openai.bicep)                           | Azure OpenAI account + model deployment module                  |
-| [`.ado/modern/app.yml`](../.ado/modern/app.yml)                                         | Modern app CI/CD (build, test, deploy dev/prod)                 |
-| [`.ado/modern/infra.yml`](../.ado/modern/infra.yml)                                     | Modern infra pipeline                                           |
-| [`.ado/modern/templates/resolve-names.yml`](../.ado/modern/templates/resolve-names.yml) | Shared web app / Key Vault name resolution step (§11.3)         |
-| [`.ado/classic/app-build.yml`](../.ado/classic/app-build.yml)                           | Classic app build (paired with a UI-defined Release, §5.6)      |
-| [`.ado/classic/infra-build.yml`](../.ado/classic/infra-build.yml)                       | Classic infra build (paired with a UI-defined Release, §5.6)    |
+| [`.ado/app.yml`](../.ado/app.yml)                                                       | App CI/CD (build, test, deploy dev/prod)                        |
+| [`.ado/infra.yml`](../.ado/infra.yml)                                                   | Infra pipeline (validate + apply)                                |
+| [`.ado/templates/resolve-names.yml`](../.ado/templates/resolve-names.yml)               | Shared web app / Key Vault name resolution step (§11.3)         |
 | [`.env.example`](../.env.example)                                                       | Full list of runtime environment variables                      |
 | [`Dockerfile`](../Dockerfile)                                                           | Optional container build (not used for App Service code deploy) |
