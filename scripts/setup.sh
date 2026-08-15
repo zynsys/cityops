@@ -46,10 +46,15 @@ AZURE_SUBSCRIPTION_ID="${AZURE_SUBSCRIPTION_ID:-}"
 
 ADO_ORG_URL="${ADO_ORG_URL:-}"                # e.g. https://dev.azure.com/my-org
 ADO_PROJECT="${ADO_PROJECT:-}"                # e.g. CityOps
-SERVICE_CONNECTION_NAME="${SERVICE_CONNECTION_NAME:-cityops-azure}"
-SP_SCOPE="${SP_SCOPE:-resource-group}"        # 'resource-group' (least privilege) or 'subscription'
-                                               # (subscription needed only if you'll target arbitrary
-                                               # new resource groups outside this one, e.g. multi-env)
+# Must match the literal 'cityops-azure-service-connection' hardcoded in .ado/app.yml and
+# .ado/infra.yml's azureSubscription: inputs (ADO can't resolve a variable-group macro there —
+# see docs/deployment-guidelines.md §5.3). Change this only if you also change both YAML files.
+SERVICE_CONNECTION_NAME="${SERVICE_CONNECTION_NAME:-cityops-azure-service-connection}"
+SP_SCOPE="${SP_SCOPE:-subscription}"          # infra/main.bicep is subscription-scoped and creates the
+                                               # resource group itself, so the pipeline's SP needs
+                                               # subscription-scope roles (you can't scope a role to a
+                                               # resource group that doesn't exist yet — §3.1).
+                                               # 'resource-group' will NOT work for the infra pipeline.
 AUTHORIZE_FOR_ALL_PIPELINES="${AUTHORIZE_FOR_ALL_PIPELINES:-false}" # least privilege: off by default
                                                # (§11.2) — leave false and explicitly authorize only
                                                # the pipelines that need this service connection.
@@ -178,17 +183,18 @@ log "Preparing secrets"
 [[ -n "$AUTH_SECRET_DEV" ]] || AUTH_SECRET_DEV="$(openssl rand -base64 32)"
 
 # ---------------------------------------------------------------------------
-# 2. Resource group + Bicep deployment
+# 2. Bicep deployment (subscription-scoped — main.bicep creates the resource group itself)
 # ---------------------------------------------------------------------------
-log "Ensuring resource group '$RESOURCE_GROUP' in $LOCATION"
-az group show -n "$RESOURCE_GROUP" >/dev/null 2>&1 || \
-  az group create -n "$RESOURCE_GROUP" -l "$LOCATION" -o none
-
-log "Deploying infra/main.bicep (App Service + dev slot, PostgreSQL, Key Vault, Azure OpenAI)"
-DEPLOY_OUTPUT="$(az deployment group create \
-  -g "$RESOURCE_GROUP" -n cityops-infra \
+# No manual `az group create`: infra/main.bicep is targetScope='subscription' and creates (or
+# adopts) the resource group via its resourcegroup.bicep module, so it's deployed with
+# `az deployment sub create` + a resourceGroupName param — exactly what the infra pipeline runs
+# (.ado/infra.yml) and what docs/deployment-guidelines.md §5 documents.
+log "Deploying infra/main.bicep (creates resource group '$RESOURCE_GROUP' + App Service + dev slot, PostgreSQL, Key Vault, Azure OpenAI)"
+DEPLOY_OUTPUT="$(az deployment sub create \
+  --location "$LOCATION" -n cityops-infra \
   -f "$REPO_ROOT/infra/main.bicep" \
-  -p location="$LOCATION" dbLocation="$DB_LOCATION" \
+  -p resourceGroupName="$RESOURCE_GROUP" \
+     location="$LOCATION" dbLocation="$DB_LOCATION" \
      baseName="$BASE_NAME" openAiAccountName="$OPENAI_ACCOUNT_NAME" \
      pgAdminPassword="$PG_ADMIN_PASSWORD" \
      authSecret="$AUTH_SECRET" \
