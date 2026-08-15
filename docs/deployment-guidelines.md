@@ -108,7 +108,20 @@ az devops service-endpoint azurerm create \
 
 Whichever path you use, the service principal needs **3 role assignments** at the
 **subscription** scope — the automatic UI wizard and `az ad sp create-for-rbac` only grant
-Contributor, so grant the other two explicitly. If you used the UI wizard, you won't have
+Contributor, so grant the other two explicitly:
+
+- **Contributor** — create/update resources (granted automatically by the UI wizard / `az ad sp create-for-rbac`)
+- **User Access Administrator** — Bicep grants Key Vault roles to each slot's managed identity, so the deploying principal must be able to grant roles too
+- **Key Vault Secrets User** — the pipeline's own `AzureKeyVault@2` tasks (fetch dev/prod DB secret) run as this SP, not the App Service's managed identity; without this, every deploy fails with `403 Forbidden` on `getSecret` (Key Vault RBAC mode treats secret data-plane ops separately from Contributor)
+
+**UI:** Subscription → **Access control (IAM)** → **+ Add** → **Add role assignment** → search
+and select the role → **Next** → Members: **Select members** → search for the service
+connection's app registration (its display name matches the service connection name,
+`cityops-azure-service-connection`, unless you renamed it) → select it → **Review + assign**.
+Repeat for all 3 roles (3 separate "Add role assignment" flows — you can only pick one role per
+flow).
+
+**CLI equivalent:** If you used the UI wizard to create the service connection, you won't have
 `$SP_APP_ID` from an `az ad sp create-for-rbac` call — retrieve it from the connection itself
 (works the same regardless of which path created it):
 
@@ -121,16 +134,17 @@ SP_APP_ID=$(az devops service-endpoint show --id "$SC_ID" --query "authorization
 SCOPE="/subscriptions/$SUBSCRIPTION_ID"
 
 az role assignment create --assignee "$SP_APP_ID" --role "Contributor" --scope "$SCOPE"
-# Bicep grants Key Vault roles to each slot's managed identity — the deploying principal
-# must be able to grant roles too.
 az role assignment create --assignee "$SP_APP_ID" --role "User Access Administrator" --scope "$SCOPE"
-# The pipeline's own AzureKeyVault@2 tasks (Fetch dev/prod DB secret) run as this SP, not the
-# App Service's managed identity — without this, every deploy fails with 403 Forbidden on
-# getSecret. Key Vault (RBAC mode) treats secret data-plane ops separately from Contributor.
 az role assignment create --assignee "$SP_APP_ID" --role "Key Vault Secrets User" --scope "$SCOPE"
 ```
 
 > Git Bash on Windows mangles a leading `/subscriptions/...` argument into a Windows path — prefix `MSYS_NO_PATHCONV=1` before `az role assignment create` if you hit `MissingSubscription`.
+>
+> Assign at the **subscription** scope (`/subscriptions/$SUBSCRIPTION_ID`), not a resource
+> group or individual resource — `infra/main.bicep` creates the resource group itself, so a
+> narrower scope either doesn't exist yet at deploy time or silently excludes resources Bicep
+> creates later (e.g. scoping `Key Vault Secrets User` to one Key Vault only works until that
+> vault's name changes on a future deploy).
 
 ### 3.2 Create Library variable groups
 
