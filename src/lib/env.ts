@@ -21,6 +21,7 @@ const envSchema = z
     AZURE_OPENAI_DEPLOYMENT: z.string().optional(),
     AZURE_OPENAI_API_VERSION: z.string().optional(),
     AI_MODEL_VERSION: z.string().optional(),
+    APPLICATIONINSIGHTS_CONNECTION_STRING: z.string().optional(),
   })
   .superRefine((env, ctx) => {
     const isProd = process.env.NODE_ENV === 'production';

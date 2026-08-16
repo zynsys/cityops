@@ -108,6 +108,18 @@ resource openAiRef 'Microsoft.CognitiveServices/accounts@2023-05-01' existing = 
 }
 
 // ---------------------------------------------------------------------------
+// Observability — Application Insights + Log Analytics Workspace
+// ---------------------------------------------------------------------------
+module appInsights 'appinsights.bicep' = {
+  name: 'appInsightsDeploy'
+  params: {
+    location: location
+    baseName: baseName
+    tags: tags
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Data layer
 // ---------------------------------------------------------------------------
 module postgres 'postgres.bicep' = {
@@ -240,6 +252,14 @@ var commonAppSettings = [
     name: 'AZURE_OPENAI_API_KEY'
     value: '@Microsoft.KeyVault(VaultName=${kvName};SecretName=AZURE-OPENAI-API-KEY)'
   }
+  {
+    name: 'APPLICATIONINSIGHTS_CONNECTION_STRING'
+    value: appInsights.outputs.connectionString
+  }
+  {
+    name: 'ApplicationInsightsAgent_EXTENSION_VERSION'
+    value: '~3'
+  }
 ]
 
 var prodAppSettings = [
@@ -343,4 +363,5 @@ output devSlotUrl string = 'https://${devHost}'
 output keyVaultName string = kvName
 output postgresFqdn string = postgres.outputs.fqdn
 output resourceGroupName string = resourceGroup().name
+output appInsightsName string = appInsights.outputs.appInsightsName
 
