@@ -43,9 +43,9 @@ stages:
         pool:
           vmImage: ubuntu-latest
         steps:
-          - task: NodeTool@0
+          - task: UseNode@1
             inputs:
-              versionSpec: $(nodeVersion)
+              version: $(nodeVersion)
             displayName: 'Install Node.js'
 
           - script: npm ci
@@ -134,9 +134,9 @@ stages:
         variables:
           DATABASE_URL: 'postgresql://postgres:postgres@localhost:5432/cityops_test'
         steps:
-          - task: NodeTool@0
+          - task: UseNode@1
             inputs:
-              versionSpec: $(nodeVersion)
+              version: $(nodeVersion)
             displayName: 'Install Node.js'
 
           - script: npm ci
@@ -192,9 +192,9 @@ stages:
           AUTH_SECRET: 'ci-e2e-nonsecret-placeholder-0123456789'
           CI: 'true'
         steps:
-          - task: NodeTool@0
+          - task: UseNode@1
             inputs:
-              versionSpec: $(nodeVersion)
+              version: $(nodeVersion)
             displayName: 'Install Node.js'
 
           - script: npm ci
@@ -268,9 +268,9 @@ stages:
             deploy:
               steps:
                 - checkout: self
-                - task: NodeTool@0
+                - task: UseNode@1
                   inputs:
-                    versionSpec: $(nodeVersion)
+                    version: $(nodeVersion)
                   displayName: 'Install Node.js'
                 - template: templates/resolve-names.yml
                   parameters:
@@ -339,9 +339,9 @@ stages:
             deploy:
               steps:
                 - checkout: self
-                - task: NodeTool@0
+                - task: UseNode@1
                   inputs:
-                    versionSpec: $(nodeVersion)
+                    version: $(nodeVersion)
                   displayName: 'Install Node.js'
                 - template: templates/resolve-names.yml
                   parameters:
