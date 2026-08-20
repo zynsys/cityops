@@ -155,7 +155,7 @@ if [[ -n "$ADO_ORG_URL" ]]; then
       fi
     fi
   fi
-  prompt GITHUB_PAT "GitHub PAT for the GitHub service connection + pipeline registration" "$GITHUB_PAT" secret
+  prompt GITHUB_PAT "GitHub PAT (scopes: repo + admin:repo_hook — the latter installs the CI/PR webhook so pushes trigger the pipeline) for the GitHub service connection + pipeline registration" "$GITHUB_PAT" secret
 fi
 
 if [[ -n "$AZURE_SUBSCRIPTION_ID" ]]; then
