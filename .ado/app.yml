@@ -290,6 +290,10 @@ stages:
                   displayName: 'Migrate cityops_dev'
                   env:
                     DATABASE_URL: $(DATABASE-URL-DEV)
+                - script: npm run db:seed
+                  displayName: 'Seed cityops_dev (idempotent upserts)'
+                  env:
+                    DATABASE_URL: $(DATABASE-URL-DEV)
                 - download: current
                   artifact: drop
                 - task: AzureWebApp@1
@@ -355,6 +359,10 @@ stages:
                   displayName: 'Install deps (Prisma CLI)'
                 - script: npm run db:migrate:deploy
                   displayName: 'Migrate cityops (prod)'
+                  env:
+                    DATABASE_URL: $(DATABASE-URL)
+                - script: npm run db:seed
+                  displayName: 'Seed cityops (idempotent upserts — remove once real data exists)'
                   env:
                     DATABASE_URL: $(DATABASE-URL)
                 - task: AzureAppServiceManage@0
