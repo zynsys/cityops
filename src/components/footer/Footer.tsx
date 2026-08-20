@@ -63,7 +63,7 @@ export function Footer() {
           </div>
 
           {/* Link columns */}
-          {Object.entries(FOOTER_LINKS).map(([heading, links], index, arr) => (
+          {Object.entries(FOOTER_LINKS).map(([heading, links]) => (
             <div key={heading}>
               <h3 className="text-xl font-bold text-white">{heading}</h3>
               <ul className="mt-4 space-y-3">

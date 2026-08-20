@@ -1,4 +1,4 @@
-import type { NextAuthConfig } from "next-auth";
+import type { NextAuthConfig } from 'next-auth';
 
 /**
  * Edge-compatible auth configuration.
@@ -10,7 +10,11 @@ import type { NextAuthConfig } from "next-auth";
  * Providers that require server-only code are added in auth.ts.
  */
 export const authConfig = {
-  session: { strategy: "jwt" },
+  // Trust the host header when self-hosting (Azure App Service, CI, Docker) —
+  // Auth.js only trusts it automatically on Vercel, and otherwise throws
+  // `UntrustedHost`. The app always sits behind a trusted reverse proxy.
+  trustHost: true,
+  session: { strategy: 'jwt' },
   callbacks: {
     /**
      * Runs whenever a JWT is created (sign-in) or accessed.
@@ -25,8 +29,8 @@ export const authConfig = {
     jwt({ token, user }) {
       if (user) {
         token.userId = user.id as string;
-        token.role = (user as { role?: string }).role ?? "";
-        token.tenantId = (user as { tenantId?: string }).tenantId ?? "";
+        token.role = (user as { role?: string }).role ?? '';
+        token.tenantId = (user as { tenantId?: string }).tenantId ?? '';
       }
       return token;
     },

@@ -19,8 +19,13 @@ export default defineConfig({
   test: {
     environment: 'jsdom',
     globals: true,
-    pool: 'threads',
+    // Run every test file in one long-lived fork (Vitest 4's replacement for
+    // the old `singleFork` = maxWorkers 1 + isolate false). Multi-worker pools
+    // intermittently hang on Windows/CI with "Timeout waiting for worker to
+    // respond"; a single fork sets up jsdom once and avoids that churn.
+    pool: 'forks',
     maxWorkers: 1,
+    isolate: false,
     setupFiles: ['src/__tests__/setup.ts'],
     include: ['src/**/__tests__/**/*.test.{ts,tsx}', 'src/**/*.test.{ts,tsx}'],
     exclude: ['node_modules', '.next'],

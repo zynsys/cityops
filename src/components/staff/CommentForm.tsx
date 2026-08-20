@@ -1,8 +1,8 @@
-"use client";
+'use client';
 
-import { useState } from "react";
-import { useRouter } from "next/navigation";
-import { User } from "lucide-react";
+import { useState } from 'react';
+import { useRouter } from 'next/navigation';
+import { User } from 'lucide-react';
 
 const MAX_BODY = 2000;
 
@@ -22,17 +22,17 @@ interface CommentFormProps {
 function formatRelativeTime(date: Date): string {
   const diffMs = Date.now() - date.getTime();
   const diffMins = Math.floor(diffMs / 60000);
-  if (diffMins < 1) return "just now";
+  if (diffMins < 1) return 'just now';
   if (diffMins < 60) return `${diffMins}m ago`;
   const diffHours = Math.floor(diffMins / 60);
   if (diffHours < 24) return `${diffHours}h ago`;
   return `${Math.floor(diffHours / 24)}d ago`;
 }
 
-export function CommentForm({ reportId, currentUserDisplayName }: CommentFormProps) {
+export function CommentForm({ reportId }: CommentFormProps) {
   const router = useRouter();
   const [isInternal, setIsInternal] = useState(true);
-  const [body, setBody] = useState("");
+  const [body, setBody] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [newComments, setNewComments] = useState<Comment[]>([]);
@@ -48,27 +48,27 @@ export function CommentForm({ reportId, currentUserDisplayName }: CommentFormPro
 
     try {
       const res = await fetch(`/api/staff/reports/${reportId}/comments`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ body: trimmed, isInternal }),
       });
 
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
-        setError((data as { error?: string }).error ?? "Failed to post comment");
+        setError((data as { error?: string }).error ?? 'Failed to post comment');
         return;
       }
 
       const data = (await res.json()) as { comment: Comment };
       setNewComments((prev) => [...prev, data.comment]);
-      setBody("");
+      setBody('');
       router.refresh();
       // Clear optimistic comments after refresh so server data is the source of truth.
       // Without this, the comment appears twice: once in newComments and once from the
       // server-refreshed ReportComments list.
       setNewComments([]);
     } catch {
-      setError("Network error. Please try again.");
+      setError('Network error. Please try again.');
     } finally {
       setIsSubmitting(false);
     }
@@ -82,43 +82,39 @@ export function CommentForm({ reportId, currentUserDisplayName }: CommentFormPro
           key={comment.id}
           className={
             comment.isInternal
-              ? "rounded-lg bg-muted border-l-4 border-accent/40 p-4"
-              : "rounded-lg border border-border bg-surface p-4"
+              ? 'rounded-lg bg-muted border-l-4 border-accent/40 p-4'
+              : 'rounded-lg border border-border bg-surface p-4'
           }
         >
           <div className="flex items-center gap-2 mb-2">
             <div className="flex h-6 w-6 items-center justify-center rounded-full bg-muted border border-border">
               <User className="h-3 w-3 text-muted-foreground" aria-hidden="true" />
             </div>
-            <span className="text-sm font-medium text-foreground">
-              {comment.user.displayName}
-            </span>
+            <span className="text-sm font-medium text-foreground">{comment.user.displayName}</span>
             {comment.isInternal && (
-              <span className="rounded-full bg-accent/15 px-2 py-0.5 text-xs font-medium text-accent">
-                Internal
-              </span>
+              <span className="rounded-full bg-accent/15 px-2 py-0.5 text-xs font-medium text-accent">Internal</span>
             )}
             <span className="ml-auto text-xs text-muted-foreground">
               {formatRelativeTime(new Date(comment.createdAt))}
             </span>
           </div>
-          <p className="text-sm text-foreground/90 whitespace-pre-wrap leading-relaxed">
-            {comment.body}
-          </p>
+          <p className="text-sm text-foreground/90 whitespace-pre-wrap leading-relaxed">{comment.body}</p>
         </div>
       ))}
 
       {/* Comment form */}
       <form onSubmit={handleSubmit} className="rounded-lg border border-border bg-surface p-4 space-y-3">
         {/* Mode toggle */}
-        <div className="flex rounded-md border border-border overflow-hidden text-xs font-medium" role="group" aria-label="Comment visibility">
+        <div
+          className="flex rounded-md border border-border overflow-hidden text-xs font-medium"
+          role="group"
+          aria-label="Comment visibility"
+        >
           <button
             type="button"
             onClick={() => setIsInternal(true)}
             className={`flex-1 px-3 py-1.5 transition-colors ${
-              isInternal
-                ? "bg-accent text-white"
-                : "bg-surface text-muted-foreground hover:text-foreground"
+              isInternal ? 'bg-accent text-white' : 'bg-surface text-muted-foreground hover:text-foreground'
             }`}
             aria-pressed={isInternal}
           >
@@ -128,9 +124,7 @@ export function CommentForm({ reportId, currentUserDisplayName }: CommentFormPro
             type="button"
             onClick={() => setIsInternal(false)}
             className={`flex-1 px-3 py-1.5 transition-colors ${
-              !isInternal
-                ? "bg-accent text-white"
-                : "bg-surface text-muted-foreground hover:text-foreground"
+              !isInternal ? 'bg-accent text-white' : 'bg-surface text-muted-foreground hover:text-foreground'
             }`}
             aria-pressed={!isInternal}
           >
@@ -176,11 +170,7 @@ export function CommentForm({ reportId, currentUserDisplayName }: CommentFormPro
                        hover:bg-accent/90 disabled:opacity-50 disabled:cursor-not-allowed
                        focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent transition-colors"
           >
-            {isSubmitting ? (
-              <span aria-live="polite">Posting…</span>
-            ) : (
-              "Post comment"
-            )}
+            {isSubmitting ? <span aria-live="polite">Posting…</span> : 'Post comment'}
           </button>
         </div>
       </form>

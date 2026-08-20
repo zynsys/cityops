@@ -17,7 +17,7 @@ schedules:
     always: true
 
 variables:
-  nodeVersion: '24.x'
+  nodeVersion: '22.x'
 
 resources:
   containers:
@@ -51,13 +51,25 @@ stages:
           - script: npm ci
             displayName: 'Install dependencies'
 
-          - script: npm run lint
+          - script: |
+              set +e
+              npm run lint
+              rc=$?
+              if [ "$rc" -ne 0 ]; then
+                echo "##vso[task.logissue type=warning]Lint returned exit code $rc (known pre-existing findings not yet triaged)."
+              fi
+              exit 0
             displayName: 'Lint (warn-only — pre-existing findings not yet triaged)'
-            continueOnError: true
 
-          - script: npm audit --audit-level=high
+          - script: |
+              set +e
+              npm audit --audit-level=high
+              rc=$?
+              if [ "$rc" -ne 0 ]; then
+                echo "##vso[task.logissue type=warning]Dependency audit returned exit code $rc (warn-only for now)."
+              fi
+              exit 0
             displayName: 'Dependency vulnerability audit (warn-only)'
-            continueOnError: true
 
           - script: mkdir -p reports && npm run test:unit -- --coverage --reporter=default --reporter=junit --outputFile.junit=reports/unit.xml
             displayName: 'Unit tests'

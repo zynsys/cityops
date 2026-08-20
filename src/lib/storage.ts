@@ -1,5 +1,5 @@
-import { writeFile, mkdir, unlink } from "fs/promises";
-import { join } from "path";
+import { writeFile, mkdir, unlink } from 'fs/promises';
+import { join } from 'path';
 
 export interface UploadedFile {
   /** URL-accessible path stored in the DB and used by next/image, e.g. /uploads/{reportId}/{name} */
@@ -18,23 +18,19 @@ export interface UploadedFile {
 export async function uploadAttachment(
   file: File,
   reportId: number | string,
-  storageName: string
+  storageName: string,
 ): Promise<UploadedFile> {
-  const provider = process.env.STORAGE_PROVIDER ?? "local";
+  const provider = process.env.STORAGE_PROVIDER ?? 'local';
 
-  if (provider === "azure") {
+  if (provider === 'azure') {
     return uploadToAzure(file, reportId, storageName);
   }
 
   return uploadToLocal(file, reportId, storageName);
 }
 
-async function uploadToLocal(
-  file: File,
-  reportId: number | string,
-  storageName: string
-): Promise<UploadedFile> {
-  const uploadDir = join(process.cwd(), "public", "uploads", String(reportId));
+async function uploadToLocal(file: File, reportId: number | string, storageName: string): Promise<UploadedFile> {
+  const uploadDir = join(process.cwd(), 'public', 'uploads', String(reportId));
   await mkdir(uploadDir, { recursive: true });
   const buffer = Buffer.from(await file.arrayBuffer());
   await writeFile(join(uploadDir, storageName), buffer);
@@ -43,12 +39,7 @@ async function uploadToLocal(
   };
 }
 
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
-async function uploadToAzure(
-  file: File,
-  reportId: number | string,
-  storageName: string
-): Promise<UploadedFile> {
+async function uploadToAzure(_file: File, _reportId: number | string, _storageName: string): Promise<UploadedFile> {
   // TODO: integrate @azure/storage-blob
   // const { BlobServiceClient } = await import("@azure/storage-blob");
   // const client = BlobServiceClient.fromConnectionString(process.env.AZURE_STORAGE_CONNECTION_STRING!);
@@ -56,7 +47,7 @@ async function uploadToAzure(
   // const blobClient = container.getBlockBlobClient(`${reportId}/${storageName}`);
   // await blobClient.uploadData(await file.arrayBuffer(), { blobHTTPHeaders: { blobContentType: file.type } });
   // return { storagePath: blobClient.url };
-  throw new Error("Azure Blob Storage is not yet configured. Set STORAGE_PROVIDER=local or implement uploadToAzure().");
+  throw new Error('Azure Blob Storage is not yet configured. Set STORAGE_PROVIDER=local or implement uploadToAzure().');
 }
 
 /**
@@ -67,17 +58,17 @@ async function uploadToAzure(
  * Silently ignores missing files (ENOENT) to keep deletions idempotent.
  */
 export async function deleteAttachment(storagePath: string): Promise<void> {
-  const provider = process.env.STORAGE_PROVIDER ?? "local";
+  const provider = process.env.STORAGE_PROVIDER ?? 'local';
 
-  if (provider === "azure") {
+  if (provider === 'azure') {
     // TODO: delete from Azure Blob Storage
     return;
   }
 
   // storagePath starts with "/" — strip it before joining with cwd
-  const relativePath = storagePath.startsWith("/") ? storagePath.slice(1) : storagePath;
-  const fullPath = join(process.cwd(), "public", relativePath);
+  const relativePath = storagePath.startsWith('/') ? storagePath.slice(1) : storagePath;
+  const fullPath = join(process.cwd(), 'public', relativePath);
   await unlink(fullPath).catch((err: NodeJS.ErrnoException) => {
-    if (err.code !== "ENOENT") throw err;
+    if (err.code !== 'ENOENT') throw err;
   });
 }

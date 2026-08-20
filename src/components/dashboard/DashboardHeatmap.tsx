@@ -1,11 +1,11 @@
-"use client";
+'use client';
 
-import { MapContainer, TileLayer, useMap, GeoJSON, Circle } from "react-leaflet";
-import L from "leaflet";
-import "leaflet/dist/leaflet.css";
-import { useEffect, useMemo, useState } from "react";
-import { useRouter } from "next/navigation";
-import type { HeatmapPoint } from "@/db/queries/analytics";
+import { MapContainer, TileLayer, useMap, GeoJSON, Circle } from 'react-leaflet';
+import L from 'leaflet';
+import 'leaflet/dist/leaflet.css';
+import { useEffect, useMemo, useState } from 'react';
+import { useRouter } from 'next/navigation';
+import type { HeatmapPoint } from '@/db/queries/analytics';
 
 const UK_CENTER: [number, number] = [54.5, -3.5];
 const UK_ZOOM = 6;
@@ -21,7 +21,7 @@ function HeatLayer({ points }: { points: HeatmapPoint[] }) {
 
   const heatData = useMemo(
     () => points.map((p) => [p.latitude, p.longitude, p.intensity] as [number, number, number]),
-    [points]
+    [points],
   );
 
   useEffect(() => {
@@ -30,7 +30,7 @@ function HeatLayer({ points }: { points: HeatmapPoint[] }) {
     let heat: L.Layer | null = null;
     let cancelled = false;
 
-    import("leaflet.heat").then(() => {
+    import('leaflet.heat').then(() => {
       if (cancelled) return;
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       heat = (L as any).heatLayer(heatData, {
@@ -50,7 +50,11 @@ function HeatLayer({ points }: { points: HeatmapPoint[] }) {
   return null;
 }
 
-function FitToBounds({ points, geoJson, postcodeCenter }: {
+function FitToBounds({
+  points,
+  geoJson,
+  postcodeCenter,
+}: {
   points: HeatmapPoint[];
   geoJson: GeoJsonGeometry | null;
   postcodeCenter: [number, number] | null;
@@ -75,14 +79,12 @@ function FitToBounds({ points, geoJson, postcodeCenter }: {
     }
 
     if (points.length > 0) {
-      const bounds = L.latLngBounds(
-        points.map((p) => [p.latitude, p.longitude] as [number, number])
-      );
+      const bounds = L.latLngBounds(points.map((p) => [p.latitude, p.longitude] as [number, number]));
       if (bounds.isValid()) {
         map.fitBounds(bounds, { padding: [30, 30], maxZoom: 12 });
       }
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [map, geoJson, postcodeCenter]);
 
   return null;
@@ -96,12 +98,12 @@ function CouncilBoundaryLayer({ geoJson }: { geoJson: GeoJsonGeometry }) {
     <GeoJSON
       // key forces re-render on slug change
       key={JSON.stringify(geoJson).slice(0, 60)}
-      data={geoJson as Parameters<typeof GeoJSON>[0]["data"]}
+      data={geoJson as Parameters<typeof GeoJSON>[0]['data']}
       style={{
-        color: "#3B82F6",
+        color: '#3B82F6',
         weight: 2,
         opacity: 0.8,
-        fillColor: "#3B82F6",
+        fillColor: '#3B82F6',
         fillOpacity: 0.07,
       }}
     />
@@ -112,47 +114,61 @@ export default function DashboardHeatmap({ points, councilSlug, postcode }: Dash
   const router = useRouter();
   const hasPoints = points.length > 0;
 
-  const [councilGeoJson, setCouncilGeoJson] = useState<GeoJsonGeometry | null>(null);
-  const [postcodeCenter, setPostcodeCenter] = useState<[number, number] | null>(null);
+  const [councilData, setCouncilData] = useState<{ slug: string; geojson: GeoJsonGeometry } | null>(null);
+  const [postcodeData, setPostcodeData] = useState<{ postcode: string; center: [number, number] } | null>(null);
 
   // Fetch council boundary GeoJSON
   useEffect(() => {
-    setCouncilGeoJson(null);
     if (!councilSlug) return;
+    let cancelled = false;
 
     fetch(`/api/analytics/boundary?council=${encodeURIComponent(councilSlug)}`)
-      .then((r) => r.ok ? r.json() : null)
+      .then((r) => (r.ok ? r.json() : null))
       .then((data) => {
-        if (data?.geojson) setCouncilGeoJson(data.geojson);
+        if (!cancelled && data?.geojson) setCouncilData({ slug: councilSlug, geojson: data.geojson });
       })
       .catch(() => {});
+
+    return () => {
+      cancelled = true;
+    };
   }, [councilSlug]);
 
   // Geocode postcode or city name via Nominatim (OpenStreetMap)
   useEffect(() => {
-    setPostcodeCenter(null);
     if (!postcode) return;
 
     const trimmed = postcode.trim();
     if (!trimmed) return;
 
+    let cancelled = false;
+
     (async () => {
       try {
         const url = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(trimmed)}&format=json&limit=1&countrycodes=gb`;
         const r = await fetch(url, {
-          headers: { "Accept-Language": "en", "User-Agent": "CityOps/1.0" },
+          headers: { 'Accept-Language': 'en', 'User-Agent': 'CityOps/1.0' },
         });
         if (!r.ok) return;
         const results = await r.json();
-        if (Array.isArray(results) && results[0]?.lat && results[0]?.lon) {
-          setPostcodeCenter([Number(results[0].lat), Number(results[0].lon)]);
+        if (!cancelled && Array.isArray(results) && results[0]?.lat && results[0]?.lon) {
+          setPostcodeData({ postcode, center: [Number(results[0].lat), Number(results[0].lon)] });
         }
       } catch {}
     })();
+
+    return () => {
+      cancelled = true;
+    };
   }, [postcode]);
 
+  // Only surface data that matches the current inputs, so stale results are
+  // cleared as soon as councilSlug / postcode changes.
+  const councilGeoJson = councilData && councilData.slug === councilSlug ? councilData.geojson : null;
+  const postcodeCenter = postcodeData && postcodeData.postcode === postcode ? postcodeData.center : null;
+
   const handleViewFullMap = () => {
-    const url = councilSlug ? `/map?council=${encodeURIComponent(councilSlug)}` : "/map";
+    const url = councilSlug ? `/map?council=${encodeURIComponent(councilSlug)}` : '/map';
     router.push(url);
   };
 
@@ -186,10 +202,10 @@ export default function DashboardHeatmap({ points, councilSlug, postcode }: Dash
               center={postcodeCenter}
               radius={2000}
               pathOptions={{
-                color: "#F59E0B",
+                color: '#F59E0B',
                 weight: 2,
                 opacity: 0.8,
-                fillColor: "#F59E0B",
+                fillColor: '#F59E0B',
                 fillOpacity: 0.1,
               }}
             />
@@ -197,20 +213,14 @@ export default function DashboardHeatmap({ points, councilSlug, postcode }: Dash
 
           {hasPoints && <HeatLayer points={points} />}
 
-          <FitToBounds
-            points={points}
-            geoJson={councilGeoJson}
-            postcodeCenter={postcodeCenter}
-          />
+          <FitToBounds points={points} geoJson={councilGeoJson} postcodeCenter={postcodeCenter} />
         </MapContainer>
 
         {/* Empty state overlay */}
         {!hasPoints && (
           <div className="absolute inset-0 flex items-center justify-center z-[500] pointer-events-none">
             <div className="bg-background/80 backdrop-blur-sm rounded-lg px-4 py-2">
-              <p className="text-sm text-muted-foreground">
-                No location data for the selected period.
-              </p>
+              <p className="text-sm text-muted-foreground">No location data for the selected period.</p>
             </div>
           </div>
         )}
@@ -228,4 +238,3 @@ export default function DashboardHeatmap({ points, councilSlug, postcode }: Dash
     </div>
   );
 }
-

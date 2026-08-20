@@ -1,21 +1,21 @@
-"use client";
+'use client';
 
-import { useRef, useEffect, useState } from "react";
-import { MapContainer, TileLayer, Marker, Popup, useMap, GeoJSON } from "react-leaflet";
-import L from "leaflet";
-import "leaflet/dist/leaflet.css";
-import Link from "next/link";
-import { getStatusConfig } from "@/lib/reportStatusConfig";
-import { useReportsPageContext } from "./ReportsPageContext";
-import type { PublicReport } from "@/db/queries/reports";
+import { useRef, useEffect, useState } from 'react';
+import { MapContainer, TileLayer, Marker, Popup, useMap, GeoJSON } from 'react-leaflet';
+import L from 'leaflet';
+import 'leaflet/dist/leaflet.css';
+import Link from 'next/link';
+import { getStatusConfig } from '@/lib/reportStatusConfig';
+import { useReportsPageContext } from './ReportsPageContext';
+import type { PublicReport } from '@/db/queries/reports';
 
-const DEFAULT_PIN_COLOR = "#6B7280";
+const DEFAULT_PIN_COLOR = '#6B7280';
 const UK_CENTER: [number, number] = [54.5, -3.5];
 const UK_ZOOM = 6;
 
 function createNormalIcon(color: string): L.DivIcon {
   return L.divIcon({
-    className: "",
+    className: '',
     iconSize: [32, 32],
     iconAnchor: [16, 32],
     popupAnchor: [0, -32],
@@ -34,7 +34,7 @@ function createNormalIcon(color: string): L.DivIcon {
 
 function createHighlightIcon(color: string): L.DivIcon {
   return L.divIcon({
-    className: "",
+    className: '',
     iconSize: [40, 40],
     iconAnchor: [20, 40],
     popupAnchor: [0, -40],
@@ -66,29 +66,20 @@ function FitBounds({ reports, boundaryGeoJSON }: { reports: PublicReport[]; boun
     }
 
     // Fallback: fit to report pin coordinates
-    const withCoords = reports.filter(
-      (r) => r.latitude != null && r.longitude != null
-    );
+    const withCoords = reports.filter((r) => r.latitude != null && r.longitude != null);
     if (withCoords.length === 0) return;
 
     if (withCoords.length === 1) {
-      map.setView(
-        [withCoords[0].latitude!, withCoords[0].longitude!],
-        15,
-        { animate: false }
-      );
+      map.setView([withCoords[0].latitude!, withCoords[0].longitude!], 15, { animate: false });
       return;
     }
 
     const lats = withCoords.map((r) => r.latitude!);
     const lngs = withCoords.map((r) => r.longitude!);
-    map.fitBounds(
-      L.latLngBounds(
-        [Math.min(...lats), Math.min(...lngs)],
-        [Math.max(...lats), Math.max(...lngs)]
-      ),
-      { padding: [40, 40], animate: false }
-    );
+    map.fitBounds(L.latLngBounds([Math.min(...lats), Math.min(...lngs)], [Math.max(...lats), Math.max(...lngs)]), {
+      padding: [40, 40],
+      animate: false,
+    });
   }, [map, reports, boundaryGeoJSON]);
 
   return null;
@@ -104,20 +95,28 @@ export default function ReportsMap({ reports, councilSlug, fitBounds = true }: R
   const { hoveredId } = useReportsPageContext();
   const markerRefs = useRef<Record<number, L.Marker>>({});
   const reportsRef = useRef(reports);
-  reportsRef.current = reports;
+  useEffect(() => {
+    reportsRef.current = reports;
+  }, [reports]);
 
   // Fetch council boundary GeoJSON when a council slug is provided
-  const [boundaryGeoJSON, setBoundaryGeoJSON] = useState<object | null>(null);
+  const [boundaryData, setBoundaryData] = useState<{ slug: string; geojson: object } | null>(null);
   useEffect(() => {
-    setBoundaryGeoJSON(null);
     if (!councilSlug) return;
+    let cancelled = false;
     fetch(`/api/analytics/boundary?council=${encodeURIComponent(councilSlug)}`)
       .then((r) => r.json())
       .then((data) => {
-        if (data?.geojson) setBoundaryGeoJSON(data.geojson);
+        if (!cancelled && data?.geojson) setBoundaryData({ slug: councilSlug, geojson: data.geojson });
       })
       .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
   }, [councilSlug]);
+
+  // Only surface the boundary for the current slug so stale data clears on change.
+  const boundaryGeoJSON = boundaryData && boundaryData.slug === councilSlug ? boundaryData.geojson : null;
 
   // Update marker icons when hoveredId changes
   useEffect(() => {
@@ -125,17 +124,11 @@ export default function ReportsMap({ reports, councilSlug, fitBounds = true }: R
       const id = Number(idStr);
       const report = reportsRef.current.find((r) => r.id === id);
       const color = report?.category_color ?? DEFAULT_PIN_COLOR;
-      marker.setIcon(
-        id === hoveredId
-          ? createHighlightIcon(color)
-          : createNormalIcon(color)
-      );
+      marker.setIcon(id === hoveredId ? createHighlightIcon(color) : createNormalIcon(color));
     });
   }, [hoveredId]);
 
-  const reportsWithCoords = reports.filter(
-    (r) => r.latitude != null && r.longitude != null
-  );
+  const reportsWithCoords = reports.filter((r) => r.latitude != null && r.longitude != null);
 
   return (
     <MapContainer
@@ -154,7 +147,7 @@ export default function ReportsMap({ reports, councilSlug, fitBounds = true }: R
           key={councilSlug}
           data={boundaryGeoJSON as GeoJSON.GeoJsonObject}
           style={{
-            color: "#ffffff",
+            color: '#ffffff',
             weight: 2.5,
             fill: false,
             opacity: 0.9,
@@ -176,9 +169,7 @@ export default function ReportsMap({ reports, councilSlug, fitBounds = true }: R
           >
             <Popup>
               <div className="min-w-[180px] max-w-[240px]">
-                <p className="font-semibold text-sm leading-snug line-clamp-2 mb-1.5">
-                  {report.title}
-                </p>
+                <p className="font-semibold text-sm leading-snug line-clamp-2 mb-1.5">{report.title}</p>
                 <span
                   className="inline-block text-xs font-medium px-2 py-0.5 rounded-full text-white mb-2"
                   style={{ backgroundColor: statusCfg.color }}

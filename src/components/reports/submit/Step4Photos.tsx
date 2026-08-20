@@ -1,10 +1,10 @@
-"use client";
+'use client';
 
-import { useEffect, useRef, useState } from "react";
-import { ArrowLeft, ArrowRight, AlertCircle } from "lucide-react";
-import { useReportSubmission } from "./ReportSubmissionContext";
-import PhotoDropZone from "./PhotoDropZone";
-import PhotoThumbnail from "./PhotoThumbnail";
+import { useEffect, useMemo, useState } from 'react';
+import { ArrowLeft, ArrowRight, AlertCircle } from 'lucide-react';
+import { useReportSubmission } from './ReportSubmissionContext';
+import PhotoDropZone from './PhotoDropZone';
+import PhotoThumbnail from './PhotoThumbnail';
 
 interface Step4PhotosProps {
   onBack: () => void;
@@ -18,49 +18,31 @@ export default function Step4Photos({ onBack, onNext }: Step4PhotosProps) {
   const [files, setFiles] = useState<File[]>(state.attachments);
   const [errors, setErrors] = useState<string[]>([]);
 
-  // Object URL map: file identity (name+size) → object URL
-  const urlMapRef = useRef<Map<string, string>>(new Map());
-
-  // Revoke URLs for files that have been removed from the list
-  useEffect(() => {
-    const map = urlMapRef.current;
-    const activeKeys = new Set(files.map((f) => `${f.name}-${f.size}`));
-    for (const [key, url] of map.entries()) {
-      if (!activeKeys.has(key)) {
-        URL.revokeObjectURL(url);
-        map.delete(key);
-      }
+  // Object URLs keyed by "name-size", derived from the file list and revoked on
+  // change/unmount so blob URLs are never leaked.
+  const objectUrls = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const file of files) {
+      map.set(`${file.name}-${file.size}`, URL.createObjectURL(file));
     }
+    return map;
   }, [files]);
 
-  // Compute object URL synchronously so src is never empty on the first render
-  function getUrl(file: File): string {
-    const key = `${file.name}-${file.size}`;
-    const map = urlMapRef.current;
-    if (!map.has(key)) {
-      map.set(key, URL.createObjectURL(file));
-    }
-    return map.get(key)!;
-  }
-
-  // Revoke all remaining URLs on unmount
   useEffect(() => {
-    const map = urlMapRef.current;
     return () => {
-      for (const url of map.values()) {
-        URL.revokeObjectURL(url);
-      }
-      map.clear();
+      for (const url of objectUrls.values()) URL.revokeObjectURL(url);
     };
-  }, []);
+  }, [objectUrls]);
+
+  function getUrl(file: File): string {
+    return objectUrls.get(`${file.name}-${file.size}`) ?? '';
+  }
 
   function handleFilesAccepted(incoming: File[]) {
     setFiles((prev) => {
       // Deduplicate by name + size
       const existing = new Set(prev.map((f) => `${f.name}-${f.size}`));
-      const unique = incoming.filter(
-        (f) => !existing.has(`${f.name}-${f.size}`)
-      );
+      const unique = incoming.filter((f) => !existing.has(`${f.name}-${f.size}`));
       return [...prev, ...unique];
     });
     setErrors([]);
@@ -71,7 +53,7 @@ export default function Step4Photos({ onBack, onNext }: Step4PhotosProps) {
   }
 
   function handleNext() {
-    dispatch({ type: "SET_ATTACHMENTS", attachments: files });
+    dispatch({ type: 'SET_ATTACHMENTS', attachments: files });
     onNext();
   }
 
@@ -89,10 +71,7 @@ export default function Step4Photos({ onBack, onNext }: Step4PhotosProps) {
         {errors.length > 0 && (
           <ul className="flex flex-col gap-1">
             {errors.map((msg, i) => (
-              <li
-                key={i}
-                className="flex items-start gap-1.5 text-xs text-red-400"
-              >
+              <li key={i} className="flex items-start gap-1.5 text-xs text-red-400">
                 <AlertCircle className="h-3.5 w-3.5 mt-0.5 shrink-0" />
                 {msg}
               </li>
