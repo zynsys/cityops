@@ -758,6 +758,23 @@ function getTenantAdminKey(tenantSlug: string): string {
   return admins[tenantSlug];
 }
 
+// Removes reports (and their child rows) left behind by earlier non-idempotent
+// seed runs. Report FKs have no ON DELETE CASCADE, so children go first.
+async function deleteReportsWithChildren(reportIds: number[]) {
+  if (reportIds.length === 0) return;
+  await prisma.duplicateLink.deleteMany({
+    where: {
+      OR: [{ sourceReportId: { in: reportIds } }, { targetReportId: { in: reportIds } }],
+    },
+  });
+  await prisma.aiValidationResult.deleteMany({ where: { reportId: { in: reportIds } } });
+  await prisma.reportComment.deleteMany({ where: { reportId: { in: reportIds } } });
+  await prisma.reportActivity.deleteMany({ where: { reportId: { in: reportIds } } });
+  await prisma.reportAssignment.deleteMany({ where: { reportId: { in: reportIds } } });
+  await prisma.reportAttachment.deleteMany({ where: { reportId: { in: reportIds } } });
+  await prisma.report.deleteMany({ where: { id: { in: reportIds } } });
+}
+
 async function seedReports(): Promise<Map<string, number>> {
   console.log('Seeding reports...');
 
@@ -799,38 +816,53 @@ async function seedReports(): Promise<Map<string, number>> {
         coordIdx++;
       }
 
-      // Insert without explicit id (auto-increment) and capture the generated value
-      const rows = await prisma.$queryRawUnsafe<{ id: number }[]>(
-        `
-        INSERT INTO report (
-          tenant_id, category_id, reporter_user_id, assigned_user_id,
-          title, description, status, priority,
-          location_text, location_point,
-          resolved_at, closed_at, created_at, updated_at
-        ) VALUES (
-          $1::uuid, $2::uuid, $3::uuid, $4::uuid,
-          $5, $6, $7::"ReportStatus", $8::"ReportPriority",
-          $9, ${locationPointExpr},
-          $10::timestamptz, $11::timestamptz,
-          $12::timestamptz, $12::timestamptz
-        )
-        RETURNING id
-      `,
-        tenantId, // $1
-        categoryId, // $2
-        reporterUserId, // $3
-        assignedUserId, // $4  (null OK)
-        ti.titles[i], // $5
-        ti.descriptions[i], // $6
-        tpl.status, // $7
-        tpl.priority, // $8  (null OK)
-        ti.locations[i], // $9
-        resolvedAt, // $10 (null OK)
-        closedAt, // $11 (null OK)
-        createdAt, // $12
+      // Idempotent re-seed: reuse the earliest existing report (matched on its
+      // stable natural key) and remove any duplicates left by earlier runs.
+      const existingReports = await prisma.$queryRawUnsafe<{ id: number }[]>(
+        `SELECT id FROM report WHERE tenant_id = $1::uuid AND reporter_user_id = $2::uuid AND title = $3 ORDER BY id ASC`,
+        tenantId,
+        reporterUserId,
+        ti.titles[i],
       );
 
-      const generatedId = rows[0].id;
+      let generatedId: number;
+      if (existingReports.length > 0) {
+        generatedId = existingReports[0].id;
+        if (existingReports.length > 1) {
+          await deleteReportsWithChildren(existingReports.slice(1).map((r) => r.id));
+        }
+      } else {
+        const rows = await prisma.$queryRawUnsafe<{ id: number }[]>(
+          `
+          INSERT INTO report (
+            tenant_id, category_id, reporter_user_id, assigned_user_id,
+            title, description, status, priority,
+            location_text, location_point,
+            resolved_at, closed_at, created_at, updated_at
+          ) VALUES (
+            $1::uuid, $2::uuid, $3::uuid, $4::uuid,
+            $5, $6, $7::"ReportStatus", $8::"ReportPriority",
+            $9, ${locationPointExpr},
+            $10::timestamptz, $11::timestamptz,
+            $12::timestamptz, $12::timestamptz
+          )
+          RETURNING id
+        `,
+          tenantId, // $1
+          categoryId, // $2
+          reporterUserId, // $3
+          assignedUserId, // $4  (null OK)
+          ti.titles[i], // $5
+          ti.descriptions[i], // $6
+          tpl.status, // $7
+          tpl.priority, // $8  (null OK)
+          ti.locations[i], // $9
+          resolvedAt, // $10 (null OK)
+          closedAt, // $11 (null OK)
+          createdAt, // $12
+        );
+        generatedId = rows[0].id;
+      }
       reportIdMap.set(reportKey, generatedId);
     }
     console.log(`  Reports for "${ti.tenantSlug}" seeded`);
