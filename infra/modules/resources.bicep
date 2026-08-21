@@ -71,7 +71,7 @@ param openAiCapacity int = 100
 param requireTagsPolicyId string
 
 @description('Effect for the require-tags policy assignment.')
-param requireTagsEffect string = 'Audit'
+param requireTagsEffect string = 'Deny'
 
 var suffix = uniqueString(resourceGroup().id)
 var planName = 'asp-${baseName}'
@@ -363,10 +363,9 @@ resource kvRoleAssignmentDevSlot 'Microsoft.Authorization/roleAssignments@2022-0
 }
 
 // ---------------------------------------------------------------------------
-// Governance — Azure Policy assignments on this resource group, applied at
-// provision time so every environment is governed identically (the pipeline
-// compliance gate then reads this state — see docs/deployment-guidelines.md §11.5).
-// Audit-effect policies only (no managed identity needed).
+// Governance — Azure Policy assignments on this resource group. With a Deny
+// effect, ARM blocks non-compliant resources during the deployment itself
+// (see docs/deployment-guidelines.md §11.5). Audit/Deny need no managed identity.
 // ---------------------------------------------------------------------------
 var policyAssignments = [
   {
