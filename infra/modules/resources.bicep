@@ -67,6 +67,12 @@ param openAiSkuName string = 'GlobalStandard'
 @description('Deployment capacity (TPM units) — subject to per-subscription/region quota.')
 param openAiCapacity int = 100
 
+@description('Resource ID of the custom "require tags" policy definition (created at subscription scope in main.bicep).')
+param requireTagsPolicyId string
+
+@description('Effect for the require-tags policy assignment.')
+param requireTagsEffect string = 'Audit'
+
 var suffix = uniqueString(resourceGroup().id)
 var planName = 'asp-${baseName}'
 var appName = 'app-${baseName}-${suffix}'
@@ -354,6 +360,32 @@ resource kvRoleAssignmentDevSlot 'Microsoft.Authorization/roleAssignments@2022-0
   dependsOn: [
     keyVault
   ]
+}
+
+// ---------------------------------------------------------------------------
+// Governance — Azure Policy assignments on this resource group, applied at
+// provision time so every environment is governed identically (the pipeline
+// compliance gate then reads this state — see docs/deployment-guidelines.md §11.5).
+// Audit-effect policies only (no managed identity needed).
+// ---------------------------------------------------------------------------
+var policyAssignments = [
+  {
+    name: 'cityops-require-tags'
+    displayName: 'CityOps: require a governance tag on resources'
+    policyDefinitionId: requireTagsPolicyId
+    parameters: {
+      effect: {
+        value: requireTagsEffect
+      }
+    }
+  }
+]
+
+module policy 'policy.bicep' = {
+  name: 'policyDeploy'
+  params: {
+    assignments: policyAssignments
+  }
 }
 
 output webAppName string = appName

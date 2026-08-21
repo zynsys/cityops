@@ -72,6 +72,26 @@ param openAiSkuName string = 'GlobalStandard'
 @description('Deployment capacity (TPM units) — subject to per-subscription/region quota.')
 param openAiCapacity int = 100
 
+@description('Effect for the custom require-tag policy. Audit reports; Deny blocks non-compliant resource creation during deployment.')
+@allowed([
+  'Audit'
+  'Deny'
+  'Disabled'
+])
+param requireTagsEffect string = 'Audit'
+
+@description('Tag name the require-tag policy checks for. Defaults to project (Bicep already applies it, so resources pass); set to a tag nothing has to demo a blocked deploy.')
+param requiredTagName string = 'project'
+
+// Custom policy definitions live at subscription scope (can't be created on a resource group),
+// then get assigned to the resource group inside resources.bicep.
+module policyDefinitions 'modules/policy-definitions.bicep' = {
+  name: 'policyDefinitionsDeploy'
+  params: {
+    requiredTagName: requiredTagName
+  }
+}
+
 module resourceGroup 'modules/resourcegroup.bicep' = {
   name: 'resourceGroupDeploy'
   params: {
@@ -106,6 +126,8 @@ module resources 'modules/resources.bicep' = {
     openAiModelVersion: openAiModelVersion
     openAiSkuName: openAiSkuName
     openAiCapacity: openAiCapacity
+    requireTagsPolicyId: policyDefinitions.outputs.requireTagsPolicyId
+    requireTagsEffect: requireTagsEffect
   }
 }
 

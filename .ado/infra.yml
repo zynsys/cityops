@@ -125,6 +125,15 @@ stages:
             deploy:
               steps:
                 - checkout: self
+                # Pre-apply compliance gate: blocks re-applying on top of a drifted,
+                # non-compliant resource group. On a first-ever deploy the RG has no
+                # resources/assignments yet, so this passes and the apply bootstraps them.
+                - template: templates/policy-compliance.yml
+                  parameters:
+                    azureServiceConnection: 'cityops-azure-service-connection'
+                    resourceGroup: '$(resourceGroup)'
+                    failOnNonCompliant: true
+                    triggerScan: false # infra reads last-evaluated state; the app-pipeline gate does the fresh-scan demo
                 - task: AzureCLI@2
                   displayName: 'az deployment group create'
                   inputs:

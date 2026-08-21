@@ -535,21 +535,69 @@ in this document need setting up:
 - **Retention** — set once: Project Settings → Pipelines → Settings → **Retention** (not scriptable via a verified REST endpoint).
 - **Resource tagging** — every resource in `infra/main.bicep` carries a `tags` object (default `{ project: 'cityops', managedBy: 'bicep' }`, overridable) for cost allocation.
 
+### 11.5 Azure Policy pre-deploy gate
+
+The `PolicyCompliance` stage in `app.yml` blocks a deploy when the target resource group
+contains resources that are **non-compliant** with the Azure Policy assignments in scope
+(subscription, management group, or resource group).
+
+- **How** — [`.ado/templates/policy-compliance.yml`](../.ado/templates/policy-compliance.yml) runs `az policy state summarize -g <rg>` and fails the run if `nonCompliantResources > 0`. The built-in `AzurePolicyCheckGate@0` task is **Classic-release-only** and cannot run in a YAML pipeline, hence the CLI approach.
+- **Where** — runs after build + integration tests; both `Deploy_Dev` and `Deploy_Prod` `dependsOn: PolicyCompliance`, so neither slot deploys into a non-compliant environment. The **infra** pipeline (`infra.yml`) runs the same template as a **pre-apply** step in its `Deploy` stage — a drift gate that blocks re-applying on top of a non-compliant resource group (on a first-ever deploy the RG is empty, so it passes and the apply bootstraps the assignments). Note: a pre-apply gate checks _existing_ state; newly-provisioned resources are enforced by **Deny**-effect policies during the apply itself (set `requireTagsEffect: 'Deny'`), not by this gate.
+- **What it checks** — nothing app-specific: it evaluates whatever policies are **assigned** to that scope (e.g. required tags, allowed locations, HTTPS-only, TLS 1.2, no public blob access). With no assignments, the count is 0 and the gate passes — so assign the policies/initiatives you want enforced.
+- **Assignments as code** — policy assignments are codified in [`infra/modules/policy.bicep`](../infra/modules/policy.bicep) (wired in via `resources.bicep`), so every environment is governed identically on `az deployment` with no manual `az policy assignment create`. Creating assignments needs `Microsoft.Authorization/policyAssignments/write`, covered by the infra SP's **User Access Administrator** grant. Add `AuditIfNotExists`/`Audit` built-ins there; `DeployIfNotExists`/`Modify` would also need a managed identity + role assignment.
+- **Custom definitions** — custom policies live in [`infra/modules/policy-definitions.bicep`](../infra/modules/policy-definitions.bicep) at **subscription scope** (definitions can't be created on a resource group). Current custom policy: `cityops-require-tags` — audits (or denies) resources missing a required tag. The tag is `requiredTagName` (default `project`, which Bicep already applies, so resources pass); set it to a tag nothing has to demo a blocked deploy. Effect is `requireTagsEffect` (default `Audit`). Its ID flows from `main.bicep` into the `resources.bicep` assignment array.
+- **RBAC** — the `cityops-azure-service-connection` SP needs `Microsoft.PolicyInsights/policyStates/*/read` (and `.../triggerEvaluation/action` because `triggerScan: true`); **Contributor** on the resource group already covers both.
+- **Tuning** — `failOnNonCompliant: false` makes it report-only (for a phased rollout). Both gates set **`triggerScan: true`**, which forces a fresh on-demand evaluation before reading state (adds a few minutes) so tag/resource changes are reflected immediately rather than waiting for Azure's ~24h evaluation cycle.
+
+#### 11.5.1 Demo: block a deploy on a policy violation
+
+End-to-end walkthrough showing the gate stopping a deploy, then passing once compliance is restored:
+
+1. **Provision** — run the infra pipeline. Bicep applies the `project` tag to every resource and assigns `cityops-require-tags` (audits resources missing that tag). All resources are compliant.
+2. **Break compliance** — remove the `project` tag from the App Service:
+
+   ```bash
+   MSYS_NO_PATHCONV=1 az resource tag --ids \
+     $(az webapp show -g rg-cityops-83d9f49b -n <webAppName> --query id -o tsv) \
+     --tags managedBy=bicep   # note: 'project' intentionally omitted
+   ```
+
+3. **Run the app pipeline** — the `PolicyCompliance` stage runs `az policy state trigger-scan` (because `triggerScan: true`), sees the App Service is now non-compliant (`nonCompliantResources ≥ 1`), and **fails before `Deploy_Dev`** — the deploy is blocked.
+4. **Restore compliance** — re-add the tag, then rerun the pipeline:
+
+   ```bash
+   MSYS_NO_PATHCONV=1 az resource tag --ids \
+     $(az webapp show -g rg-cityops-83d9f49b -n <webAppName> --query id -o tsv) \
+     --tags project=cityops managedBy=bicep
+   ```
+
+   The gate re-evaluates, finds 0 non-compliant resources, **passes**, and the deploy proceeds.
+
+Because `triggerScan: true`, each run forces a fresh evaluation, so steps 3–4 reflect the tag change immediately (no waiting for Azure's periodic scan). To show the block from the very first run instead, deploy infra with `-p requiredTagName=costCenter` (a tag nothing carries).
+
 ---
 
 ## 12. Reference files
 
-| File                                                                        | Purpose                                                         |
-| --------------------------------------------------------------------------- | --------------------------------------------------------------- |
-| [`infra/main.bicep`](../infra/main.bicep)                                   | Subscription-scoped infrastructure orchestrator                 |
-| [`infra/modules/resourcegroup.bicep`](../infra/modules/resourcegroup.bicep) | Creates (or adopts) the resource group                          |
-| [`infra/modules/resources.bicep`](../infra/modules/resources.bicep)         | Resource-group-scoped orchestrator (modules, secrets, RBAC)     |
-| [`infra/modules/keyvault.bicep`](../infra/modules/keyvault.bicep)           | Key Vault module                                                |
-| [`infra/modules/postgres.bicep`](../infra/modules/postgres.bicep)           | PostgreSQL Flexible Server module                               |
-| [`infra/modules/appservice.bicep`](../infra/modules/appservice.bicep)       | App Service (plan + web app + dev slot) module                  |
-| [`infra/modules/openai.bicep`](../infra/modules/openai.bicep)               | Azure OpenAI account + model deployment module                  |
-| [`.ado/app.yml`](../.ado/app.yml)                                           | App CI/CD (build, test, deploy dev/prod)                        |
-| [`.ado/infra.yml`](../.ado/infra.yml)                                       | Infra pipeline (validate + apply)                               |
-| [`.ado/templates/resolve-names.yml`](../.ado/templates/resolve-names.yml)   | Shared web app / Key Vault name resolution step (§11.3)         |
-| [`.env.example`](../.env.example)                                           | Full list of runtime environment variables                      |
-| [`Dockerfile`](../Dockerfile)                                               | Optional container build (not used for App Service code deploy) |
+<!-- markdownlint-disable MD060 -->
+
+| File                                                                              | Purpose                                                         |
+| --------------------------------------------------------------------------------- | --------------------------------------------------------------- |
+| [`infra/main.bicep`](../infra/main.bicep)                                         | Subscription-scoped infrastructure orchestrator                 |
+| [`infra/modules/resourcegroup.bicep`](../infra/modules/resourcegroup.bicep)       | Creates (or adopts) the resource group                          |
+| [`infra/modules/resources.bicep`](../infra/modules/resources.bicep)               | Resource-group-scoped orchestrator (modules, secrets, RBAC)     |
+| [`infra/modules/keyvault.bicep`](../infra/modules/keyvault.bicep)                 | Key Vault module                                                |
+| [`infra/modules/postgres.bicep`](../infra/modules/postgres.bicep)                 | PostgreSQL Flexible Server module                               |
+| [`infra/modules/appservice.bicep`](../infra/modules/appservice.bicep)             | App Service (plan + web app + dev slot) module                  |
+| [`infra/modules/openai.bicep`](../infra/modules/openai.bicep)                     | Azure OpenAI account + model deployment module                  |
+| [`infra/modules/policy.bicep`](../infra/modules/policy.bicep)                     | Azure Policy assignments applied to the resource group (§11.5)  |
+| [`infra/modules/policy-definitions.bicep`](../infra/modules/policy-definitions.bicep) | Custom Azure Policy definitions (subscription scope, §11.5) |
+| [`.ado/app.yml`](../.ado/app.yml)                                                 | App CI/CD (build, test, deploy dev/prod)                        |
+| [`.ado/infra.yml`](../.ado/infra.yml)                                             | Infra pipeline (validate + apply)                               |
+| [`.ado/templates/resolve-names.yml`](../.ado/templates/resolve-names.yml)         | Shared web app / Key Vault name resolution step (§11.3)         |
+| [`.ado/templates/setup-node.yml`](../.ado/templates/setup-node.yml)               | Shared Node.js install + `npm ci` step                          |
+| [`.ado/templates/policy-compliance.yml`](../.ado/templates/policy-compliance.yml) | Azure Policy pre-deploy compliance gate (§11.5)                 |
+| [`.env.example`](../.env.example)                                                 | Full list of runtime environment variables                      |
+| [`Dockerfile`](../Dockerfile)                                                     | Optional container build (not used for App Service code deploy) |
+
+<!-- markdownlint-enable MD060 -->
