@@ -43,13 +43,7 @@ stages:
         pool:
           vmImage: ubuntu-latest
         steps:
-          - task: UseNode@1
-            inputs:
-              version: $(nodeVersion)
-            displayName: 'Install Node.js'
-
-          - script: npm ci
-            displayName: 'Install dependencies'
+          - template: templates/setup-node.yml
 
           - script: |
               set +e
@@ -134,13 +128,7 @@ stages:
         variables:
           DATABASE_URL: 'postgresql://postgres:postgres@localhost:5432/cityops_test'
         steps:
-          - task: UseNode@1
-            inputs:
-              version: $(nodeVersion)
-            displayName: 'Install Node.js'
-
-          - script: npm ci
-            displayName: 'Install dependencies'
+          - template: templates/setup-node.yml
 
           - script: |
               for i in $(seq 1 30); do
@@ -192,13 +180,7 @@ stages:
           AUTH_SECRET: 'ci-e2e-nonsecret-placeholder-0123456789'
           CI: 'true'
         steps:
-          - task: UseNode@1
-            inputs:
-              version: $(nodeVersion)
-            displayName: 'Install Node.js'
-
-          - script: npm ci
-            displayName: 'Install dependencies'
+          - template: templates/setup-node.yml
 
           - script: npx playwright install --with-deps chromium
             displayName: 'Install Playwright browser'
@@ -268,10 +250,9 @@ stages:
             deploy:
               steps:
                 - checkout: self
-                - task: UseNode@1
-                  inputs:
-                    version: $(nodeVersion)
-                  displayName: 'Install Node.js'
+                - template: templates/setup-node.yml
+                  parameters:
+                    installDisplayName: 'Install deps (Prisma CLI)'
                 - template: templates/resolve-names.yml
                   parameters:
                     azureServiceConnection: 'cityops-azure-service-connection'
@@ -284,8 +265,6 @@ stages:
                     KeyVaultName: '$(keyVaultName)'
                     SecretsFilter: 'DATABASE-URL-DEV'
                     RunAsPreJob: false
-                - script: npm ci
-                  displayName: 'Install deps (Prisma CLI)'
                 - script: npm run db:migrate:deploy
                   displayName: 'Migrate cityops_dev'
                   env:
@@ -339,10 +318,9 @@ stages:
             deploy:
               steps:
                 - checkout: self
-                - task: UseNode@1
-                  inputs:
-                    version: $(nodeVersion)
-                  displayName: 'Install Node.js'
+                - template: templates/setup-node.yml
+                  parameters:
+                    installDisplayName: 'Install deps (Prisma CLI)'
                 - template: templates/resolve-names.yml
                   parameters:
                     azureServiceConnection: 'cityops-azure-service-connection'
@@ -355,8 +333,6 @@ stages:
                     KeyVaultName: '$(keyVaultName)'
                     SecretsFilter: 'DATABASE-URL'
                     RunAsPreJob: false
-                - script: npm ci
-                  displayName: 'Install deps (Prisma CLI)'
                 - script: npm run db:migrate:deploy
                   displayName: 'Migrate cityops (prod)'
                   env:

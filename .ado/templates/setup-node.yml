@@ -1,0 +1,14 @@
+# Shared setup: install the pinned Node.js ($(nodeVersion)) then run `npm ci`.
+# Centralises toolchain setup for every job/deployment in app.yml.
+parameters:
+  - name: installDisplayName
+    type: string
+    default: 'Install dependencies'
+
+steps:
+  - task: UseNode@1
+    inputs:
+      version: $(nodeVersion)
+    displayName: 'Install Node.js'
+  - script: npm ci
+    displayName: ${{ parameters.installDisplayName }}
