@@ -72,13 +72,13 @@ param openAiSkuName string = 'GlobalStandard'
 @description('Deployment capacity (TPM units) — subject to per-subscription/region quota.')
 param openAiCapacity int = 100
 
-@description('Effect for the custom require-tag policy. Deny blocks non-compliant resource creation during the deployment itself (synchronous, no gate needed); Audit only reports.')
+@description('Effect for the custom require-tag policy. Audit reports compliance for the app pipeline gate to read (and allows the remove-tag demo); Deny would instead block non-compliant resource creation during the deployment.')
 @allowed([
   'Audit'
   'Deny'
   'Disabled'
 ])
-param requireTagsEffect string = 'Deny'
+param requireTagsEffect string = 'Audit'
 
 @description('Tag name the require-tag policy checks for. Defaults to project (Bicep already applies it, so resources pass); set to a tag nothing has to demo a blocked deploy.')
 param requiredTagName string = 'project'

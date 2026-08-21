@@ -535,35 +535,32 @@ in this document need setting up:
 - **Retention** — set once: Project Settings → Pipelines → Settings → **Retention** (not scriptable via a verified REST endpoint).
 - **Resource tagging** — every resource in `infra/main.bicep` carries a `tags` object (default `{ project: 'cityops', managedBy: 'bicep' }`, overridable) for cost allocation.
 
-### 11.5 Azure Policy governance (Deny at deploy time)
+### 11.5 Azure Policy pre-deploy gate (app pipeline)
 
-Governance is enforced by an Azure Policy **assigned to the resource group** and codified in Bicep,
-so every environment gets it automatically. With a **Deny** effect, Azure Resource Manager rejects a
-non-compliant resource **during the deployment itself** — synchronous, deterministic, and instant
-(no pipeline gate, no compliance-state polling).
+An Azure Policy is **assigned to the resource group** (codified in Bicep), and the app pipeline's
+`PolicyCompliance` stage **reads that compliance state before deploying** — failing the run if any
+resource is non-compliant, so a non-compliant environment never receives a new app deployment.
 
-- **The policy** — `cityops-require-tags` (custom definition, subscription-scoped, in [`infra/modules/policy-definitions.bicep`](../infra/modules/policy-definitions.bicep)) denies any resource missing the `requiredTagName` tag.
-- **Assigned as code** — [`infra/modules/policy.bicep`](../infra/modules/policy.bicep) (wired via `resources.bicep`) creates the assignment on the RG on every `az deployment`, so there is no manual `az policy assignment create`.
-- **Parameters** (`main.bicep`): `requireTagsEffect` (default **`Deny`**) and `requiredTagName` (default **`project`**, which Bicep applies to every resource, so normal deploys pass).
-- **Why Deny, not an Audit + pipeline gate** — Audit compliance state is evaluated **asynchronously** by Azure (minutes to ~24h of lag), which makes a "change a tag → re-run → see the result" demo unreliable even with an on-demand scan. Deny is enforced at PUT time by ARM, so it blocks the deployment immediately, every time — no gate step needed.
-- **RBAC** — creating the assignment needs `Microsoft.Authorization/policyAssignments/write`, covered by the infra SP's **User Access Administrator** grant. Deny/Audit need no managed identity (only `DeployIfNotExists`/`Modify` would).
+- **The policy** — `cityops-require-tags` (custom definition, subscription-scoped, in [`infra/modules/policy-definitions.bicep`](../infra/modules/policy-definitions.bicep)) flags any resource missing the `requiredTagName` tag. Assigned to the RG by [`infra/modules/policy.bicep`](../infra/modules/policy.bicep) (wired via `resources.bicep`) on every `az deployment` — no manual `az policy assignment create`.
+- **The gate** — [`.ado/templates/policy-compliance.yml`](../.ado/templates/policy-compliance.yml) runs `az policy state summarize -g <rg>` and fails if `nonCompliantResources > 0`. The `PolicyCompliance` stage in `app.yml` runs it with `triggerScan: true` (fresh evaluation), and `Deploy_Dev`/`Deploy_Prod` `dependsOn` it. The built-in `AzurePolicyCheckGate@0` task is Classic-release-only, hence the CLI approach.
+- **Effect must be `Audit`** — `requireTagsEffect` defaults to **`Audit`** (not `Deny`) precisely so the gate is the enforcement point. With `Deny`, Azure would reject the tag-removal update itself, so you couldn't stage the demo. `requiredTagName` defaults to **`project`** (Bicep applies it, so resources start compliant).
+- **RBAC** — the gate needs `Microsoft.PolicyInsights/policyStates/*/read` + `.../triggerEvaluation/action` (covered by the SP's **Contributor**); creating the assignment needs `Microsoft.Authorization/policyAssignments/write` (covered by **User Access Administrator**). No managed identity needed for Audit.
 
-#### 11.5.1 Demo: a policy blocks a deployment
+#### 11.5.1 Demo: the gate blocks a deploy on a policy violation
 
-1. **Baseline** — run the infra pipeline with defaults (`requireTagsEffect: Deny`, `requiredTagName: project`). Bicep tags every resource with `project`, so all resources satisfy the policy and the deploy succeeds.
-2. **Trigger the block** — rerun the infra pipeline pointing the policy at a tag nothing carries:
+1. **Baseline** — infra has run, so every resource carries the `project` tag and `cityops-require-tags` (Audit) is assigned. Resources are compliant.
+2. **Break compliance** — remove the `project` tag from a **top-level** resource (e.g. the Key Vault or the web app — not a slot):
 
    ```bash
-   az deployment sub create ... -p requireTagsEffect=Deny requiredTagName=costCenter
+   MSYS_NO_PATHCONV=1 az resource tag --ids \
+     $(az webapp show -g rg-cityops-83d9f49b -n <webAppName> --query id -o tsv) \
+     --tags managedBy=bicep   # 'project' intentionally omitted
    ```
 
-   ARM evaluates every resource against "must have `costCenter`", finds none do, and **denies the deployment** — the `az deployment sub create` step fails with a policy-violation error, before anything is provisioned.
+3. **Run the app pipeline** — the `PolicyCompliance` stage triggers a fresh scan, sees `nonCompliantResources ≥ 1`, logs the offending resource + policy, and **fails before `Deploy_Dev`** — the deploy is blocked.
+4. **Restore** — re-add `project=cityops` and rerun → the gate passes and the deploy proceeds.
 
-3. **Restore** — revert to `requiredTagName=project` and rerun → the deployment succeeds.
-
-The failure is instant and deterministic — no compliance-state polling or evaluation lag.
-
-> **Reliability notes.** (1) A _newly-created_ Deny assignment can take a few minutes to begin enforcing — Azure propagates new assignments before they take effect — so changing `requiredTagName` (which rewrites the policy rule) may not block on the very first run, but will on the next. (2) For an enforcement that is instant every time, keep `requiredTagName=project` (already assigned and propagated) and instead deploy resources without that tag by overriding the tag set: `-p tags='{"managedBy":"bicep"}'` — ARM denies the resources immediately.
+> **Timing note.** Compliance state is evaluated **asynchronously** by Azure. `triggerScan: true` forces a fresh evaluation each run, but a brand-new assignment can still take a few minutes to produce its first results. Give the assignment a few minutes after the first infra deploy before running the remove-tag demo, and always change the tag on a **top-level** resource (deployment slots are child resources and aren't reliably counted).
 
 ---
 
@@ -586,6 +583,7 @@ The failure is instant and deterministic — no compliance-state polling or eval
 | [`.ado/infra.yml`](../.ado/infra.yml)                                                 | Infra pipeline (validate + apply)                               |
 | [`.ado/templates/resolve-names.yml`](../.ado/templates/resolve-names.yml)             | Shared web app / Key Vault name resolution step (§11.3)         |
 | [`.ado/templates/setup-node.yml`](../.ado/templates/setup-node.yml)                   | Shared Node.js install + `npm ci` step                          |
+| [`.ado/templates/policy-compliance.yml`](../.ado/templates/policy-compliance.yml)     | App-pipeline Azure Policy pre-deploy gate (§11.5)               |
 | [`.env.example`](../.env.example)                                                     | Full list of runtime environment variables                      |
 | [`Dockerfile`](../Dockerfile)                                                         | Optional container build (not used for App Service code deploy) |
 

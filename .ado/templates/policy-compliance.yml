@@ -1,0 +1,58 @@
+# Azure Policy compliance gate. Fails the step when the target resource group
+# contains non-compliant resources, so a deploy is blocked until compliance is
+# restored. Used as a pre-deploy gate in app.yml (the built-in AzurePolicyCheckGate
+# task is Classic-release-only and cannot run in a YAML pipeline).
+parameters:
+  - name: azureServiceConnection
+    type: string
+  - name: resourceGroup
+    type: string
+  - name: failOnNonCompliant
+    type: boolean
+    default: true
+  # trigger-scan forces a fresh evaluation (accurate but slow, minutes) so recent
+  # tag/resource changes are reflected instead of Azure's periodic (~24h) scan.
+  - name: triggerScan
+    type: boolean
+    default: false
+
+steps:
+  - task: AzureCLI@2
+    displayName: 'Azure Policy compliance check'
+    inputs:
+      azureSubscription: '${{ parameters.azureServiceConnection }}'
+      scriptType: bash
+      scriptLocation: inlineScript
+      inlineScript: |
+        set -e
+        RG='${{ parameters.resourceGroup }}'
+        TRIGGER='${{ parameters.triggerScan }}'
+        FAIL='${{ parameters.failOnNonCompliant }}'
+
+        if [ "$TRIGGER" = "True" ]; then
+          echo "Triggering on-demand policy evaluation for '$RG' (can take several minutes)…"
+          az policy state trigger-scan -g "$RG"
+        fi
+
+        echo "Evaluating Azure Policy compliance for resource group '$RG'…"
+        NON_COMPLIANT=$(az policy state summarize -g "$RG" \
+          --query "value[0].results.nonCompliantResources" -o tsv 2>/dev/null || echo "")
+        # summarize can return null/empty (e.g. no assignments yet) — treat anything non-numeric as 0.
+        case "$NON_COMPLIANT" in
+          ''|*[!0-9]*) NON_COMPLIANT=0 ;;
+        esac
+        echo "Non-compliant resources: $NON_COMPLIANT"
+
+        if [ "$NON_COMPLIANT" -gt 0 ]; then
+          echo "Non-compliant resource detail:"
+          az policy state list -g "$RG" \
+            --filter "complianceState eq 'NonCompliant'" \
+            --query "value[].{resource:resourceId, policy:policyDefinitionName, effect:policyDefinitionAction}" \
+            -o table || true
+        fi
+
+        if [ "$FAIL" = "True" ] && [ "$NON_COMPLIANT" -gt 0 ]; then
+          echo "##vso[task.logissue type=error]Azure Policy: $NON_COMPLIANT non-compliant resource(s) in '$RG'. Blocking deploy."
+          exit 1
+        fi
+        echo "Azure Policy compliance check passed."

@@ -210,6 +210,34 @@ stages:
               artifact: playwright-report
 
   # ---------------------------------------------------------------------------
+  # POLICY COMPLIANCE — pre-deploy gate. Reads the resource group's Azure Policy
+  # compliance state and fails the run if any resource is non-compliant, so a
+  # non-compliant environment never receives a new app deployment. Uses
+  # `az policy state` because the built-in AzurePolicyCheckGate task is
+  # Classic-release-only and cannot run in a YAML pipeline.
+  # ---------------------------------------------------------------------------
+  - stage: PolicyCompliance
+    displayName: 'Azure Policy compliance'
+    dependsOn:
+      - Build_and_UnitTest
+      - IntegrationTest
+    condition: and(succeeded(), in(variables['Build.Reason'], 'IndividualCI', 'Manual'))
+    variables:
+      - group: cityops-env # resourceGroup
+    jobs:
+      - job: policy_check
+        pool:
+          vmImage: ubuntu-latest
+        steps:
+          - checkout: none
+          - template: templates/policy-compliance.yml
+            parameters:
+              azureServiceConnection: 'cityops-azure-service-connection'
+              resourceGroup: '$(resourceGroup)'
+              failOnNonCompliant: true
+              triggerScan: true # force a fresh evaluation so tag changes are reflected immediately
+
+  # ---------------------------------------------------------------------------
   # DEPLOY (Dev slot) — deploy the built app to the 'dev' slot and migrate the
   # dev database (cityops_dev). Gated by the 'dev' environment (no approval — fast
   # continuous feedback).
@@ -235,6 +263,7 @@ stages:
     dependsOn:
       - Build_and_UnitTest
       - IntegrationTest
+      - PolicyCompliance
     condition: and(succeeded(), in(variables['Build.Reason'], 'IndividualCI', 'Manual'))
     variables:
       - group: cityops-env # azureServiceConnection, resourceGroup, baseName
@@ -302,6 +331,7 @@ stages:
     dependsOn:
       - Deploy_Dev
       - E2ETest
+      - PolicyCompliance
     condition: and(succeeded(), eq(variables['Build.Reason'], 'Manual'))
     lockBehavior: sequential # exclusive-lock check on the 'prod' Environment (§11.2) serializes prod deploys
     variables:
