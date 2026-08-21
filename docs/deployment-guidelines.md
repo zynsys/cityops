@@ -581,23 +581,23 @@ Because `triggerScan: true`, each run forces a fresh evaluation, so steps 3–4 
 
 <!-- markdownlint-disable MD060 -->
 
-| File                                                                              | Purpose                                                         |
-| --------------------------------------------------------------------------------- | --------------------------------------------------------------- |
-| [`infra/main.bicep`](../infra/main.bicep)                                         | Subscription-scoped infrastructure orchestrator                 |
-| [`infra/modules/resourcegroup.bicep`](../infra/modules/resourcegroup.bicep)       | Creates (or adopts) the resource group                          |
-| [`infra/modules/resources.bicep`](../infra/modules/resources.bicep)               | Resource-group-scoped orchestrator (modules, secrets, RBAC)     |
-| [`infra/modules/keyvault.bicep`](../infra/modules/keyvault.bicep)                 | Key Vault module                                                |
-| [`infra/modules/postgres.bicep`](../infra/modules/postgres.bicep)                 | PostgreSQL Flexible Server module                               |
-| [`infra/modules/appservice.bicep`](../infra/modules/appservice.bicep)             | App Service (plan + web app + dev slot) module                  |
-| [`infra/modules/openai.bicep`](../infra/modules/openai.bicep)                     | Azure OpenAI account + model deployment module                  |
-| [`infra/modules/policy.bicep`](../infra/modules/policy.bicep)                     | Azure Policy assignments applied to the resource group (§11.5)  |
-| [`infra/modules/policy-definitions.bicep`](../infra/modules/policy-definitions.bicep) | Custom Azure Policy definitions (subscription scope, §11.5) |
-| [`.ado/app.yml`](../.ado/app.yml)                                                 | App CI/CD (build, test, deploy dev/prod)                        |
-| [`.ado/infra.yml`](../.ado/infra.yml)                                             | Infra pipeline (validate + apply)                               |
-| [`.ado/templates/resolve-names.yml`](../.ado/templates/resolve-names.yml)         | Shared web app / Key Vault name resolution step (§11.3)         |
-| [`.ado/templates/setup-node.yml`](../.ado/templates/setup-node.yml)               | Shared Node.js install + `npm ci` step                          |
-| [`.ado/templates/policy-compliance.yml`](../.ado/templates/policy-compliance.yml) | Azure Policy pre-deploy compliance gate (§11.5)                 |
-| [`.env.example`](../.env.example)                                                 | Full list of runtime environment variables                      |
-| [`Dockerfile`](../Dockerfile)                                                     | Optional container build (not used for App Service code deploy) |
+| File                                                                                  | Purpose                                                         |
+| ------------------------------------------------------------------------------------- | --------------------------------------------------------------- |
+| [`infra/main.bicep`](../infra/main.bicep)                                             | Subscription-scoped infrastructure orchestrator                 |
+| [`infra/modules/resourcegroup.bicep`](../infra/modules/resourcegroup.bicep)           | Creates (or adopts) the resource group                          |
+| [`infra/modules/resources.bicep`](../infra/modules/resources.bicep)                   | Resource-group-scoped orchestrator (modules, secrets, RBAC)     |
+| [`infra/modules/keyvault.bicep`](../infra/modules/keyvault.bicep)                     | Key Vault module                                                |
+| [`infra/modules/postgres.bicep`](../infra/modules/postgres.bicep)                     | PostgreSQL Flexible Server module                               |
+| [`infra/modules/appservice.bicep`](../infra/modules/appservice.bicep)                 | App Service (plan + web app + dev slot) module                  |
+| [`infra/modules/openai.bicep`](../infra/modules/openai.bicep)                         | Azure OpenAI account + model deployment module                  |
+| [`infra/modules/policy.bicep`](../infra/modules/policy.bicep)                         | Azure Policy assignments applied to the resource group (§11.5)  |
+| [`infra/modules/policy-definitions.bicep`](../infra/modules/policy-definitions.bicep) | Custom Azure Policy definitions (subscription scope, §11.5)     |
+| [`.ado/app.yml`](../.ado/app.yml)                                                     | App CI/CD (build, test, deploy dev/prod)                        |
+| [`.ado/infra.yml`](../.ado/infra.yml)                                                 | Infra pipeline (validate + apply)                               |
+| [`.ado/templates/resolve-names.yml`](../.ado/templates/resolve-names.yml)             | Shared web app / Key Vault name resolution step (§11.3)         |
+| [`.ado/templates/setup-node.yml`](../.ado/templates/setup-node.yml)                   | Shared Node.js install + `npm ci` step                          |
+| [`.ado/templates/policy-compliance.yml`](../.ado/templates/policy-compliance.yml)     | Azure Policy pre-deploy compliance gate (§11.5)                 |
+| [`.env.example`](../.env.example)                                                     | Full list of runtime environment variables                      |
+| [`Dockerfile`](../Dockerfile)                                                         | Optional container build (not used for App Service code deploy) |
 
 <!-- markdownlint-enable MD060 -->
