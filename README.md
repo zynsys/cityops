@@ -1,5 +1,7 @@
 # CityOps
 
+[![Build Status](https://dev.azure.com/zynsys/cityops/_apis/build/status%2Fapp?branchName=main)](https://dev.azure.com/zynsys/cityops/_build/latest?definitionId=22&branchName=main)
+
 CityOps is a multi-tenant civic reporting platform for UK citizens and local authorities. Citizens can report public issues, track their progress, and discover nearby reports, while council teams can validate, assign, manage, and resolve them through a tenant-aware operational workspace.
 
 ## Key capabilities
