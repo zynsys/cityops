@@ -1,7 +1,7 @@
 # CityOps
 
 **App:**
-[![Azure DevOps](https://dev.azure.com/zynsys/cityops/_apis/build/status%2Fapp-cicd?branchName=main)](https://dev.azure.com/zynsys/cityops/_build/latest?definitionId=22&branchName=main)
+[![Build Status](https://dev.azure.com/zynsys/cityops/_apis/build/status%2Fapp-cicd?branchName=main)](https://dev.azure.com/zynsys/cityops/_build/latest?definitionId=22&branchName=main)
 [![GitHub Actions](https://github.com/zynsys/cityops/actions/workflows/app-cicd.yml/badge.svg?branch=main)](https://github.com/zynsys/cityops/actions/workflows/app-cicd.yml)
 
 **Infra:**
