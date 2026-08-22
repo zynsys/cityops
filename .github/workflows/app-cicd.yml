@@ -305,6 +305,11 @@ jobs:
           package: drop
           startup-command: "node server.js"
 
+      - name: Smoke test dev slot (/api/health)
+        uses: ./.github/actions/smoke-test
+        with:
+          url: "https://${{ steps.names.outputs.web-app-name }}-dev.azurewebsites.net/api/health"
+
   # ---------------------------------------------------------------------------
   # DEPLOY (Production) — migrate the prod DB (cityops), then SWAP dev → production
   # for a zero-downtime release (rollback = swap back). Gated by the 'prod' environment's
@@ -362,3 +367,8 @@ jobs:
 
       - name: Swap dev → production
         run: az webapp deployment slot swap -g "${{ vars.AZURE_RESOURCE_GROUP }}" -n "${{ steps.names.outputs.web-app-name }}" --slot dev --target-slot production
+
+      - name: Smoke test production (/api/health)
+        uses: ./.github/actions/smoke-test
+        with:
+          url: "https://${{ steps.names.outputs.web-app-name }}.azurewebsites.net/api/health"

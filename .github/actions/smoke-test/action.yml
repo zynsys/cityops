@@ -1,0 +1,33 @@
+# Standalone step: post-deploy APPLICATION smoke test — curl the given URL with retries (covers
+# cold start), HARD-fail if it never returns 200. Distinct from the infra workflow's smoke_test
+# job (which checks Azure resource provisioning state, not application code): this confirms the
+# code that was JUST deployed is actually serving traffic. Mirrors .ado/templates/smoke-test.yml.
+name: 'Smoke test'
+description: 'Curl a URL with retries; hard-fail if it never returns 200'
+inputs:
+  url:
+    required: true
+  max-attempts:
+    required: false
+    default: '10'
+  retry-delay-seconds:
+    required: false
+    default: '6'
+runs:
+  using: 'composite'
+  steps:
+    - shell: bash
+      run: |
+        set -e
+        URL="${{ inputs.url }}"
+        for i in $(seq 1 ${{ inputs.max-attempts }}); do
+          status=$(curl -s -o /dev/null -w '%{http_code}' --max-time 15 "$URL" || echo "000")
+          echo "Attempt $i/${{ inputs.max-attempts }}: $URL -> HTTP $status"
+          if [ "$status" = "200" ]; then
+            echo "Smoke test passed."
+            exit 0
+          fi
+          sleep ${{ inputs.retry-delay-seconds }}
+        done
+        echo "::error::Smoke test failed: $URL never returned 200 after ${{ inputs.max-attempts }} attempts."
+        exit 1

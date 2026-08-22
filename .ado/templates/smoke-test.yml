@@ -1,0 +1,34 @@
+# Shared step: post-deploy APPLICATION smoke test — curl the given URL with retries (covers
+# cold start), HARD-fail if it never returns 200. Distinct from the infra pipeline's SmokeTest
+# stage (which checks Azure resource provisioning state, not application code): this confirms the
+# code that was JUST deployed is actually serving traffic, so a broken deploy is caught here
+# rather than silently going live. Used by both Deploy_Dev and Deploy_Prod in app.yml.
+parameters:
+  - name: url
+    type: string
+  - name: displayName
+    type: string
+    default: 'Smoke test'
+  - name: maxAttempts
+    type: number
+    default: 10
+  - name: retryDelaySeconds
+    type: number
+    default: 6
+
+steps:
+  - script: |
+      set -e
+      URL="${{ parameters.url }}"
+      for i in $(seq 1 ${{ parameters.maxAttempts }}); do
+        status=$(curl -s -o /dev/null -w '%{http_code}' --max-time 15 "$URL" || echo "000")
+        echo "Attempt $i/${{ parameters.maxAttempts }}: $URL -> HTTP $status"
+        if [ "$status" = "200" ]; then
+          echo "Smoke test passed."
+          exit 0
+        fi
+        sleep ${{ parameters.retryDelaySeconds }}
+      done
+      echo "##vso[task.logissue type=error]Smoke test failed: $URL never returned 200 after ${{ parameters.maxAttempts }} attempts."
+      exit 1
+    displayName: '${{ parameters.displayName }}'

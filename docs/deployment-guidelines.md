@@ -40,8 +40,10 @@ flowchart LR
     subgraph CD["Deploy (CD)"]
         B --> C["Deploy_Dev\n(dev slot, cityops_dev)\nauto, no approval"]
         V1 --> C
-        C --> D["E2E tests\n(PR / nightly / manual)"]
+        C --> C2["Smoke test dev slot\n(/api/health, hard gate)"]
+        C2 --> D["E2E tests\n(PR / nightly / manual)"]
         D --> E["Deploy_Prod\n(migrate cityops, swap)\nmanual + approval"]
+        E --> E2["Smoke test production\n(/api/health, hard gate)"]
     end
 ```
 
@@ -406,9 +408,11 @@ No secret is ever a plaintext App Service setting or a pipeline YAML literal —
 ```
 VerifyAzureEnv (web app / key vault exist?) ─┐
 Build & Unit tests → Integration tests ──────┴→ Deploy_Dev (dev slot, migrate cityops_dev) [env: dev, no approval]
+                                                 → Smoke test dev slot (/api/health, hard gate)
                                                 ↘ E2E tests (PR / nightly / manual only)
 
 Manual run only: ... → E2E tests (passes) → Deploy_Prod (migrate cityops, swap dev→prod) [env: prod, approval]
+                                              → Smoke test production (/api/health, hard gate)
 ```
 
 - **VerifyAzureEnv** runs in parallel with Build & Unit tests (no dependency between them) so a
@@ -417,6 +421,9 @@ Manual run only: ... → E2E tests (passes) → Deploy_Prod (migrate cityops, sw
   `az keyvault show` per resource — instead of surfacing minutes later inside a deploy step's own
   retry/backoff logic. `Deploy_Dev` depends on it directly; `Deploy_Prod` depends on `Deploy_Dev`,
   so it's covered transitively.
+- **Smoke test** (§11.7) runs immediately after each deploy step (dev-slot deploy, prod swap) —
+  curls `/api/health` with retries (covers cold start) and hard-fails if it never returns 200, so a
+  broken deploy is caught by the pipeline instead of discovered by a user.
 - **Build** produces an environment-agnostic standalone artifact (`drop`) — no runtime config needed.
 - **Deploy_Dev** auto-deploys to the dev slot + migrates `cityops_dev` on every push to `main`, no approval.
 - **E2E tests** run on PRs, nightly, and manual runs only — not on every push, to keep dev-deploy fast.
@@ -602,10 +609,12 @@ If the Retail Prices API filter doesn't match a meter (e.g. a SKU/region combina
 sold), the stage logs a `##vso[task.logissue type=warning]` and reports the incomplete estimate
 rather than failing — the estimate is advisory, not a gate.
 
-### 11.7 Post-deploy smoke test
+### 11.7 Post-deploy smoke tests (infra-level and app-level)
 
-`SmokeTest` runs after `Deploy` succeeds and verifies the resources that were just (re-)provisioned
-are actually healthy — not just that ARM reported success:
+Two distinct smoke tests exist, at two different layers — one per pipeline:
+
+**Infra-level** (`infra.yml`'s `SmokeTest` stage) — verifies the _resources_ just (re-)provisioned
+are healthy, not just that ARM reported success:
 
 - **Hard-blocking checks** (fail the stage): Key Vault, PostgreSQL Flexible Server, and Azure OpenAI
   provisioning/ready state, read via `az keyvault show` / `az postgres flexible-server show` /
@@ -618,6 +627,22 @@ are actually healthy — not just that ARM reported success:
 - Resource identifiers are read from the `infra-outputs` artifact published by `Deploy`
   (`webAppUrl`, `devSlotUrl`, `keyVaultName`, `postgresServerName` — the last exposed as a Bicep
   output specifically to avoid parsing it out of the FQDN).
+
+**App-level** (`app.yml` — a step after each deploy, not a separate stage) — verifies the _code_
+just deployed is actually serving traffic:
+
+- Target: `GET /api/health` ([`src/app/api/health/route.ts`](../src/app/api/health/route.ts)) — a
+  cheap route that does a `SELECT 1` through Prisma and returns `200`/`{"status":"ok"}`, or
+  `503`/`{"status":"error"}` if the DB round-trip fails.
+- Runs right after **Deploy_Dev**'s slot deploy (against the dev-slot URL) and right after
+  **Deploy_Prod**'s swap (against the production URL) — [`.ado/templates/smoke-test.yml`](../.ado/templates/smoke-test.yml)
+  / [`.github/actions/smoke-test`](../.github/actions/smoke-test/action.yml). Curls with retries
+  (10 attempts, 6s apart, to ride out cold start) and **hard-fails** the deploy if it never returns
+  200 — unlike the infra-level check, by this point the code is genuinely expected to be serving.
+- **`healthCheckPath: '/api/health'`** is also wired into both the production site and dev slot in
+  [`infra/modules/appservice.bicep`](../infra/modules/appservice.bicep) — this is Azure App
+  Service's own platform-level health check (evicts unhealthy instances from rotation), separate
+  from and complementary to the pipeline step above.
 
 #### 11.7.1 Further pipeline ideas (not yet implemented)
 
@@ -644,8 +669,10 @@ are actually healthy — not just that ARM reported success:
 | [`.ado/infra-cicd.yml`](../.ado/infra-cicd.yml)                                               | Infra pipeline (validate + apply)                               |
 | [`.ado/templates/verify-azure-resources.yml`](../.ado/templates/verify-azure-resources.yml)   | `VerifyAzureEnv` stage: fail-fast existence check (§11.3)       |
 | [`.ado/templates/resolve-azure-names.yml`](../.ado/templates/resolve-azure-names.yml)         | Shared web app / Key Vault name computation step (§11.3)        |
+| [`.ado/templates/smoke-test.yml`](../.ado/templates/smoke-test.yml)                           | App-level post-deploy smoke test step (§11.7)                   |
 | [`.ado/templates/setup-nodejs.yml`](../.ado/templates/setup-nodejs.yml)                       | Shared Node.js install + `npm ci` step                          |
 | [`.ado/templates/azure-policy-compliance.yml`](../.ado/templates/azure-policy-compliance.yml) | Infra-pipeline Azure Policy compliance stage (§11.5)            |
+| [`src/app/api/health/route.ts`](../src/app/api/health/route.ts)                               | Smoke-test target: liveness + DB round-trip (§11.7)             |
 | [`.env.example`](../.env.example)                                                             | Full list of runtime environment variables                      |
 | [`Dockerfile`](../Dockerfile)                                                                 | Optional container build (not used for App Service code deploy) |
 

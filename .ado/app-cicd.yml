@@ -309,6 +309,10 @@ stages:
                     slotName: '$(devSlotName)'
                     package: '$(Pipeline.Workspace)/drop'
                     startUpCommand: 'node server.js'
+                - template: templates/smoke-test.yml
+                  parameters:
+                    url: 'https://$(webAppName)-$(devSlotName).azurewebsites.net/api/health'
+                    displayName: 'Smoke test dev slot (/api/health)'
 
   # ---------------------------------------------------------------------------
   # DEPLOY (Production) — migrate the prod DB (cityops), then SWAP dev → production
@@ -370,3 +374,7 @@ stages:
                     webAppName: '$(webAppName)'
                     resourceGroupName: '$(resourceGroup)'
                     sourceSlot: '$(devSlotName)'
+                - template: templates/smoke-test.yml
+                  parameters:
+                    url: 'https://$(webAppName).azurewebsites.net/api/health'
+                    displayName: 'Smoke test production (/api/health)'

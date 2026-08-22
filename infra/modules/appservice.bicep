@@ -64,6 +64,7 @@ resource webApp 'Microsoft.Web/sites@2023-12-01' = {
       alwaysOn: alwaysOn
       ftpsState: 'Disabled'
       appCommandLine: 'node server.js'
+      healthCheckPath: '/api/health' // must match src/app/api/health/route.ts
       appSettings: concat(commonAppSettings, prodAppSettings)
     }
   }
@@ -88,6 +89,7 @@ resource devSlot 'Microsoft.Web/sites/slots@2023-12-01' = {
       alwaysOn: alwaysOn
       ftpsState: 'Disabled'
       appCommandLine: 'node server.js'
+      healthCheckPath: '/api/health' // must match src/app/api/health/route.ts
       appSettings: concat(commonAppSettings, devAppSettings)
     }
   }
