@@ -309,13 +309,12 @@ log "Creating/updating variable group 'cityops-env' (shared, non-secret config)"
 ENV_VG_ID="$(az pipelines variable-group list --query "[?name=='cityops-env'].id | [0]" -o tsv 2>/dev/null || true)"
 if [[ -z "$ENV_VG_ID" || "$ENV_VG_ID" == "None" ]]; then
   az pipelines variable-group create --name cityops-env --authorize true \
-    --variables azureServiceConnection="$SERVICE_CONNECTION_NAME" resourceGroup="$RESOURCE_GROUP" \
+    --variables resourceGroup="$RESOURCE_GROUP" \
                 location="$LOCATION" dbLocation="$DB_LOCATION" baseName="$BASE_NAME" \
                 openAiAccountName="$OPENAI_ACCOUNT_NAME" -o none
 else
   # Always reconcile to this run's values — reusing an existing NAME_HASH means "update this
   # deployment", so a stale resourceGroup/baseName/etc. left over from a prior run must not win.
-  set_group_variable "$ENV_VG_ID" azureServiceConnection "$SERVICE_CONNECTION_NAME"
   set_group_variable "$ENV_VG_ID" resourceGroup "$RESOURCE_GROUP"
   set_group_variable "$ENV_VG_ID" location "$LOCATION"
   set_group_variable "$ENV_VG_ID" dbLocation "$DB_LOCATION"

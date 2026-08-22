@@ -237,7 +237,7 @@ stages:
       - IntegrationTest
     condition: and(succeeded(), in(variables['Build.Reason'], 'IndividualCI', 'Manual'))
     variables:
-      - group: cityops-env # azureServiceConnection, resourceGroup, baseName
+      - group: cityops-env # resourceGroup, baseName
       - name: devSlotName
         value: dev
     jobs:
@@ -305,7 +305,7 @@ stages:
     condition: and(succeeded(), eq(variables['Build.Reason'], 'Manual'))
     lockBehavior: sequential # exclusive-lock check on the 'prod' Environment (§11.2) serializes prod deploys
     variables:
-      - group: cityops-env # azureServiceConnection, resourceGroup, baseName
+      - group: cityops-env # resourceGroup, baseName
       - name: devSlotName
         value: dev
     jobs:

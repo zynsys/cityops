@@ -63,7 +63,7 @@ schedules:
     always: true
 
 variables:
-  - group: cityops-env # azureServiceConnection, resourceGroup, location, dbLocation
+  - group: cityops-env # resourceGroup, location, dbLocation, baseName, openAiAccountName
   - group: cityops-infra # secret vars: pgAdminPassword, authSecret, authSecretDev
 
 stages:
