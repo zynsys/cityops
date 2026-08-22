@@ -137,4 +137,5 @@ output devSlotName string = resources.outputs.devSlotName
 output devSlotUrl string = resources.outputs.devSlotUrl
 output keyVaultName string = resources.outputs.keyVaultName
 output postgresFqdn string = resources.outputs.postgresFqdn
+output postgresServerName string = resources.outputs.postgresServerName
 output resourceGroupName string = resources.outputs.resourceGroupName

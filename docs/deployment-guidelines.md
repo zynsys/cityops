@@ -535,18 +535,21 @@ in this document need setting up:
 - **Retention** — set once: Project Settings → Pipelines → Settings → **Retention** (not scriptable via a verified REST endpoint).
 - **Resource tagging** — every resource in `infra/main.bicep` carries a `tags` object (default `{ project: 'cityops', managedBy: 'bicep' }`, overridable) for cost allocation.
 
-### 11.5 Azure Policy pre-deploy gate (app pipeline)
+### 11.5 Azure Policy compliance stage (infra pipeline)
 
-An Azure Policy is **assigned to the resource group** (codified in Bicep), and the app pipeline's
-`PolicyCompliance` stage **reads that compliance state before deploying** — failing the run if any
-resource is non-compliant, so a non-compliant environment never receives a new app deployment.
+An Azure Policy is **assigned to the resource group** (codified in Bicep), and `infra.yml` has a
+dedicated **`PolicyCompliance`** stage — between `Validate` and `Deploy` — that reads that
+compliance state and fails if any resource is non-compliant, so infra is never (re-)applied on top
+of a drifted environment (e.g. a tag removed manually, outside Bicep). Governance lives here rather
+than in the app pipeline because the app pipeline never creates or modifies Azure resources — it
+only deploys code onto infrastructure that already exists.
 
 - **The policy** — `cityops-require-tags` (custom definition, subscription-scoped, in [`infra/modules/policy-definitions.bicep`](../infra/modules/policy-definitions.bicep)) flags any resource missing the `requiredTagName` tag. Assigned to the RG by [`infra/modules/policy.bicep`](../infra/modules/policy.bicep) (wired via `resources.bicep`) on every `az deployment` — no manual `az policy assignment create`.
-- **The gate** — [`.ado/templates/policy-compliance.yml`](../.ado/templates/policy-compliance.yml) runs `az policy state summarize -g <rg>` and fails if `nonCompliantResources > 0`. The `PolicyCompliance` stage in `app.yml` runs it with `triggerScan: true` (fresh evaluation), and `Deploy_Dev`/`Deploy_Prod` `dependsOn` it. The built-in `AzurePolicyCheckGate@0` task is Classic-release-only, hence the CLI approach.
-- **Effect must be `Audit`** — `requireTagsEffect` defaults to **`Audit`** (not `Deny`) precisely so the gate is the enforcement point. With `Deny`, Azure would reject the tag-removal update itself, so you couldn't stage the demo. `requiredTagName` defaults to **`project`** (Bicep applies it, so resources start compliant).
-- **RBAC** — the gate needs `Microsoft.PolicyInsights/policyStates/*/read` + `.../triggerEvaluation/action` (covered by the SP's **Contributor**); creating the assignment needs `Microsoft.Authorization/policyAssignments/write` (covered by **User Access Administrator**). No managed identity needed for Audit.
+- **The stage** — [`.ado/templates/policy-compliance.yml`](../.ado/templates/policy-compliance.yml) runs `az policy state summarize -g <rg>` and fails if `nonCompliantResources > 0` (with `triggerScan: true` for a fresh evaluation). It runs on the same triggers as `Validate` (push/PR/nightly) for continuous drift visibility, and `Deploy` (manual-gated) `dependsOn` it — so an apply is blocked, not just flagged. The built-in `AzurePolicyCheckGate@0` task is Classic-release-only, hence the CLI approach.
+- **Effect must be `Audit`** — `requireTagsEffect` defaults to **`Audit`** (not `Deny`) precisely so the stage is the enforcement point. With `Deny`, Azure would reject a tag-removal update itself, so drift could never be created (or demoed) in the first place. `requiredTagName` defaults to **`project`** (Bicep applies it, so resources start compliant).
+- **RBAC** — the stage needs `Microsoft.PolicyInsights/policyStates/*/read` + `.../triggerEvaluation/action` (covered by the SP's **Contributor**); creating the assignment needs `Microsoft.Authorization/policyAssignments/write` (covered by **User Access Administrator**). No managed identity needed for Audit.
 
-#### 11.5.1 Demo: the gate blocks a deploy on a policy violation
+#### 11.5.1 Demo: the stage blocks an apply on a policy violation
 
 1. **Baseline** — infra has run, so every resource carries the `project` tag and `cityops-require-tags` (Audit) is assigned. Resources are compliant.
 2. **Break compliance** — remove the `project` tag from a **top-level** resource (e.g. the Key Vault or the web app — not a slot):
@@ -557,10 +560,51 @@ resource is non-compliant, so a non-compliant environment never receives a new a
      --tags managedBy=bicep   # 'project' intentionally omitted
    ```
 
-3. **Run the app pipeline** — the `PolicyCompliance` stage triggers a fresh scan, sees `nonCompliantResources ≥ 1`, logs the offending resource + policy, and **fails before `Deploy_Dev`** — the deploy is blocked.
-4. **Restore** — re-add `project=cityops` and rerun → the gate passes and the deploy proceeds.
+3. **Run the infra pipeline** — `Validate` passes, then `PolicyCompliance` triggers a fresh scan, sees `nonCompliantResources ≥ 1`, logs the offending resource + policy, and **fails before `Deploy`** — the apply is blocked.
+4. **Restore** — re-add `project=cityops` and rerun → the stage passes and `Deploy` proceeds (on a manual run).
 
 > **Timing note.** Compliance state is evaluated **asynchronously** by Azure. `triggerScan: true` forces a fresh evaluation each run, but a brand-new assignment can still take a few minutes to produce its first results. Give the assignment a few minutes after the first infra deploy before running the remove-tag demo, and always change the tag on a **top-level** resource (deployment slots are child resources and aren't reliably counted).
+
+### 11.6 Cost estimate stage
+
+`CostEstimate` runs in parallel with `PolicyCompliance` (both `dependsOn: Validate`) and is purely
+informational — it never fails the pipeline. It queries the public [Azure Retail Prices API](https://learn.microsoft.com/en-us/rest/api/cost-management/retail-prices/azure-retail-prices)
+(no auth required) for the three **fixed-capacity** resources this template provisions and prints a
+monthly estimate:
+
+- App Service Plan (`$(location)`, SKU from the `appServiceSku` stage variable — keep in sync with `appServiceSkuName`'s default in `main.bicep`)
+- PostgreSQL Flexible Server compute (`$(dbLocation)`, SKU from `pgComputeSku` — keep in sync with the `sku.name` in `postgres.bicep`)
+- PostgreSQL storage (`pgStorageGb` — keep in sync with `storageSizeGB` in `postgres.bicep`)
+
+**Deliberately excluded** (usage-based, no fixed monthly rate — a flat number would be misleading):
+Azure OpenAI (`GlobalStandard` bills per-token, not per-capacity), Application Insights / Log
+Analytics (per-GB ingested), Key Vault (per-operation). The stage calls this out explicitly rather
+than guessing a number.
+
+If the Retail Prices API filter doesn't match a meter (e.g. a SKU/region combination that isn't
+sold), the stage logs a `##vso[task.logissue type=warning]` and reports the incomplete estimate
+rather than failing — the estimate is advisory, not a gate.
+
+### 11.7 Post-deploy smoke test
+
+`SmokeTest` runs after `Deploy` succeeds and verifies the resources that were just (re-)provisioned
+are actually healthy — not just that ARM reported success:
+
+- **Hard-blocking checks** (fail the stage): Key Vault, PostgreSQL Flexible Server, and Azure OpenAI
+  provisioning/ready state, read via `az keyvault show` / `az postgres flexible-server show` /
+  `az cognitiveservices account show`. These are always expected healthy immediately after a
+  successful apply, regardless of whether any app code has been deployed.
+- **Informational only** (logs a warning, does not fail): HTTP reachability of the production and
+  dev-slot web app URLs. On the **very first** infra deploy there is no app code yet — the app
+  pipeline deploys that separately — so a non-200 response is normal until `app.yml` has run at
+  least once. Treating this as a hard gate would break first-time bootstrap.
+- Resource identifiers are read from the `infra-outputs` artifact published by `Deploy`
+  (`webAppUrl`, `devSlotUrl`, `keyVaultName`, `postgresServerName` — the last exposed as a Bicep
+  output specifically to avoid parsing it out of the FQDN).
+
+#### 11.7.1 Further pipeline ideas (not yet implemented)
+
+- **IaC static analysis** — [PSRule for Azure](https://azure.github.io/PSRule.Rules.Azure/) or [Checkov](https://www.checkov.io/) scanning `infra/**` for security/best-practice issues (e.g. public network access, missing diagnostic settings) as part of `Validate`, catching problems before `what-if` even runs.
 
 ---
 
@@ -583,7 +627,7 @@ resource is non-compliant, so a non-compliant environment never receives a new a
 | [`.ado/infra.yml`](../.ado/infra.yml)                                                 | Infra pipeline (validate + apply)                               |
 | [`.ado/templates/resolve-names.yml`](../.ado/templates/resolve-names.yml)             | Shared web app / Key Vault name resolution step (§11.3)         |
 | [`.ado/templates/setup-node.yml`](../.ado/templates/setup-node.yml)                   | Shared Node.js install + `npm ci` step                          |
-| [`.ado/templates/policy-compliance.yml`](../.ado/templates/policy-compliance.yml)     | App-pipeline Azure Policy pre-deploy gate (§11.5)               |
+| [`.ado/templates/policy-compliance.yml`](../.ado/templates/policy-compliance.yml)     | Infra-pipeline Azure Policy compliance stage (§11.5)            |
 | [`.env.example`](../.env.example)                                                     | Full list of runtime environment variables                      |
 | [`Dockerfile`](../Dockerfile)                                                         | Optional container build (not used for App Service code deploy) |
 

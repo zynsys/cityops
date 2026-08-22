@@ -394,6 +394,7 @@ output devSlotName string = devSlotName
 output devSlotUrl string = 'https://${devHost}'
 output keyVaultName string = kvName
 output postgresFqdn string = postgres.outputs.fqdn
+output postgresServerName string = postgres.outputs.serverName
 output resourceGroupName string = resourceGroup().name
 output appInsightsName string = appInsights.outputs.appInsightsName
 

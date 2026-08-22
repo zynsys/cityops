@@ -1,7 +1,8 @@
 # CityOps — Infrastructure pipeline (Bicep)
-# IaC has no compiled artifact, so the "build/CI" is lint + what-if (a safe preview) and the
-# "release/CD" is the apply. Both live in ONE multi-stage YAML (not two separate pipelines):
-#   Validate (build)  →  Deploy (release, gated by an environment approval)
+# IaC has no compiled artifact, so the "build/CI" is lint + what-if (a safe preview), governance
+# is a dedicated compliance stage, and the "release/CD" is the apply. All three live in ONE
+# multi-stage YAML (not separate pipelines):
+#   Validate (build)  →  PolicyCompliance (governance)  →  Deploy (release, gated by an environment approval)
 #
 # NO HARDCODING: environment-specific values (resource group, regions, secrets) come from Library
 # variable groups below. The service connection name IS a literal ('cityops-azure-service-connection') rather than
@@ -99,6 +100,112 @@ stages:
                      authSecretDev="$(authSecretDev)"
 
   # -------------------------------------------------------------------------
+  # POLICY COMPLIANCE = governance drift check. Reads the resource group's Azure
+  # Policy compliance state and fails the stage if anything is non-compliant, so
+  # infra is never (re-)applied on top of a drifted environment (e.g. a tag
+  # removed manually, outside Bicep). Runs on every trigger that runs Validate
+  # (push/PR/nightly), giving continuous visibility even between applies; only
+  # the Deploy stage (manual-gated) is actually blocked by it. Uses `az policy
+  # state` because the built-in AzurePolicyCheckGate task is Classic-release-only
+  # and cannot run in a YAML pipeline.
+  # -------------------------------------------------------------------------
+  - stage: PolicyCompliance
+    displayName: 'Policy compliance (drift check)'
+    dependsOn: Validate
+    condition: succeeded()
+    jobs:
+      - job: policy_check
+        pool:
+          vmImage: ubuntu-latest
+        steps:
+          - checkout: none
+          - template: templates/policy-compliance.yml
+            parameters:
+              azureServiceConnection: 'cityops-azure-service-connection'
+              resourceGroup: '$(resourceGroup)'
+              failOnNonCompliant: true
+              triggerScan: true # infra runs are infrequent/manual — the extra minutes for a fresh evaluation are cheap here
+
+  # -------------------------------------------------------------------------
+  # COST ESTIMATE = informational, non-blocking. Queries the public Azure Retail
+  # Prices API for the fixed-capacity resources this template provisions (App
+  # Service plan, PostgreSQL compute + storage) and prints a monthly estimate, so
+  # cost impact is visible before anyone manually triggers Deploy. Usage-based
+  # resources (Azure OpenAI, App Insights/Log Analytics, Key Vault operations)
+  # have no fixed monthly rate and are called out separately rather than guessed.
+  # SKU/storage constants below must be kept in sync with appservice.bicep /
+  # postgres.bicep if those defaults ever change.
+  # -------------------------------------------------------------------------
+  - stage: CostEstimate
+    displayName: 'Cost estimate'
+    dependsOn: Validate
+    condition: succeeded()
+    variables:
+      - name: appServiceSku
+        value: S1 # must match appServiceSkuName default in main.bicep
+      - name: pgComputeSku
+        value: B1MS # must match the sku.name in postgres.bicep
+      - name: pgStorageGb
+        value: 32 # must match storageSizeGB in postgres.bicep
+    jobs:
+      - job: cost_estimate
+        pool:
+          vmImage: ubuntu-latest
+        steps:
+          - checkout: none
+          - script: |
+              set -e
+              fetch_price() {
+                curl -s -G "https://prices.azure.com/api/retail/prices" \
+                  --data-urlencode "api-version=2023-01-01-preview" \
+                  --data-urlencode "\$filter=$1"
+              }
+
+              APP_JSON=$(fetch_price "armRegionName eq '$(location)' and serviceName eq 'Azure App Service' and skuName eq '$(appServiceSku)' and type eq 'Consumption' and contains(productName, 'Linux')")
+              PG_COMPUTE_JSON=$(fetch_price "armRegionName eq '$(dbLocation)' and serviceName eq 'Azure Database for PostgreSQL' and contains(productName, 'Burstable BS Series Compute') and meterName eq '$(pgComputeSku)'")
+              PG_STORAGE_JSON=$(fetch_price "armRegionName eq '$(dbLocation)' and productName eq 'Azure Database for PostgreSQL Flex Server Storage' and meterName eq 'Storage Data Stored'")
+
+              python3 - "$APP_JSON" "$PG_COMPUTE_JSON" "$PG_STORAGE_JSON" 730 "$(pgStorageGb)" "$(appServiceSku)" "$(pgComputeSku)" "$(location)" "$(dbLocation)" <<'PYEOF'
+              import json, sys
+
+              app, pg_compute, pg_storage = (json.loads(a) for a in sys.argv[1:4])
+              hours, storage_gb = float(sys.argv[4]), float(sys.argv[5])
+              app_sku, pg_sku, loc, db_loc = sys.argv[6:10]
+
+              def price(d):
+                  items = d.get("Items") or []
+                  return items[0]["unitPrice"] if items else 0.0
+
+              app_hourly, pg_compute_hourly, pg_storage_per_gb = price(app), price(pg_compute), price(pg_storage)
+              app_monthly = round(app_hourly * hours, 2)
+              pg_compute_monthly = round(pg_compute_hourly * hours, 2)
+              pg_storage_monthly = round(pg_storage_per_gb * storage_gb, 2)
+              total = round(app_monthly + pg_compute_monthly + pg_storage_monthly, 2)
+
+              print("=" * 68)
+              print(" CityOps infra — estimated MONTHLY cost (fixed-capacity resources)")
+              print("=" * 68)
+              print(f"  App Service Plan ({app_sku} Linux, {loc}):       ${app_monthly}/mo")
+              print(f"  PostgreSQL compute ({pg_sku}, {db_loc}):         ${pg_compute_monthly}/mo")
+              print(f"  PostgreSQL storage ({int(storage_gb)} GB):               ${pg_storage_monthly}/mo")
+              print("-" * 68)
+              print(f"  Estimated fixed-capacity subtotal:            ${total}/mo")
+              print()
+              print("  NOT included (usage-based, no fixed monthly rate):")
+              print("    - Azure OpenAI (GlobalStandard is billed per-token)")
+              print("    - Application Insights / Log Analytics (billed per-GB ingested)")
+              print("    - Key Vault (billed per operation)")
+              print()
+              print("  Source: Azure Retail Prices API (public USD list price, PAYG —")
+              print("  actual billed cost may differ with reservations/discounts).")
+              print("=" * 68)
+
+              if 0.0 in (app_hourly, pg_compute_hourly, pg_storage_per_gb):
+                  print("##vso[task.logissue type=warning]One or more prices could not be resolved from the Retail Prices API — the estimate above is incomplete.")
+              PYEOF
+            displayName: 'Estimate monthly infra cost (Azure Retail Prices API)'
+
+  # -------------------------------------------------------------------------
   # DEPLOY = the "release/CD": apply the template. Only runs on a manually-triggered
   # pipeline run (Build.Reason == 'Manual') — never automatically on push/PR. This
   # infra apply is a single, atomic operation against SHARED resources (one Key Vault,
@@ -106,13 +213,17 @@ stages:
   # there is no separate "dev infra" to validate in isolation first, the way the app
   # tests in the dev slot before promoting. Instead, the Validate stage's `what-if`
   # output — which runs automatically on every push/PR — IS the pre-apply review: a
-  # human must read that diff and deliberately run this pipeline to apply it. Still
+  # human must read that diff and deliberately run this pipeline to apply it. The
+  # PolicyCompliance stage is an additional automated gate: if the resource group has
+  # drifted out of policy compliance since the last apply, Deploy never runs. Still
   # gated by the SAME 'prod' environment/approval used by the app's Deploy_Prod stage.
   # To apply: Pipelines → infra → Run pipeline (manually) on main.
   # -------------------------------------------------------------------------
   - stage: Deploy
     displayName: 'Deploy (apply)'
-    dependsOn: Validate
+    dependsOn:
+      - PolicyCompliance
+      - CostEstimate
     condition: and(succeeded(), eq(variables['Build.Reason'], 'Manual'))
     lockBehavior: sequential # exclusive-lock check on the 'prod' Environment (§11.2) serializes applies
     jobs:
@@ -150,3 +261,71 @@ stages:
                 - publish: '$(Build.ArtifactStagingDirectory)/infra-outputs.json'
                   artifact: infra-outputs
                   displayName: 'Publish deployment outputs (webAppName, keyVaultName, etc.)'
+
+  # -------------------------------------------------------------------------
+  # SMOKE TEST = post-deploy verification. Confirms the resources this apply just
+  # (re-)provisioned are actually healthy, not just that ARM reported success.
+  # Key Vault / PostgreSQL / Azure OpenAI provisioning state is a hard gate
+  # (these are always expected healthy right after a successful apply). Web app
+  # HTTP reachability is informational only: on the very first-ever infra deploy
+  # there is no app code yet (app.yml deploys that separately), so a non-200
+  # response there is normal until the app pipeline has run at least once.
+  # -------------------------------------------------------------------------
+  - stage: SmokeTest
+    displayName: 'Post-deploy smoke test'
+    dependsOn: Deploy
+    condition: succeeded()
+    jobs:
+      - job: smoke_test
+        pool:
+          vmImage: ubuntu-latest
+        steps:
+          - checkout: none
+          - download: current
+            artifact: infra-outputs
+          - task: AzureCLI@2
+            displayName: 'Verify provisioned resources are healthy'
+            inputs:
+              azureSubscription: 'cityops-azure-service-connection'
+              scriptType: bash
+              scriptLocation: inlineScript
+              inlineScript: |
+                set -e
+                OUT="$(Pipeline.Workspace)/infra-outputs/infra-outputs.json"
+                WEBAPP_URL=$(python3 -c "import json; print(json.load(open('$OUT'))['webAppUrl']['value'])")
+                DEVSLOT_URL=$(python3 -c "import json; print(json.load(open('$OUT'))['devSlotUrl']['value'])")
+                KV_NAME=$(python3 -c "import json; print(json.load(open('$OUT'))['keyVaultName']['value'])")
+                PG_NAME=$(python3 -c "import json; print(json.load(open('$OUT'))['postgresServerName']['value'])")
+                RG='$(resourceGroup)'
+                FAILED=0
+
+                echo "== Key Vault =="
+                KV_STATE=$(az keyvault show -n "$KV_NAME" -g "$RG" --query "properties.provisioningState" -o tsv)
+                echo "$KV_NAME provisioningState: $KV_STATE"
+                [ "$KV_STATE" = "Succeeded" ] || { echo "##vso[task.logissue type=error]Key Vault '$KV_NAME' is not provisioned (state: $KV_STATE)"; FAILED=1; }
+
+                echo "== PostgreSQL Flexible Server =="
+                PG_STATE=$(az postgres flexible-server show -g "$RG" -n "$PG_NAME" --query "state" -o tsv)
+                echo "$PG_NAME state: $PG_STATE"
+                [ "$PG_STATE" = "Ready" ] || { echo "##vso[task.logissue type=error]PostgreSQL server '$PG_NAME' is not ready (state: $PG_STATE)"; FAILED=1; }
+
+                echo "== Azure OpenAI =="
+                AI_STATE=$(az cognitiveservices account show -g "$RG" -n "$(openAiAccountName)" --query "properties.provisioningState" -o tsv)
+                echo "$(openAiAccountName) provisioningState: $AI_STATE"
+                [ "$AI_STATE" = "Succeeded" ] || { echo "##vso[task.logissue type=error]Azure OpenAI account is not provisioned (state: $AI_STATE)"; FAILED=1; }
+
+                echo "== Web app reachability (informational) =="
+                for pair in "production:$WEBAPP_URL" "dev slot:$DEVSLOT_URL"; do
+                  label="${pair%%:*}"; url="${pair#*:}"
+                  status=$(curl -s -o /dev/null -w '%{http_code}' --max-time 15 "$url" || echo "000")
+                  echo "$label ($url): HTTP $status"
+                  if [ "$status" -ge 500 ] || [ "$status" = "000" ]; then
+                    echo "##vso[task.logissue type=warning]$label web app returned $status — expected until app.yml has deployed code at least once."
+                  fi
+                done
+
+                if [ "$FAILED" -ne 0 ]; then
+                  echo "##vso[task.logissue type=error]One or more provisioned resources are not healthy."
+                  exit 1
+                fi
+                echo "Smoke test passed: Key Vault, PostgreSQL, and Azure OpenAI are all healthy."
