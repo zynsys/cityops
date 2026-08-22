@@ -250,7 +250,7 @@ That's exactly what the **Developer Productivity** section covers next. You'll u
 ## Project Layout
 
 ```
-real-world-ai-development-with-ghcp-workshop/
+cityops/
 ├── prisma/
 │   ├── schema.prisma          # Full data model — 24 models, 11 enums
 │   ├── seed.ts                # Database seed script

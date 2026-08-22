@@ -13,10 +13,10 @@ Before you start the workshop exercises, you need to get the CityOps application
 
 ## Step 1 — Fork the Repository
 
-1. Navigate to [https://github.com/prasadhonrao/real-world-ai-development-with-ghcp-workshop](https://github.com/prasadhonrao/real-world-ai-development-with-ghcp-workshop)
+1. Navigate to [https://github.com/zynsys/cityops](https://github.com/zynsys/cityops)
 2. Click **Fork** to create your own copy under your GitHub account or organisation.
 
-Make a note of your fork URL (`https://github.com/<your-username>/real-world-ai-development-with-ghcp-workshop`) — you'll use it throughout the workshop.
+Make a note of your fork URL (`https://github.com/<your-username>/cityops`) — you'll use it throughout the workshop.
 
 ## Step 2 — Choose Your Development Environment
 
@@ -38,8 +38,8 @@ The Codespace will be ready in a minute or two. Once open, continue from **Step 
 If you prefer to work on your own machine, clone your fork and open it in VS Code:
 
 ```bash
-git clone https://github.com/<your-username>/real-world-ai-development-with-ghcp-workshop.git
-cd real-world-ai-development-with-ghcp-workshop
+git clone https://github.com/<your-username>/cityops.git
+cd cityops
 code .
 ```
 

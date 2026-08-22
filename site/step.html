@@ -251,7 +251,8 @@
         window.location.protocol === 'file:';
       const GITHUB_RAW_BASE = isLocal
         ? '../'
-        : 'https://raw.githubusercontent.com/prasadhonrao/real-world-ai-development-with-ghcp-workshop/main/';
+        : // cityops is private, so fetch the bundled copy of workshop/ deployed alongside this page (see workshop-pages-deploy.yml) instead of raw.githubusercontent.com.
+          '';
       const COPY_FEEDBACK_DURATION_MS = 2000;
       const MAX_CODE_PREVIEW_LENGTH = 40;
       const copyResetTimers = new WeakMap();
@@ -526,7 +527,7 @@
           contentEl.innerHTML = `
                     <div class="markdown">
                         <h1>${step.title}</h1>
-                        <p>Could not load content. Please check the <a href="https://github.com/prasadhonrao/real-world-ai-development-with-ghcp-workshop" target="_blank">GitHub repository</a> directly.</p>
+                        <p>Could not load content. Please check the <a href="https://github.com/zynsys/cityops" target="_blank">GitHub repository</a> directly.</p>
                         <p style="color: var(--text-secondary); font-size: 0.875rem;">Error: ${err.message}</p>
                     </div>`;
         }

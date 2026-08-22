@@ -157,7 +157,7 @@ Before attending this workshop, please ensure you have:
 ## Support
 
 - **During the workshop**: Raise your hand or ask in the event chat
-- **After the workshop**: Open an issue in the [workshop repository](https://github.com/prasadhonrao/real-world-ai-development-with-ghcp-workshop)
+- **After the workshop**: Open an issue in the [workshop repository](https://github.com/zynsys/cityops)
 
 ---
 
