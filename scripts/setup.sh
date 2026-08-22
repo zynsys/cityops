@@ -5,7 +5,7 @@
 # everything documented in docs/deployment-guidelines.md: the shared resource group
 # (App Service w/ dev slot, PostgreSQL w/ dev+prod databases, one Key Vault, Azure OpenAI),
 # the Library variable groups, the 'dev'/'prod' Environments (+ approval on prod), the
-# ARM service connection, and pipeline registration for the 2 YAML pipelines (infra, app).
+# ARM service connection, and pipeline registration for the 2 YAML pipelines (infra-cicd, app-cicd).
 #
 # What this script does NOT do (by design — see docs/deployment-guidelines.md §5 & §9):
 #   - Attach the 'prod' approval check's approver (needs an interactive Graph identity lookup).
@@ -379,11 +379,11 @@ warn "run' (separation of duties). Full REST alternative in §5.2."
 # 6. Register pipelines
 # ---------------------------------------------------------------------------
 log "Registering YAML pipelines"
-# 'infra' first: it provisions/updates the shared Azure resources (App Service + dev slot,
-# PostgreSQL, Key Vault, Azure OpenAI) so 'app' always has somewhere ready to deploy to.
+# 'infra-cicd' first: it provisions/updates the shared Azure resources (App Service + dev slot,
+# PostgreSQL, Key Vault, Azure OpenAI) so 'app-cicd' always has somewhere ready to deploy to.
 declare -A PIPELINES=(
-  [infra]=".ado/infra-cicd.yml"
-  [app]=".ado/app-cicd.yml"
+  [infra-cicd]=".ado/infra-cicd.yml"
+  [app-cicd]=".ado/app-cicd.yml"
 )
 # The repo lives on GitHub, so auto-detection ("no Azure DevOps remote found") can't resolve the
 # source repo — pass it explicitly, plus the GitHub service connection if one was created above.
@@ -409,7 +409,7 @@ echo "  §11.1  Set up GitHub branch protection on main (required PR + required 
 echo "  §11.2  Add Branch control + Exclusive lock checks on the 'prod' Environment."
 echo "  §11.4  Set pipeline run/artifact retention policy (Project Settings → Pipelines → Settings)."
 if [[ "$AUTHORIZE_FOR_ALL_PIPELINES" != "true" ]]; then
-  echo "  §11.2  Explicitly authorize 'app'/'infra' to use the '$SERVICE_CONNECTION_NAME' connection."
+  echo "  §11.2  Explicitly authorize 'app-cicd'/'infra-cicd' to use the '$SERVICE_CONNECTION_NAME' connection."
 fi
 echo
 echo "Secrets generated this run (store them securely — needed again only if you rotate them):"

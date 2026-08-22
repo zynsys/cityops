@@ -3,7 +3,7 @@
 Provision Azure infrastructure and deploy CityOps from scratch, using Bicep (IaC) and Azure
 DevOps YAML pipelines. Follow §1–§4 top to bottom on a clean subscription + a clean Azure DevOps
 project to get a working dev + prod environment with gated CI/CD and no secrets in source
-control — ending with the `infra` pipeline provisioning Azure and the `app` pipeline deploying
+control — ending with the `infra-cicd` pipeline provisioning Azure and the `app-cicd` pipeline deploying
 CityOps onto it.
 
 ---
@@ -196,13 +196,13 @@ release or deployment should not approve it"** → timeout 5 minutes → Create.
 
 ### 3.4 Register the pipelines
 
-Register both YAML pipelines already in this repo. Do **`infra` first** — the app pipeline
+Register both YAML pipelines already in this repo. Do **`infra-cicd` first** — the app pipeline
 assumes the infrastructure it deploys to already exists.
 
 **UI (repeat once per pipeline):** Pipelines → New pipeline → GitHub → authorize/select this
 repository (`zynsys/cityops`) → **Existing Azure Pipelines YAML file** → branch `main`, path
 `.ado/infra-cicd.yml` → Continue → click the dropdown next to **Run** → **Save** (don't run yet).
-Repeat with path `.ado/app-cicd.yml`, naming it `app`.
+Repeat with path `.ado/app-cicd.yml`, naming it `app-cicd`.
 
 **CLI equivalent** (needs a GitHub PAT with `repo` **and** `admin:repo_hook` scopes — the
 `admin:repo_hook` scope is what lets Azure DevOps install the push/PR webhook on the repo, so CI
@@ -217,17 +217,17 @@ AZURE_DEVOPS_EXT_GITHUB_PAT="$GITHUB_PAT" az devops service-endpoint github crea
 
 GITHUB_SC_ID=$(az devops service-endpoint list --query "[?name=='cityops-github'].id | [0]" -o tsv)
 
-az pipelines create --name infra --yml-path .ado/infra-cicd.yml \
+az pipelines create --name infra-cicd --yml-path .ado/infra-cicd.yml \
   --repository zynsys/cityops --repository-type github --branch main \
   --service-connection "$GITHUB_SC_ID" --skip-first-run true
 
-az pipelines create --name app --yml-path .ado/app-cicd.yml \
+az pipelines create --name app-cicd --yml-path .ado/app-cicd.yml \
   --repository zynsys/cityops --repository-type github --branch main \
   --service-connection "$GITHUB_SC_ID" --skip-first-run true
 ```
 
 By default the `cityops-azure-service-connection` service connection is **not** authorized for all pipelines
-(least privilege — see §11.2). Authorize `infra` and `app` explicitly: Project Settings →
+(least privilege — see §11.2). Authorize `infra-cicd` and `app-cicd` explicitly: Project Settings →
 Service connections → `cityops-azure-service-connection` → Security → add both pipelines. (Or set **"Grant access
 permission to all pipelines"** on the connection if you'd rather skip this per-pipeline step.)
 
@@ -237,9 +237,9 @@ permission to all pipelines"** on the connection if you'd rather skip this per-p
 
 With §3 done, you're ready to actually provision Azure and deploy the app.
 
-### 4.1 Run the `infra` pipeline (provision Azure)
+### 4.1 Run the `infra-cicd` pipeline (provision Azure)
 
-Pipelines → `infra` → **Run pipeline** → branch `main` → Run.
+Pipelines → `infra-cicd` → **Run pipeline** → branch `main` → Run.
 
 This runs **Validate** (Bicep lint + `what-if` preview) then, because it was triggered manually,
 **Deploy** — gated by the `prod` approval you configured in §3.3. Approve it when prompted. The
@@ -252,19 +252,19 @@ it creates the resource group itself), provisioning:
 - Key Vault (RBAC) with the DB/auth secrets, and RBAC grants to each slot's managed identity
 - Azure OpenAI account + `gpt-4o` model deployment
 
-Confirm it succeeded: Pipelines → `infra` → latest run → **Deploy** stage should be green, and
+Confirm it succeeded: Pipelines → `infra-cicd` → latest run → **Deploy** stage should be green, and
 the published `infra-outputs` artifact contains `webAppName`, `webAppUrl`, `keyVaultName`, etc.
 
 > A plain push to `main` that touches `infra/**` only runs **Validate** (the `what-if` diff) —
 > `Deploy` never runs automatically. You must manually trigger a run to actually apply changes.
 
-### 4.2 Run the `app` pipeline (build, test, deploy to dev)
+### 4.2 Run the `app-cicd` pipeline (build, test, deploy to dev)
 
-A push to `main` (or a manual run) triggers `app` automatically: **Build & Unit tests** →
+A push to `main` (or a manual run) triggers `app-cicd` automatically: **Build & Unit tests** →
 **Integration tests** → **Deploy_Dev** — no approval, deploys straight to the dev slot and
 migrates `cityops_dev`.
 
-Watch it: Pipelines → `app` → latest run. Once `Deploy_Dev` is green:
+Watch it: Pipelines → `app-cicd` → latest run. Once `Deploy_Dev` is green:
 
 ```bash
 curl -I https://<webAppName>-dev.azurewebsites.net   # from the infra-outputs artifact
@@ -275,10 +275,10 @@ before any code has ever been deployed).
 
 ### 4.3 Promote to production
 
-Production only ever deploys from a **manually-triggered** run of `app` (the one trigger where
+Production only ever deploys from a **manually-triggered** run of `app-cicd` (the one trigger where
 `E2ETest` also runs in the same run, guaranteeing E2E passes before `Deploy_Prod` can):
 
-Pipelines → `app` → **Run pipeline** → branch `main` → Run. Once `E2ETest` and `Deploy_Dev`
+Pipelines → `app-cicd` → **Run pipeline** → branch `main` → Run. Once `E2ETest` and `Deploy_Dev`
 succeed, `Deploy_Prod` waits for the `prod` approval (§3.3) — approve it, and it migrates
 `cityops` (prod DB) then **swaps** the dev slot into production (zero-downtime; rollback = swap
 back).
@@ -291,7 +291,7 @@ curl -I https://<webAppName>.azurewebsites.net       # production, after the swa
 
 ## 5. Bicep reference (deep dive)
 
-This section documents what the `infra` pipeline's `Deploy` stage actually runs (§4.1) — useful
+This section documents what the `infra-cicd` pipeline's `Deploy` stage actually runs (§4.1) — useful
 for understanding or modifying the template, not a separate manual step.
 
 The template is modularized — `infra/main.bicep` is a thin **subscription-scoped** orchestrator
@@ -391,7 +391,7 @@ No secret is ever a plaintext App Service setting or a pipeline YAML literal —
 
 ## 7. Deployment flow (CI/CD) reference
 
-### 7.1 App pipeline (`app`)
+### 7.1 App pipeline (`app-cicd`)
 
 ```
 Build & Unit tests → Integration tests → Deploy_Dev (dev slot, migrate cityops_dev) [env: dev, no approval]
@@ -405,7 +405,7 @@ Manual run only: ... → E2E tests (passes) → Deploy_Prod (migrate cityops, sw
 - **E2E tests** run on PRs, nightly, and manual runs only — not on every push, to keep dev-deploy fast.
 - **Deploy_Prod** only runs on a manually-triggered run (the one trigger where E2E also runs), depends on `Deploy_Dev` + `E2ETest`, migrates `cityops`, then **swaps** dev → production. Gated by the `prod` approval — there is no automatic path to production.
 
-### 7.2 Infra pipeline (`infra`)
+### 7.2 Infra pipeline (`infra-cicd`)
 
 ```
 Validate (bicep lint + what-if, every push/PR) → Deploy (manual run only) [env: prod, approval]
@@ -450,7 +450,7 @@ curl -I https://<WEB_APP_NAME>-dev.azurewebsites.net       # dev slot
 | Pipeline's `AzureKeyVault@2` task fails with `403 Forbidden` on `getSecret`             | The service connection's SP itself needs **Key Vault Secrets User** at the resource group scope (§3.1) — separate from the slot's managed identity.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
 | `azureSubscription: '$(azureServiceConnection)'` fails validation: "could not be found" | ADO can't statically resolve a variable-group macro for this input — must be the literal connection name (see §5.3).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
 | App/infra pipeline doesn't run on push to `main` (no CI)                                | GitHub-sourced pipeline: the repo's Azure DevOps **webhook** is missing or failing delivery. Usually the GitHub PAT behind the `cityops-github` service connection lacks **`admin:repo_hook`** (or the PAT expired), so no webhook was ever installed. Fix the PAT scopes (`repo` + `admin:repo_hook`), recreate the connection, then re-save the pipeline. Also confirm the pipeline's **Edit → ⋮ → Triggers** UI does **not** have "Override the YAML continuous integration trigger" enabled, and that the pipeline isn't paused/disabled. Note: `.ado/app-cicd.yml` has no path filter so any push to `main` triggers it; `.ado/infra-cicd.yml` only triggers on `infra/**` + `.ado/infra-cicd.yml` changes — that's by design. |
-| Dynamic name lookup (`az webapp list ... starts_with`) returns empty                    | Infra not deployed yet, or `resourceGroup` in `cityops-env` is wrong. Run the `infra` pipeline first (§4.1).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
+| Dynamic name lookup (`az webapp list ... starts_with`) returns empty                    | Infra not deployed yet, or `resourceGroup` in `cityops-env` is wrong. Run the `infra-cicd` pipeline first (§4.1).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
 | `az devops invoke` errors `could not convert string to float`                           | Use the bare preview API version (e.g. `7.2-preview`, no `.N` suffix).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
 | `az devops invoke` GET ignores `resourceType`/`resourceId`                              | Pass them via `--query-parameters`, not `--route-parameters`.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
 | `az devops invoke` JSON output fails to parse (`Expecting value`)                       | CLI sometimes prints a status line before the JSON — strip the first line or parse stdout/stderr separately.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
@@ -522,7 +522,7 @@ in this document need setting up:
 - **Requester cannot approve their own run** — already enabled in §3.3 (separation of duties).
 - **Branch control check** — restricts `prod` deploys to `main` only: Environments → `prod` → Approvals and checks → **Branch control** → `refs/heads/main`.
 - **Exclusive lock check** — serializes concurrent `prod` deploys: Approvals and checks → **Exclusive lock**. YAML side already set: `Deploy_Prod`/`Deploy` set `lockBehavior: sequential`.
-- **Least-privilege service connection** — leave `cityops-azure-service-connection` NOT authorized for all pipelines by default; explicitly authorize `app`/`infra` under Service connections → `cityops-azure-service-connection` → Security (§3.4).
+- **Least-privilege service connection** — leave `cityops-azure-service-connection` NOT authorized for all pipelines by default; explicitly authorize `app-cicd`/`infra-cicd` under Service connections → `cityops-azure-service-connection` → Security (§3.4).
 
 ### 11.3 Pipeline hygiene
 

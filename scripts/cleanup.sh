@@ -2,7 +2,7 @@
 # CityOps — teardown counterpart to scripts/setup.sh. Deletes everything that script creates,
 # so you can re-run setup.sh against a truly clean Azure DevOps project + subscription.
 #
-# Deletes: the 2 YAML pipelines (infra, app), both Library variable groups (cityops-env,
+# Deletes: the 2 YAML pipelines (infra-cicd, app-cicd), both Library variable groups (cityops-env,
 # cityops-infra), the ARM + GitHub service connections and their service principal/app
 # registration, and (unless DELETE_RESOURCE_GROUP=false) the Azure resource group itself. The
 # Azure DevOps project itself is never deleted — only the resources setup.sh created inside it.
@@ -101,7 +101,7 @@ echo "  Subscription:        $SUBSCRIPTION_ID"
 [[ "$DELETE_RESOURCE_GROUP" == "true" ]] && echo "  Resource group:      $RESOURCE_GROUP (ALL resources inside it)"
 if [[ "$DO_ADO" == "true" ]]; then
   echo "  ADO project (NOT deleted — only these resources within it): $ADO_ORG_URL/$ADO_PROJECT"
-  echo "  Pipelines:            infra, app"
+  echo "  Pipelines:            infra-cicd, app-cicd"
   echo "  Variable groups:      cityops-env, cityops-infra"
   echo "  Service connections:  $SERVICE_CONNECTION_NAME, $GITHUB_SERVICE_CONNECTION_NAME (+ SP/app registration)"
 fi
@@ -117,7 +117,7 @@ fi
 # ---------------------------------------------------------------------------
 if [[ "$DO_ADO" == "true" ]]; then
   log "Deleting pipelines"
-  for NAME in infra app; do
+  for NAME in infra-cicd app-cicd; do
     ID="$(az pipelines list --query "[?name=='$NAME'].id | [0]" -o tsv 2>/dev/null || true)"
     if [[ -n "$ID" && "$ID" != "None" ]]; then
       az pipelines delete --id "$ID" --yes \
