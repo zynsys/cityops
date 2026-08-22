@@ -15,7 +15,7 @@
 #      Contributor + User Access Administrator (or Owner) at the target scope — User Access
 #      Administrator is required because the template creates Key Vault role assignments.
 #   2. Variable group 'cityops-env' (Library, plain vars) — shared by this pipeline AND
-#      .ado/app.yml: resourceGroup, location, dbLocation.
+#      .ado/app-cicd.yml: resourceGroup, location, dbLocation.
 #   3. Variable group 'cityops-infra' (Library, SECRET, stable vars) — this pipeline only:
 #        - pgAdminPassword  (fixed — changing it rotates the DB admin password)
 #        - authSecret       (fixed, >= 32 chars — changing it invalidates prod sessions)
@@ -27,14 +27,14 @@
 #
 # Resource NAMES (web app, key vault, slot) are never hardcoded — they're derived
 # deterministically inside main.bicep and resolved dynamically by naming convention at
-# deploy time in app.yml, so this pipeline never needs to know them either.
+# deploy time in app-cicd.yml, so this pipeline never needs to know them either.
 #
 # main.bicep is subscription-scoped: it creates the resource group itself (via
 # modules/resourcegroup.bicep) before deploying everything else into it, so there's no manual
 # 'az group create' step before this pipeline can run — hence 'az deployment sub ...' below,
 # not 'az deployment group ...', and '--location' instead of '-g'.
 #
-# Run this pipeline FIRST (before app.yml ever needs to deploy anything) — it provisions the
+# Run this pipeline FIRST (before app-cicd.yml ever needs to deploy anything) — it provisions the
 # resource group, App Service (+ dev slot), PostgreSQL, Key Vault, and Azure OpenAI, and wires up
 # the RBAC between them, so the app pipeline always finds a ready-to-deploy-to environment.
 
@@ -44,7 +44,7 @@ trigger:
   paths:
     include:
       - infra/**
-      - .ado/infra.yml
+      - .ado/infra-cicd.yml
 
 pr:
   branches:
@@ -52,7 +52,7 @@ pr:
   paths:
     include:
       - infra/**
-      - .ado/infra.yml
+      - .ado/infra-cicd.yml
 
 schedules:
   - cron: '0 3 * * *' # nightly 03:00 UTC — drift detection (what-if only; Deploy stays manual-gated)
@@ -119,7 +119,7 @@ stages:
           vmImage: ubuntu-latest
         steps:
           - checkout: none
-          - template: templates/policy-compliance.yml
+          - template: templates/azure-policy-compliance.yml
             parameters:
               azureServiceConnection: 'cityops-azure-service-connection'
               resourceGroup: '$(resourceGroup)'

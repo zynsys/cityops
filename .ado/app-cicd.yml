@@ -43,7 +43,7 @@ stages:
         pool:
           vmImage: ubuntu-latest
         steps:
-          - template: templates/setup-node.yml
+          - template: templates/setup-nodejs.yml
 
           - script: |
               set +e
@@ -128,7 +128,7 @@ stages:
         variables:
           DATABASE_URL: 'postgresql://postgres:postgres@localhost:5432/cityops_test'
         steps:
-          - template: templates/setup-node.yml
+          - template: templates/setup-nodejs.yml
 
           - script: |
               for i in $(seq 1 30); do
@@ -180,7 +180,7 @@ stages:
           AUTH_SECRET: 'ci-e2e-nonsecret-placeholder-0123456789'
           CI: 'true'
         steps:
-          - template: templates/setup-node.yml
+          - template: templates/setup-nodejs.yml
 
           - script: npx playwright install --with-deps chromium
             displayName: 'Install Playwright browser'
@@ -250,10 +250,10 @@ stages:
             deploy:
               steps:
                 - checkout: self
-                - template: templates/setup-node.yml
+                - template: templates/setup-nodejs.yml
                   parameters:
                     installDisplayName: 'Install deps (Prisma CLI)'
-                - template: templates/resolve-names.yml
+                - template: templates/resolve-azure-names.yml
                   parameters:
                     azureServiceConnection: 'cityops-azure-service-connection'
                     resourceGroup: '$(resourceGroup)'
@@ -318,10 +318,10 @@ stages:
             deploy:
               steps:
                 - checkout: self
-                - template: templates/setup-node.yml
+                - template: templates/setup-nodejs.yml
                   parameters:
                     installDisplayName: 'Install deps (Prisma CLI)'
-                - template: templates/resolve-names.yml
+                - template: templates/resolve-azure-names.yml
                   parameters:
                     azureServiceConnection: 'cityops-azure-service-connection'
                     resourceGroup: '$(resourceGroup)'

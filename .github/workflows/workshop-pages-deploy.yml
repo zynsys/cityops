@@ -8,7 +8,7 @@ on:
     paths:
       - "site/**"
       - "workshop/**"
-      - ".github/workflows/deploy.yml"
+      - ".github/workflows/workshop-pages-deploy.yml"
 
   workflow_dispatch:
 

@@ -1,0 +1,52 @@
+# Azure Policy compliance gate. Fails the step when the target resource group contains
+# non-compliant resources, so a deploy is blocked until compliance is restored.
+# Mirrors .ado/templates/azure-policy-compliance.yml. Requires azure/login to have already run.
+name: 'Azure Policy compliance check'
+description: 'Fail if the resource group has non-compliant Azure Policy states'
+inputs:
+  resource-group:
+    required: true
+  fail-on-noncompliant:
+    required: false
+    default: 'true'
+  trigger-scan:
+    description: 'Force a fresh on-demand policy evaluation (slower but accurate)'
+    required: false
+    default: 'false'
+runs:
+  using: 'composite'
+  steps:
+    - shell: bash
+      run: |
+        set -e
+        RG='${{ inputs.resource-group }}'
+        TRIGGER='${{ inputs.trigger-scan }}'
+        FAIL='${{ inputs.fail-on-noncompliant }}'
+
+        if [ "$TRIGGER" = "true" ]; then
+          echo "Triggering on-demand policy evaluation for '$RG' (can take several minutes)…"
+          az policy state trigger-scan -g "$RG"
+        fi
+
+        echo "Evaluating Azure Policy compliance for resource group '$RG'…"
+        NON_COMPLIANT=$(az policy state summarize -g "$RG" \
+          --query "value[0].results.nonCompliantResources" -o tsv 2>/dev/null || echo "")
+        # summarize can return null/empty (e.g. no assignments yet) — treat anything non-numeric as 0.
+        case "$NON_COMPLIANT" in
+          ''|*[!0-9]*) NON_COMPLIANT=0 ;;
+        esac
+        echo "Non-compliant resources: $NON_COMPLIANT"
+
+        if [ "$NON_COMPLIANT" -gt 0 ]; then
+          echo "Non-compliant resource detail:"
+          az policy state list -g "$RG" \
+            --filter "complianceState eq 'NonCompliant'" \
+            --query "value[].{resource:resourceId, policy:policyDefinitionName, effect:policyDefinitionAction}" \
+            -o table || true
+        fi
+
+        if [ "$FAIL" = "true" ] && [ "$NON_COMPLIANT" -gt 0 ]; then
+          echo "::error::Azure Policy: $NON_COMPLIANT non-compliant resource(s) in '$RG'. Blocking deploy."
+          exit 1
+        fi
+        echo "Azure Policy compliance check passed."

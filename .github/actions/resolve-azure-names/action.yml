@@ -1,0 +1,30 @@
+# Shared step: resolve the web app / key vault names by naming convention instead of storing
+# them anywhere (see docs/deployment-guidelines.md §5.3 — the "no hardcoding" mechanism).
+# Mirrors .ado/templates/resolve-azure-names.yml. Requires azure/login to have already run.
+name: 'Resolve Azure resource names'
+description: 'Resolve web app / key vault names by naming convention'
+inputs:
+  resource-group:
+    required: true
+  base-name:
+    required: false
+    default: 'cityops'
+outputs:
+  web-app-name:
+    description: 'Resolved App Service name'
+    value: ${{ steps.resolve.outputs.web_app_name }}
+  key-vault-name:
+    description: 'Resolved Key Vault name'
+    value: ${{ steps.resolve.outputs.key_vault_name }}
+runs:
+  using: 'composite'
+  steps:
+    - id: resolve
+      shell: bash
+      run: |
+        set -e
+        webAppName=$(az webapp list -g "${{ inputs.resource-group }}" --query "[?starts_with(name,'app-${{ inputs.base-name }}-')].name | [0]" -o tsv)
+        keyVaultName=$(az keyvault list -g "${{ inputs.resource-group }}" --query "[?starts_with(name,'kv-${{ inputs.base-name }}-')].name | [0]" -o tsv)
+        test -n "$webAppName" && test -n "$keyVaultName"
+        echo "web_app_name=$webAppName" >> "$GITHUB_OUTPUT"
+        echo "key_vault_name=$keyVaultName" >> "$GITHUB_OUTPUT"

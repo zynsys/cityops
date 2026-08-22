@@ -76,8 +76,8 @@ equivalents (`az devops`/`az pipelines`) are given alongside for scripting or au
 ### 3.1 Create the ARM service connection
 
 The pipelines need an identity to deploy to Azure. Create an **Azure Resource Manager** service
-connection named **`cityops-azure-service-connection`** — this exact name is hardcoded in `.ado/app.yml` and
-`.ado/infra.yml`'s `azureSubscription:` inputs (see §5.3 for why it can't come from a variable
+connection named **`cityops-azure-service-connection`** — this exact name is hardcoded in `.ado/app-cicd.yml` and
+`.ado/infra-cicd.yml`'s `azureSubscription:` inputs (see §5.3 for why it can't come from a variable
 group).
 
 `infra/main.bicep` is **subscription-scoped** — it creates the resource group itself (there's no
@@ -201,8 +201,8 @@ assumes the infrastructure it deploys to already exists.
 
 **UI (repeat once per pipeline):** Pipelines → New pipeline → GitHub → authorize/select this
 repository (`zynsys/cityops`) → **Existing Azure Pipelines YAML file** → branch `main`, path
-`.ado/infra.yml` → Continue → click the dropdown next to **Run** → **Save** (don't run yet).
-Repeat with path `.ado/app.yml`, naming it `app`.
+`.ado/infra-cicd.yml` → Continue → click the dropdown next to **Run** → **Save** (don't run yet).
+Repeat with path `.ado/app-cicd.yml`, naming it `app`.
 
 **CLI equivalent** (needs a GitHub PAT with `repo` **and** `admin:repo_hook` scopes — the
 `admin:repo_hook` scope is what lets Azure DevOps install the push/PR webhook on the repo, so CI
@@ -217,11 +217,11 @@ AZURE_DEVOPS_EXT_GITHUB_PAT="$GITHUB_PAT" az devops service-endpoint github crea
 
 GITHUB_SC_ID=$(az devops service-endpoint list --query "[?name=='cityops-github'].id | [0]" -o tsv)
 
-az pipelines create --name infra --yml-path .ado/infra.yml \
+az pipelines create --name infra --yml-path .ado/infra-cicd.yml \
   --repository zynsys/cityops --repository-type github --branch main \
   --service-connection "$GITHUB_SC_ID" --skip-first-run true
 
-az pipelines create --name app --yml-path .ado/app.yml \
+az pipelines create --name app --yml-path .ado/app-cicd.yml \
   --repository zynsys/cityops --repository-type github --branch main \
   --service-connection "$GITHUB_SC_ID" --skip-first-run true
 ```
@@ -351,8 +351,8 @@ Outputs: `webAppName`, `webAppUrl`, `devSlotName`, `devSlotUrl`, `keyVaultName`,
 
 Every other environment-specific value (`resourceGroup`, `baseName`, `location`, secrets) comes
 from the `cityops-env`/`cityops-infra` variable groups — **except** the service connection name,
-which is hardcoded as the literal string `'cityops-azure-service-connection'` in both `.ado/app.yml` and
-`.ado/infra.yml`'s `azureSubscription:` inputs. This isn't an oversight: Azure DevOps performs a
+which is hardcoded as the literal string `'cityops-azure-service-connection'` in both `.ado/app-cicd.yml` and
+`.ado/infra-cicd.yml`'s `azureSubscription:` inputs. This isn't an oversight: Azure DevOps performs a
 **static resource-authorization check** on `azureSubscription:` inputs at YAML-compile time, and
 that check can't resolve a variable-group-sourced runtime macro like `$(azureServiceConnection)`
 — it validates against the literal, unexpanded string and always reports "service connection
@@ -449,7 +449,7 @@ curl -I https://<WEB_APP_NAME>-dev.azurewebsites.net       # dev slot
 | Key Vault reference unresolved (app can't read a secret at runtime)                     | Confirm **Key Vault Secrets User** is granted to that specific slot's managed identity (Bicep does this — check the RBAC blade if it's missing).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
 | Pipeline's `AzureKeyVault@2` task fails with `403 Forbidden` on `getSecret`             | The service connection's SP itself needs **Key Vault Secrets User** at the resource group scope (§3.1) — separate from the slot's managed identity.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
 | `azureSubscription: '$(azureServiceConnection)'` fails validation: "could not be found" | ADO can't statically resolve a variable-group macro for this input — must be the literal connection name (see §5.3).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
-| App/infra pipeline doesn't run on push to `main` (no CI)                                | GitHub-sourced pipeline: the repo's Azure DevOps **webhook** is missing or failing delivery. Usually the GitHub PAT behind the `cityops-github` service connection lacks **`admin:repo_hook`** (or the PAT expired), so no webhook was ever installed. Fix the PAT scopes (`repo` + `admin:repo_hook`), recreate the connection, then re-save the pipeline. Also confirm the pipeline's **Edit → ⋮ → Triggers** UI does **not** have "Override the YAML continuous integration trigger" enabled, and that the pipeline isn't paused/disabled. Note: `.ado/app.yml` has no path filter so any push to `main` triggers it; `.ado/infra.yml` only triggers on `infra/**` + `.ado/infra.yml` changes — that's by design. |
+| App/infra pipeline doesn't run on push to `main` (no CI)                                | GitHub-sourced pipeline: the repo's Azure DevOps **webhook** is missing or failing delivery. Usually the GitHub PAT behind the `cityops-github` service connection lacks **`admin:repo_hook`** (or the PAT expired), so no webhook was ever installed. Fix the PAT scopes (`repo` + `admin:repo_hook`), recreate the connection, then re-save the pipeline. Also confirm the pipeline's **Edit → ⋮ → Triggers** UI does **not** have "Override the YAML continuous integration trigger" enabled, and that the pipeline isn't paused/disabled. Note: `.ado/app-cicd.yml` has no path filter so any push to `main` triggers it; `.ado/infra-cicd.yml` only triggers on `infra/**` + `.ado/infra-cicd.yml` changes — that's by design. |
 | Dynamic name lookup (`az webapp list ... starts_with`) returns empty                    | Infra not deployed yet, or `resourceGroup` in `cityops-env` is wrong. Run the `infra` pipeline first (§4.1).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
 | `az devops invoke` errors `could not convert string to float`                           | Use the bare preview API version (e.g. `7.2-preview`, no `.N` suffix).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
 | `az devops invoke` GET ignores `resourceType`/`resourceId`                              | Pass them via `--query-parameters`, not `--route-parameters`.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
@@ -527,7 +527,7 @@ in this document need setting up:
 ### 11.3 Pipeline hygiene
 
 - **Lint** and **`npm audit --audit-level=high`** run in `Build_and_UnitTest` as **warn-only** — the repo has 9 pre-existing lint errors; fix those, then make it blocking.
-- **Shared resolve-names template** — [`.ado/templates/resolve-names.yml`](../.ado/templates/resolve-names.yml), used by both `Deploy_Dev` and `Deploy_Prod`.
+- **Shared resolve-names template** — [`.ado/templates/resolve-azure-names.yml`](../.ado/templates/resolve-azure-names.yml), used by both `Deploy_Dev` and `Deploy_Prod`.
 - **Nightly drift detection** — `infra.yml`'s `Validate` stage also runs on a nightly schedule; `Deploy` stays manual-gated, so nothing auto-applies.
 
 ### 11.4 Retention & cost governance
@@ -545,7 +545,7 @@ than in the app pipeline because the app pipeline never creates or modifies Azur
 only deploys code onto infrastructure that already exists.
 
 - **The policy** — `cityops-require-tags` (custom definition, subscription-scoped, in [`infra/modules/policy-definitions.bicep`](../infra/modules/policy-definitions.bicep)) flags any resource missing the `requiredTagName` tag. Assigned to the RG by [`infra/modules/policy.bicep`](../infra/modules/policy.bicep) (wired via `resources.bicep`) on every `az deployment` — no manual `az policy assignment create`.
-- **The stage** — [`.ado/templates/policy-compliance.yml`](../.ado/templates/policy-compliance.yml) runs `az policy state summarize -g <rg>` and fails if `nonCompliantResources > 0` (with `triggerScan: true` for a fresh evaluation). It runs on the same triggers as `Validate` (push/PR/nightly) for continuous drift visibility, and `Deploy` (manual-gated) `dependsOn` it — so an apply is blocked, not just flagged. The built-in `AzurePolicyCheckGate@0` task is Classic-release-only, hence the CLI approach.
+- **The stage** — [`.ado/templates/azure-policy-compliance.yml`](../.ado/templates/azure-policy-compliance.yml) runs `az policy state summarize -g <rg>` and fails if `nonCompliantResources > 0` (with `triggerScan: true` for a fresh evaluation). It runs on the same triggers as `Validate` (push/PR/nightly) for continuous drift visibility, and `Deploy` (manual-gated) `dependsOn` it — so an apply is blocked, not just flagged. The built-in `AzurePolicyCheckGate@0` task is Classic-release-only, hence the CLI approach.
 - **Effect must be `Audit`** — `requireTagsEffect` defaults to **`Audit`** (not `Deny`) precisely so the stage is the enforcement point. With `Deny`, Azure would reject a tag-removal update itself, so drift could never be created (or demoed) in the first place. `requiredTagName` defaults to **`project`** (Bicep applies it, so resources start compliant).
 - **RBAC** — the stage needs `Microsoft.PolicyInsights/policyStates/*/read` + `.../triggerEvaluation/action` (covered by the SP's **Contributor**); creating the assignment needs `Microsoft.Authorization/policyAssignments/write` (covered by **User Access Administrator**). No managed identity needed for Audit.
 
@@ -623,11 +623,11 @@ are actually healthy — not just that ARM reported success:
 | [`infra/modules/openai.bicep`](../infra/modules/openai.bicep)                         | Azure OpenAI account + model deployment module                  |
 | [`infra/modules/policy.bicep`](../infra/modules/policy.bicep)                         | Azure Policy assignments applied to the resource group (§11.5)  |
 | [`infra/modules/policy-definitions.bicep`](../infra/modules/policy-definitions.bicep) | Custom Azure Policy definitions (subscription scope, §11.5)     |
-| [`.ado/app.yml`](../.ado/app.yml)                                                     | App CI/CD (build, test, deploy dev/prod)                        |
-| [`.ado/infra.yml`](../.ado/infra.yml)                                                 | Infra pipeline (validate + apply)                               |
-| [`.ado/templates/resolve-names.yml`](../.ado/templates/resolve-names.yml)             | Shared web app / Key Vault name resolution step (§11.3)         |
-| [`.ado/templates/setup-node.yml`](../.ado/templates/setup-node.yml)                   | Shared Node.js install + `npm ci` step                          |
-| [`.ado/templates/policy-compliance.yml`](../.ado/templates/policy-compliance.yml)     | Infra-pipeline Azure Policy compliance stage (§11.5)            |
+| [`.ado/app-cicd.yml`](../.ado/app-cicd.yml)                                                     | App CI/CD (build, test, deploy dev/prod)                        |
+| [`.ado/infra-cicd.yml`](../.ado/infra-cicd.yml)                                                 | Infra pipeline (validate + apply)                               |
+| [`.ado/templates/resolve-azure-names.yml`](../.ado/templates/resolve-azure-names.yml)             | Shared web app / Key Vault name resolution step (§11.3)         |
+| [`.ado/templates/setup-nodejs.yml`](../.ado/templates/setup-nodejs.yml)                   | Shared Node.js install + `npm ci` step                          |
+| [`.ado/templates/azure-policy-compliance.yml`](../.ado/templates/azure-policy-compliance.yml)     | Infra-pipeline Azure Policy compliance stage (§11.5)            |
 | [`.env.example`](../.env.example)                                                     | Full list of runtime environment variables                      |
 | [`Dockerfile`](../Dockerfile)                                                         | Optional container build (not used for App Service code deploy) |
 

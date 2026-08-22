@@ -46,8 +46,8 @@ AZURE_SUBSCRIPTION_ID="${AZURE_SUBSCRIPTION_ID:-}"
 
 ADO_ORG_URL="${ADO_ORG_URL:-}"                # e.g. https://dev.azure.com/my-org
 ADO_PROJECT="${ADO_PROJECT:-}"                # e.g. CityOps
-# Must match the literal 'cityops-azure-service-connection' hardcoded in .ado/app.yml and
-# .ado/infra.yml's azureSubscription: inputs (ADO can't resolve a variable-group macro there —
+# Must match the literal 'cityops-azure-service-connection' hardcoded in .ado/app-cicd.yml and
+# .ado/infra-cicd.yml's azureSubscription: inputs (ADO can't resolve a variable-group macro there —
 # see docs/deployment-guidelines.md §5.3). Change this only if you also change both YAML files.
 SERVICE_CONNECTION_NAME="${SERVICE_CONNECTION_NAME:-cityops-azure-service-connection}"
 SP_SCOPE="${SP_SCOPE:-subscription}"          # infra/main.bicep is subscription-scoped and creates the
@@ -187,7 +187,7 @@ log "Preparing secrets"
 # No manual `az group create`: infra/main.bicep is targetScope='subscription' and creates (or
 # adopts) the resource group via its resourcegroup.bicep module, so it's deployed with
 # `az deployment sub create` + a resourceGroupName param — exactly what the infra pipeline runs
-# (.ado/infra.yml) and what docs/deployment-guidelines.md §5 documents.
+# (.ado/infra-cicd.yml) and what docs/deployment-guidelines.md §5 documents.
 log "Deploying infra/main.bicep (creates resource group '$RESOURCE_GROUP' + App Service + dev slot, PostgreSQL, Key Vault, Azure OpenAI)"
 DEPLOY_OUTPUT="$(az deployment sub create \
   --location "$LOCATION" -n cityops-infra \
@@ -382,8 +382,8 @@ log "Registering YAML pipelines"
 # 'infra' first: it provisions/updates the shared Azure resources (App Service + dev slot,
 # PostgreSQL, Key Vault, Azure OpenAI) so 'app' always has somewhere ready to deploy to.
 declare -A PIPELINES=(
-  [infra]=".ado/infra.yml"
-  [app]=".ado/app.yml"
+  [infra]=".ado/infra-cicd.yml"
+  [app]=".ado/app-cicd.yml"
 )
 # The repo lives on GitHub, so auto-detection ("no Azure DevOps remote found") can't resolve the
 # source repo — pass it explicitly, plus the GitHub service connection if one was created above.

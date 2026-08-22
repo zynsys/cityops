@@ -1,0 +1,334 @@
+# CityOps CI/CD — build + test pyramid, then deploy dev (auto) → prod (manual + approval).
+# GitHub Actions equivalent of .ado/app-cicd.yml.
+# Unit + integration gate every push/PR; e2e runs on PRs, nightly, and manual runs only.
+#
+# PREREQUISITES (one-time — see docs/deployment-guidelines.md):
+#   1. An Entra ID app registration with a federated credential trusting this repo (OIDC —
+#      no client secret), granted Contributor on the resource group and Key Vault Secrets
+#      User (Bicep grants the latter). Store its IDs as repo secrets:
+#        AZURE_CLIENT_ID, AZURE_TENANT_ID, AZURE_SUBSCRIPTION_ID
+#   2. Repo variables (Settings → Secrets and variables → Actions → Variables):
+#        AZURE_RESOURCE_GROUP, AZURE_BASE_NAME (defaults to 'cityops' if unset)
+#   3. GitHub Environments 'dev' (no required reviewers) and 'prod' (required reviewers) —
+#      the equivalent of ADO's Environments/approval checks.
+#
+# NO HARDCODING: webAppName/keyVaultName are never stored — resolved at deploy time by naming
+# convention (main.bicep always names them 'app-<baseName>-*' / 'kv-<baseName>-*'), via the
+# resolve-azure-names composite action.
+name: CityOps App CI/CD
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  schedule:
+    - cron: '0 2 * * *' # nightly 02:00 UTC — full e2e run
+  workflow_dispatch: {} # manual run — required to promote to prod
+
+env:
+  NODE_VERSION: '22.x'
+  # Ephemeral database for integration/e2e. PostGIS image because CityOps uses PostGIS.
+  DATABASE_URL: postgresql://postgres:postgres@localhost:5432/cityops_test
+
+concurrency:
+  group: cityops-app-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # BUILD + UNIT — fast gate on every push/PR. Environment-agnostic build
+  # (lazy Prisma), plus unit tests which need no external services.
+  # ---------------------------------------------------------------------------
+  build_and_unit_test:
+    name: Build & Unit tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup-nodejs
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Lint (warn-only — pre-existing findings not yet triaged)
+        run: npm run lint || echo "::warning::Lint returned a non-zero exit code (known pre-existing findings not yet triaged)."
+
+      - name: Dependency vulnerability audit (warn-only)
+        run: npm audit --audit-level=high || echo "::warning::Dependency audit returned a non-zero exit code (warn-only for now)."
+
+      - name: Unit tests
+        run: mkdir -p reports && npm run test:unit -- --coverage --reporter=default --reporter=junit --outputFile.junit=reports/unit.xml
+
+      - name: Publish unit test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: unit-test-results
+          path: reports/unit.xml
+          retention-days: 14
+
+      - name: Publish code coverage
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: unit-coverage
+          path: coverage/
+          retention-days: 14
+
+      - name: Coverage gate (warn-only, target 60%)
+        if: always()
+        continue-on-error: true
+        run: |
+          node -e "const t=require('./coverage/coverage-summary.json').total.lines.pct; const min=60; console.log('Line coverage (unit scope): '+t+'% — target '+min+'%'); if(t<min){ console.log('::warning::Coverage '+t+'% is below the '+min+'% target'); }"
+
+      - name: Build
+        run: npm run build
+        # Intentionally no env: — the build must not depend on runtime config or secrets.
+
+      - name: Assemble and validate standalone deploy package
+        run: |
+          set -e
+          APP="$GITHUB_WORKSPACE/deploy-package"
+          mkdir -p "$APP"
+          # Assemble the Next.js standalone server into a ready-to-run App Service package.
+          cp -r .next/standalone/. "$APP/"
+          mkdir -p "$APP/.next"
+          cp -r .next/static "$APP/.next/static"
+          cp -r public "$APP/public"
+          test -f "$APP/server.js"
+          test -d "$APP/.next/static"
+          test -d "$APP/public"
+
+      - name: Publish artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: drop
+          path: deploy-package/
+
+  # ---------------------------------------------------------------------------
+  # INTEGRATION — runs against an ephemeral PostGIS service. Gates push/PR.
+  # ---------------------------------------------------------------------------
+  integration_test:
+    name: Integration tests
+    needs: build_and_unit_test
+    runs-on: ubuntu-latest
+    services:
+      postgis:
+        image: postgis/postgis:16-3.4
+        ports:
+          - 5432:5432
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: cityops_test
+        options: >-
+          --health-cmd="pg_isready -U postgres"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup-nodejs
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Apply migrations
+        run: npm run db:migrate:deploy
+
+      - name: Integration tests
+        run: mkdir -p reports && npm run test:integration -- --coverage --reporter=default --reporter=junit --outputFile.junit=reports/integration.xml
+
+      - name: Publish integration test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: integration-test-results
+          path: reports/integration.xml
+          retention-days: 14
+
+      - name: Publish code coverage (integration)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: integration-coverage
+          path: coverage/
+          retention-days: 14
+
+  # ---------------------------------------------------------------------------
+  # E2E — Playwright against the built app. Runs on PRs (pre-merge safety net),
+  # the nightly schedule (health check), and manual runs (pre-prod promotion) —
+  # NOT on every push to main, to keep the continuous dev-deploy path fast.
+  # ---------------------------------------------------------------------------
+  e2e_test:
+    name: E2E tests
+    needs: integration_test
+    if: github.event_name == 'pull_request' || github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    services:
+      postgis:
+        image: postgis/postgis:16-3.4
+        ports:
+          - 5432:5432
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: cityops_test
+        options: >-
+          --health-cmd="pg_isready -U postgres"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=10
+    env:
+      NEXTAUTH_URL: 'http://localhost:3000'
+      # Throwaway 32+ char value for ephemeral CI only — NOT a real secret.
+      AUTH_SECRET: 'ci-e2e-nonsecret-placeholder-0123456789'
+      CI: 'true'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup-nodejs
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Install Playwright browser
+        run: npx playwright install --with-deps chromium
+
+      - name: Migrate & seed
+        run: npm run db:migrate:deploy && npm run db:seed
+
+      - name: Build app
+        run: npm run build
+
+      - name: Playwright e2e
+        run: npm run test:e2e
+        # playwright.config starts `npm run start` in CI and waits for http://localhost:3000.
+
+      - name: Publish Playwright report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: playwright-report/
+          retention-days: 14
+
+  # ---------------------------------------------------------------------------
+  # DEPLOY (Dev slot) — deploy the built app to the 'dev' slot and migrate the
+  # dev database (cityops_dev). Gated by the 'dev' environment (no approval — fast
+  # continuous feedback). Runs on direct pushes to main and manual runs, but NOT
+  # on pull_request/schedule (mirrors ADO's Build.Reason in('IndividualCI','Manual')).
+  # ---------------------------------------------------------------------------
+  deploy_dev:
+    name: Deploy to Dev slot
+    needs: [build_and_unit_test, integration_test]
+    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    environment: dev
+    permissions:
+      id-token: write
+      contents: read
+    env:
+      AZURE_BASE_NAME: ${{ vars.AZURE_BASE_NAME || 'cityops' }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup-nodejs
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          install-display-name: 'Install deps (Prisma CLI)'
+
+      - name: Azure login (OIDC)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Resolve web app / key vault names
+        id: names
+        uses: ./.github/actions/resolve-azure-names
+        with:
+          resource-group: ${{ vars.AZURE_RESOURCE_GROUP }}
+          base-name: ${{ env.AZURE_BASE_NAME }}
+
+      - name: Fetch dev DB secret
+        run: |
+          set -e
+          value=$(az keyvault secret show --vault-name "${{ steps.names.outputs.key-vault-name }}" --name DATABASE-URL-DEV --query value -o tsv)
+          echo "::add-mask::$value"
+          echo "DATABASE_URL=$value" >> "$GITHUB_ENV"
+
+      - name: Migrate cityops_dev
+        run: npm run db:migrate:deploy
+
+      - name: Seed cityops_dev (idempotent upserts)
+        run: npm run db:seed
+
+      - name: Download build artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: drop
+          path: drop
+
+      - name: Deploy to dev slot
+        uses: azure/webapps-deploy@v3
+        with:
+          app-name: ${{ steps.names.outputs.web-app-name }}
+          slot-name: dev
+          package: drop
+          startup-command: 'node server.js'
+
+  # ---------------------------------------------------------------------------
+  # DEPLOY (Production) — migrate the prod DB (cityops), then SWAP dev → production
+  # for a zero-downtime release (rollback = swap back). Gated by the 'prod' environment's
+  # required reviewers AND only runs on a manual run (workflow_dispatch) — the only
+  # trigger where e2e_test also runs in the SAME run, so production can never deploy
+  # without E2E passing, without E2E running on every ordinary push.
+  # To promote to prod: Actions → CityOps App CI/CD → Run workflow (on main).
+  # ---------------------------------------------------------------------------
+  deploy_prod:
+    name: Deploy to Production (swap)
+    needs: [deploy_dev, e2e_test]
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    environment: prod
+    concurrency:
+      group: cityops-prod-deploy
+      cancel-in-progress: false
+    permissions:
+      id-token: write
+      contents: read
+    env:
+      AZURE_BASE_NAME: ${{ vars.AZURE_BASE_NAME || 'cityops' }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup-nodejs
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          install-display-name: 'Install deps (Prisma CLI)'
+
+      - name: Azure login (OIDC)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Resolve web app / key vault names
+        id: names
+        uses: ./.github/actions/resolve-azure-names
+        with:
+          resource-group: ${{ vars.AZURE_RESOURCE_GROUP }}
+          base-name: ${{ env.AZURE_BASE_NAME }}
+
+      - name: Fetch prod DB secret
+        run: |
+          set -e
+          value=$(az keyvault secret show --vault-name "${{ steps.names.outputs.key-vault-name }}" --name DATABASE-URL --query value -o tsv)
+          echo "::add-mask::$value"
+          echo "DATABASE_URL=$value" >> "$GITHUB_ENV"
+
+      - name: Migrate cityops (prod)
+        run: npm run db:migrate:deploy
+
+      - name: Seed cityops (idempotent upserts — remove once real data exists)
+        run: npm run db:seed
+
+      - name: Swap dev → production
+        run: az webapp deployment slot swap -g "${{ vars.AZURE_RESOURCE_GROUP }}" -n "${{ steps.names.outputs.web-app-name }}" --slot dev --target-slot production

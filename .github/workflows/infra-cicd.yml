@@ -1,0 +1,314 @@
+# CityOps — Infrastructure pipeline (Bicep). GitHub Actions equivalent of .ado/infra-cicd.yml.
+# IaC has no compiled artifact, so the "build/CI" is lint + what-if (a safe preview), governance
+# is a dedicated compliance stage, and the "release/CD" is the apply. Job order:
+#   validate  →  {policy_compliance, cost_estimate}  →  deploy (environment approval)  →  smoke_test
+#
+# NO HARDCODING: environment-specific values come from repo variables/secrets below. Resource
+# NAMES (web app, key vault, slot) are never hardcoded — they're derived deterministically inside
+# main.bicep and resolved dynamically by naming convention at deploy time in app-cicd.yml.
+#
+# PREREQUISITES (one-time — see docs/deployment-guidelines.md):
+#   1. An Entra ID app registration with a federated credential trusting this repo (OIDC — no
+#      client secret). Its service principal needs Contributor + User Access Administrator (or
+#      Owner) at the target scope — User Access Administrator is required because the template
+#      creates Key Vault role assignments. Store as repo secrets:
+#        AZURE_CLIENT_ID, AZURE_TENANT_ID, AZURE_SUBSCRIPTION_ID
+#   2. Repo variables (Settings → Secrets and variables → Actions → Variables):
+#        AZURE_RESOURCE_GROUP, AZURE_LOCATION, AZURE_DB_LOCATION, AZURE_BASE_NAME (default
+#        'cityops'), AZURE_OPENAI_ACCOUNT_NAME
+#   3. Repo/environment secrets (Settings → Secrets and variables → Actions → Secrets):
+#        PG_ADMIN_PASSWORD  (fixed — changing it rotates the DB admin password)
+#        AUTH_SECRET        (fixed, >= 32 chars — changing it invalidates prod sessions)
+#        AUTH_SECRET_DEV    (fixed, >= 32 chars — changing it invalidates dev sessions)
+#   4. GitHub Environment 'prod' with required reviewers — the deploy job targets it because a
+#      single Bicep apply provisions/updates shared, production-impacting resources (Key Vault,
+#      PostgreSQL, App Service plan) that both the dev slot and production sit on.
+#
+# Run this workflow FIRST (before app-cicd.yml ever needs to deploy anything) — it provisions the
+# resource group, App Service (+ dev slot), PostgreSQL, Key Vault, and Azure OpenAI, and wires up
+# the RBAC between them, so the app workflow always finds a ready-to-deploy-to environment.
+name: CityOps Infra CI/CD
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'infra/**'
+      - '.github/workflows/infra-cicd.yml'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'infra/**'
+      - '.github/workflows/infra-cicd.yml'
+  schedule:
+    - cron: '0 3 * * *' # nightly 03:00 UTC — drift detection (what-if only; deploy stays manual-gated)
+  workflow_dispatch: {} # manual run — required to apply
+
+env:
+  AZURE_BASE_NAME: ${{ vars.AZURE_BASE_NAME || 'cityops' }}
+
+jobs:
+  # -------------------------------------------------------------------------
+  # VALIDATE = the "build/CI" for infrastructure: lint + what-if preview.
+  # Read-only. Runs on PRs and main so infra changes are reviewed before apply.
+  # -------------------------------------------------------------------------
+  validate:
+    name: Validate (lint + what-if)
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - name: Azure login (OIDC)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Bicep lint + what-if preview
+        run: |
+          set -e
+          az bicep build --file infra/main.bicep
+          az deployment sub what-if \
+            --location "${{ vars.AZURE_LOCATION }}" \
+            -f infra/main.bicep \
+            -p resourceGroupName="${{ vars.AZURE_RESOURCE_GROUP }}" \
+               location="${{ vars.AZURE_LOCATION }}" \
+               dbLocation="${{ vars.AZURE_DB_LOCATION }}" \
+               baseName="${{ env.AZURE_BASE_NAME }}" \
+               openAiAccountName="${{ vars.AZURE_OPENAI_ACCOUNT_NAME }}" \
+               pgAdminPassword="${{ secrets.PG_ADMIN_PASSWORD }}" \
+               authSecret="${{ secrets.AUTH_SECRET }}" \
+               authSecretDev="${{ secrets.AUTH_SECRET_DEV }}"
+
+  # -------------------------------------------------------------------------
+  # POLICY COMPLIANCE = governance drift check. Reads the resource group's Azure
+  # Policy compliance state and fails the job if anything is non-compliant, so
+  # infra is never (re-)applied on top of a drifted environment (e.g. a tag
+  # removed manually, outside Bicep). Runs on every trigger that runs validate
+  # (push/PR/nightly), giving continuous visibility even between applies; only
+  # the deploy job is actually blocked by it.
+  # -------------------------------------------------------------------------
+  policy_compliance:
+    name: Policy compliance (drift check)
+    needs: validate
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - name: Azure login (OIDC)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - uses: actions/checkout@v4
+      - name: Azure Policy compliance check
+        uses: ./.github/actions/azure-policy-compliance
+        with:
+          resource-group: ${{ vars.AZURE_RESOURCE_GROUP }}
+          fail-on-noncompliant: 'true'
+          trigger-scan: 'true' # infra runs are infrequent/manual — the extra minutes for a fresh evaluation are cheap here
+
+  # -------------------------------------------------------------------------
+  # COST ESTIMATE = informational, non-blocking. Queries the public Azure Retail
+  # Prices API for the fixed-capacity resources this template provisions (App
+  # Service plan, PostgreSQL compute + storage) and prints a monthly estimate, so
+  # cost impact is visible before anyone manually triggers deploy. Usage-based
+  # resources (Azure OpenAI, App Insights/Log Analytics, Key Vault operations)
+  # have no fixed monthly rate and are called out separately rather than guessed.
+  # SKU/storage constants below must be kept in sync with appservice.bicep /
+  # postgres.bicep if those defaults ever change.
+  # -------------------------------------------------------------------------
+  cost_estimate:
+    name: Cost estimate
+    needs: validate
+    runs-on: ubuntu-latest
+    env:
+      APP_SERVICE_SKU: S1 # must match appServiceSkuName default in main.bicep
+      PG_COMPUTE_SKU: B1MS # must match the sku.name in postgres.bicep
+      PG_STORAGE_GB: 32 # must match storageSizeGB in postgres.bicep
+    steps:
+      - name: Estimate monthly infra cost (Azure Retail Prices API)
+        run: |
+          set -e
+          fetch_price() {
+            curl -s -G "https://prices.azure.com/api/retail/prices" \
+              --data-urlencode "api-version=2023-01-01-preview" \
+              --data-urlencode "\$filter=$1"
+          }
+
+          APP_JSON=$(fetch_price "armRegionName eq '${{ vars.AZURE_LOCATION }}' and serviceName eq 'Azure App Service' and skuName eq '$APP_SERVICE_SKU' and type eq 'Consumption' and contains(productName, 'Linux')")
+          PG_COMPUTE_JSON=$(fetch_price "armRegionName eq '${{ vars.AZURE_DB_LOCATION }}' and serviceName eq 'Azure Database for PostgreSQL' and contains(productName, 'Burstable BS Series Compute') and meterName eq '$PG_COMPUTE_SKU'")
+          PG_STORAGE_JSON=$(fetch_price "armRegionName eq '${{ vars.AZURE_DB_LOCATION }}' and productName eq 'Azure Database for PostgreSQL Flex Server Storage' and meterName eq 'Storage Data Stored'")
+
+          python3 - "$APP_JSON" "$PG_COMPUTE_JSON" "$PG_STORAGE_JSON" 730 "$PG_STORAGE_GB" "$APP_SERVICE_SKU" "$PG_COMPUTE_SKU" "${{ vars.AZURE_LOCATION }}" "${{ vars.AZURE_DB_LOCATION }}" <<'PYEOF'
+          import json, sys
+
+          app, pg_compute, pg_storage = (json.loads(a) for a in sys.argv[1:4])
+          hours, storage_gb = float(sys.argv[4]), float(sys.argv[5])
+          app_sku, pg_sku, loc, db_loc = sys.argv[6:10]
+
+          def price(d):
+              items = d.get("Items") or []
+              return items[0]["unitPrice"] if items else 0.0
+
+          app_hourly, pg_compute_hourly, pg_storage_per_gb = price(app), price(pg_compute), price(pg_storage)
+          app_monthly = round(app_hourly * hours, 2)
+          pg_compute_monthly = round(pg_compute_hourly * hours, 2)
+          pg_storage_monthly = round(pg_storage_per_gb * storage_gb, 2)
+          total = round(app_monthly + pg_compute_monthly + pg_storage_monthly, 2)
+
+          print("=" * 68)
+          print(" CityOps infra — estimated MONTHLY cost (fixed-capacity resources)")
+          print("=" * 68)
+          print(f"  App Service Plan ({app_sku} Linux, {loc}):       ${app_monthly}/mo")
+          print(f"  PostgreSQL compute ({pg_sku}, {db_loc}):         ${pg_compute_monthly}/mo")
+          print(f"  PostgreSQL storage ({int(storage_gb)} GB):               ${pg_storage_monthly}/mo")
+          print("-" * 68)
+          print(f"  Estimated fixed-capacity subtotal:            ${total}/mo")
+          print()
+          print("  NOT included (usage-based, no fixed monthly rate):")
+          print("    - Azure OpenAI (GlobalStandard is billed per-token)")
+          print("    - Application Insights / Log Analytics (billed per-GB ingested)")
+          print("    - Key Vault (billed per operation)")
+          print()
+          print("  Source: Azure Retail Prices API (public USD list price, PAYG —")
+          print("  actual billed cost may differ with reservations/discounts).")
+          print("=" * 68)
+
+          if 0.0 in (app_hourly, pg_compute_hourly, pg_storage_per_gb):
+              print("::warning::One or more prices could not be resolved from the Retail Prices API — the estimate above is incomplete.")
+          PYEOF
+
+  # -------------------------------------------------------------------------
+  # DEPLOY = the "release/CD": apply the template. Only runs on a manual run
+  # (workflow_dispatch) — never automatically on push/PR. This infra apply is a
+  # single, atomic operation against SHARED resources (one Key Vault, one Postgres
+  # server, one App Service plan) serving both dev and prod at once, so there is
+  # no separate "dev infra" to validate in isolation first. Instead, the validate
+  # job's `what-if` output — which runs automatically on every push/PR — IS the
+  # pre-apply review: a human must read that diff and deliberately run this
+  # workflow to apply it. policy_compliance is an additional automated gate: if
+  # the resource group has drifted out of policy compliance since the last apply,
+  # deploy never runs. Gated by the 'prod' environment's required reviewers.
+  # To apply: Actions → CityOps Infra CI/CD → Run workflow (on main).
+  # -------------------------------------------------------------------------
+  deploy:
+    name: Deploy (apply)
+    needs: [policy_compliance, cost_estimate]
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    environment: prod
+    concurrency:
+      group: cityops-infra-deploy
+      cancel-in-progress: false
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - name: Azure login (OIDC)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: az deployment sub create
+        run: |
+          set -e
+          az deployment sub create \
+            --location "${{ vars.AZURE_LOCATION }}" \
+            -n cityops-infra \
+            -f infra/main.bicep \
+            -p resourceGroupName="${{ vars.AZURE_RESOURCE_GROUP }}" \
+               location="${{ vars.AZURE_LOCATION }}" \
+               dbLocation="${{ vars.AZURE_DB_LOCATION }}" \
+               baseName="${{ env.AZURE_BASE_NAME }}" \
+               openAiAccountName="${{ vars.AZURE_OPENAI_ACCOUNT_NAME }}" \
+               pgAdminPassword="${{ secrets.PG_ADMIN_PASSWORD }}" \
+               authSecret="${{ secrets.AUTH_SECRET }}" \
+               authSecretDev="${{ secrets.AUTH_SECRET_DEV }}" \
+            --query "properties.outputs" -o json | tee infra-outputs.json
+
+      - name: Publish deployment outputs (webAppName, keyVaultName, etc.)
+        uses: actions/upload-artifact@v4
+        with:
+          name: infra-outputs
+          path: infra-outputs.json
+
+  # -------------------------------------------------------------------------
+  # SMOKE TEST = post-deploy verification. Confirms the resources this apply just
+  # (re-)provisioned are actually healthy, not just that ARM reported success.
+  # Key Vault / PostgreSQL / Azure OpenAI provisioning state is a hard gate
+  # (these are always expected healthy right after a successful apply). Web app
+  # HTTP reachability is informational only: on the very first-ever infra deploy
+  # there is no app code yet (app-cicd.yml deploys that separately), so a non-200
+  # response there is normal until the app workflow has run at least once.
+  # -------------------------------------------------------------------------
+  smoke_test:
+    name: Post-deploy smoke test
+    needs: deploy
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - name: Azure login (OIDC)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Download deployment outputs
+        uses: actions/download-artifact@v4
+        with:
+          name: infra-outputs
+
+      - name: Verify provisioned resources are healthy
+        run: |
+          set -e
+          OUT="infra-outputs.json"
+          WEBAPP_URL=$(python3 -c "import json; print(json.load(open('$OUT'))['webAppUrl']['value'])")
+          DEVSLOT_URL=$(python3 -c "import json; print(json.load(open('$OUT'))['devSlotUrl']['value'])")
+          KV_NAME=$(python3 -c "import json; print(json.load(open('$OUT'))['keyVaultName']['value'])")
+          PG_NAME=$(python3 -c "import json; print(json.load(open('$OUT'))['postgresServerName']['value'])")
+          RG='${{ vars.AZURE_RESOURCE_GROUP }}'
+          FAILED=0
+
+          echo "== Key Vault =="
+          KV_STATE=$(az keyvault show -n "$KV_NAME" -g "$RG" --query "properties.provisioningState" -o tsv)
+          echo "$KV_NAME provisioningState: $KV_STATE"
+          [ "$KV_STATE" = "Succeeded" ] || { echo "::error::Key Vault '$KV_NAME' is not provisioned (state: $KV_STATE)"; FAILED=1; }
+
+          echo "== PostgreSQL Flexible Server =="
+          PG_STATE=$(az postgres flexible-server show -g "$RG" -n "$PG_NAME" --query "state" -o tsv)
+          echo "$PG_NAME state: $PG_STATE"
+          [ "$PG_STATE" = "Ready" ] || { echo "::error::PostgreSQL server '$PG_NAME' is not ready (state: $PG_STATE)"; FAILED=1; }
+
+          echo "== Azure OpenAI =="
+          AI_STATE=$(az cognitiveservices account show -g "$RG" -n "${{ vars.AZURE_OPENAI_ACCOUNT_NAME }}" --query "properties.provisioningState" -o tsv)
+          echo "${{ vars.AZURE_OPENAI_ACCOUNT_NAME }} provisioningState: $AI_STATE"
+          [ "$AI_STATE" = "Succeeded" ] || { echo "::error::Azure OpenAI account is not provisioned (state: $AI_STATE)"; FAILED=1; }
+
+          echo "== Web app reachability (informational) =="
+          for pair in "production:$WEBAPP_URL" "dev slot:$DEVSLOT_URL"; do
+            label="${pair%%:*}"; url="${pair#*:}"
+            status=$(curl -s -o /dev/null -w '%{http_code}' --max-time 15 "$url" || echo "000")
+            echo "$label ($url): HTTP $status"
+            if [ "$status" -ge 500 ] || [ "$status" = "000" ]; then
+              echo "::warning::$label web app returned $status — expected until app-cicd.yml has deployed code at least once."
+            fi
+          done
+
+          if [ "$FAILED" -ne 0 ]; then
+            echo "::error::One or more provisioned resources are not healthy."
+            exit 1
+          fi
+          echo "Smoke test passed: Key Vault, PostgreSQL, and Azure OpenAI are all healthy."
