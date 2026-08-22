@@ -308,14 +308,14 @@ resource-group-scoped module:
 | [`infra/modules/appservice.bicep`](../infra/modules/appservice.bicep)       | Plan, Web App **+ `dev` deployment slot**                                               |
 | [`infra/modules/openai.bicep`](../infra/modules/openai.bicep)               | Azure OpenAI account + `gpt-4o` model deployment                                        |
 
-Resource names are derived deterministically (`uniqueString(resourceGroup().id)`), so re-running a deployment on the same resource group **adopts and updates** existing resources rather than creating duplicates.
+Resource names are derived deterministically from `baseName` alone (`app-<baseName>`, `kv-<baseName>`, `pg-<baseName>` — no random suffix), so re-running a deployment on the same resource group **adopts and updates** existing resources rather than creating duplicates. `app`/`kv`/`pg` names must be globally unique across all of Azure (not just this subscription), so `baseName` needs to be distinctive enough to avoid collisions — verified available for the default `cityops` via the `Microsoft.Web`/`Microsoft.KeyVault`/`Microsoft.DBforPostgreSQL` `checkNameAvailability` APIs. If you ever get a naming conflict on first deploy, change `baseName` to something more specific and redeploy.
 
 Key parameters (set via the `cityops-env`/`cityops-infra` variable groups, §3.2):
 
 | Parameter                                                         | Default                            | Purpose                                                                  |
 | ----------------------------------------------------------------- | ---------------------------------- | ------------------------------------------------------------------------ |
 | `resourceGroupName`                                               | `rg-cityops`                       | Name of the resource group to create (if missing) and deploy into        |
-| `baseName`                                                        | `cityops`                          | Prefix for every generated resource name (`app-<baseName>-<hash>`, etc.) |
+| `baseName`                                                        | `cityops`                          | Base for every generated resource name (`app-<baseName>`, `kv-<baseName>`, `pg-<baseName>`) |
 | `location` / `dbLocation` / `openAiLocation`                      | `francecentral`                    | Region per resource type                                                 |
 | `appServiceSkuName` / `appServiceSkuTier`                         | `S1` / `Standard`                  | App Service plan SKU                                                     |
 | `alwaysOn`                                                        | `true`                             | Keep the app warm (Standard+)                                            |
@@ -326,11 +326,12 @@ Key parameters (set via the `cityops-env`/`cityops-infra` variable groups, §3.2
 | `authSecret` / `authSecretDev`                                    | _(secure)_                         | Prod / dev-slot `AUTH_SECRET`                                            |
 
 Bicep-generated resource **names** aren't stored anywhere beyond `baseName` — each deploy job in
-`app.yml` resolves the actual name at runtime by naming convention:
+`app.yml` computes the actual name at runtime purely by naming convention (no Azure query needed,
+since the name is deterministic):
 
 ```bash
-webAppName=$(az webapp list -g "$(resourceGroup)" --query "[?starts_with(name,'app-$(baseName)-')].name | [0]" -o tsv)
-keyVaultName=$(az keyvault list -g "$(resourceGroup)" --query "[?starts_with(name,'kv-$(baseName)-')].name | [0]" -o tsv)
+webAppName="app-$(baseName)"
+keyVaultName="kv-$(baseName)"
 ```
 
 If you ever need to deploy the template directly (bypassing the pipeline, e.g. for local testing):
@@ -450,7 +451,7 @@ curl -I https://<WEB_APP_NAME>-dev.azurewebsites.net       # dev slot
 | Pipeline's `AzureKeyVault@2` task fails with `403 Forbidden` on `getSecret`             | The service connection's SP itself needs **Key Vault Secrets User** at the resource group scope (§3.1) — separate from the slot's managed identity.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
 | `azureSubscription: '$(azureServiceConnection)'` fails validation: "could not be found" | ADO can't statically resolve a variable-group macro for this input — must be the literal connection name (see §5.3).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
 | App/infra pipeline doesn't run on push to `main` (no CI)                                | GitHub-sourced pipeline: the repo's Azure DevOps **webhook** is missing or failing delivery. Usually the GitHub PAT behind the `cityops-github` service connection lacks **`admin:repo_hook`** (or the PAT expired), so no webhook was ever installed. Fix the PAT scopes (`repo` + `admin:repo_hook`), recreate the connection, then re-save the pipeline. Also confirm the pipeline's **Edit → ⋮ → Triggers** UI does **not** have "Override the YAML continuous integration trigger" enabled, and that the pipeline isn't paused/disabled. Note: `.ado/app-cicd.yml` has no path filter so any push to `main` triggers it; `.ado/infra-cicd.yml` only triggers on `infra/**` + `.ado/infra-cicd.yml` changes — that's by design. |
-| Dynamic name lookup (`az webapp list ... starts_with`) returns empty                    | Infra not deployed yet, or `resourceGroup` in `cityops-env` is wrong. Run the `infra-cicd` pipeline first (§4.1).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
+| App/Key Vault not found under the computed `app-<baseName>`/`kv-<baseName>` name          | Infra not deployed yet, or `baseName`/`resourceGroup` in `cityops-env` don't match what infra actually deployed. Run the `infra-cicd` pipeline first (§4.1).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
 | `az devops invoke` errors `could not convert string to float`                           | Use the bare preview API version (e.g. `7.2-preview`, no `.N` suffix).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
 | `az devops invoke` GET ignores `resourceType`/`resourceId`                              | Pass them via `--query-parameters`, not `--route-parameters`.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
 | `az devops invoke` JSON output fails to parse (`Expecting value`)                       | CLI sometimes prints a status line before the JSON — strip the first line or parse stdout/stderr separately.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
@@ -527,7 +528,7 @@ in this document need setting up:
 ### 11.3 Pipeline hygiene
 
 - **Lint** and **`npm audit --audit-level=high`** run in `Build_and_UnitTest` as **warn-only** — the repo has 9 pre-existing lint errors; fix those, then make it blocking.
-- **Shared resolve-names template** — [`.ado/templates/resolve-azure-names.yml`](../.ado/templates/resolve-azure-names.yml), used by both `Deploy_Dev` and `Deploy_Prod`.
+- **Shared resolve-names template** — [`.ado/templates/resolve-azure-names.yml`](../.ado/templates/resolve-azure-names.yml), used by both `Deploy_Dev` and `Deploy_Prod`. Since names are deterministic (no uniqueString suffix), this is a plain string computation, not an Azure query.
 - **Nightly drift detection** — `infra.yml`'s `Validate` stage also runs on a nightly schedule; `Deploy` stays manual-gated, so nothing auto-applies.
 
 ### 11.4 Retention & cost governance
@@ -556,7 +557,7 @@ only deploys code onto infrastructure that already exists.
 
    ```bash
    MSYS_NO_PATHCONV=1 az resource tag --ids \
-     $(az webapp show -g rg-cityops-83d9f49b -n <webAppName> --query id -o tsv) \
+     $(az webapp show -g rg-cityops -n app-cityops --query id -o tsv) \
      --tags managedBy=bicep   # 'project' intentionally omitted
    ```
 

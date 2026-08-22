@@ -73,11 +73,14 @@ param requireTagsPolicyId string
 @description('Effect for the require-tags policy assignment.')
 param requireTagsEffect string = 'Audit'
 
-var suffix = uniqueString(resourceGroup().id)
+// Deterministic names (no uniqueString suffix) — app/kv/pg names must be globally unique across
+// all of Azure, so baseName must be distinctive enough to avoid collisions. Verified available
+// for baseName='cityops' via the Microsoft.Web/Microsoft.KeyVault/Microsoft.DBforPostgreSQL
+// checkNameAvailability APIs before switching off the uniqueString-suffixed scheme (2026-08-22).
 var planName = 'asp-${baseName}'
-var appName = 'app-${baseName}-${suffix}'
-var kvName = 'kv-${baseName}-${substring(suffix, 0, 8)}'
-var pgName = 'pg-${baseName}-${suffix}'
+var appName = 'app-${baseName}'
+var kvName = 'kv-${baseName}'
+var pgName = 'pg-${baseName}'
 var dbName = 'cityops'
 var dbNameDev = '${dbName}_dev'
 var appHost = '${appName}.azurewebsites.net'

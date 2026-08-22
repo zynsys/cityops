@@ -124,11 +124,13 @@ CURRENT_ADO_ORG="$(az devops configure --list 2>/dev/null | sed -n 's/^organizat
 CURRENT_ADO_PROJECT="$(az devops configure --list 2>/dev/null | sed -n 's/^project *= *//p' || true)"
 
 prompt AZURE_SUBSCRIPTION_ID "Azure subscription ID" "${AZURE_SUBSCRIPTION_ID:-$CURRENT_SUB_ID}"
-prompt BASE_NAME "Base name for Azure resources (app-<base>-<hash>, kv-<base>-<hash>, rg-<base>-<hash>, etc.)" "$BASE_NAME"
+prompt BASE_NAME "Base name for Azure resources (app-<base>, kv-<base>, pg-<base>, etc.)" "$BASE_NAME"
 # Fresh random suffix each run, so pressing Enter always starts a NEW, independent deployment.
 # To target/update an existing one, paste its suffix (or pre-set NAME_HASH / the full RESOURCE_GROUP).
-# Note: this only names the resource group (and OpenAI account); App Service/Key Vault/Postgres get
-# their own suffix from Bicep's uniqueString(resourceGroup().id), read back from the deploy outputs.
+# Note: this only names the resource group (and OpenAI account), for isolating parallel/ad-hoc local
+# test deployments from the shared pipeline-managed rg-<base>. App Service/Key Vault/Postgres names
+# are deterministic (app-<base>/kv-<base>/pg-<base>, no suffix) — verify baseName is globally unique
+# enough before relying on it (see docs/deployment-guidelines.md §4).
 DEFAULT_NAME_HASH="$(openssl rand -hex 4)"
 prompt NAME_HASH "Resource name hash suffix — reuse an existing value to target/update that deployment, or press Enter to generate a fresh one for a new deployment" "${NAME_HASH:-$DEFAULT_NAME_HASH}"
 prompt RESOURCE_GROUP "Resource group name" "${RESOURCE_GROUP_ENV:-rg-$BASE_NAME-$NAME_HASH}"

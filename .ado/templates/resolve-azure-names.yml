@@ -1,26 +1,16 @@
-# Shared step: resolve the web app / key vault names by naming convention instead of storing
+# Shared step: derive the web app / key vault names by naming convention instead of storing
 # them anywhere (see docs/deployment-guidelines.md §5.3 — the "no hardcoding" mechanism).
-# Used by both Deploy_Dev and Deploy_Prod in app.yml so the lookup logic lives in one place.
+# Names are deterministic (main.bicep no longer appends a uniqueString suffix), so this is a
+# plain string computation — no Azure CLI/auth needed. Used by both Deploy_Dev and Deploy_Prod
+# in app.yml so the naming convention lives in one place.
 parameters:
-  - name: azureServiceConnection
-    type: string
-  - name: resourceGroup
-    type: string
   - name: baseName
     type: string
     default: cityops
 
 steps:
-  - task: AzureCLI@2
+  - bash: |
+      set -e
+      echo "##vso[task.setvariable variable=webAppName]app-${{ parameters.baseName }}"
+      echo "##vso[task.setvariable variable=keyVaultName]kv-${{ parameters.baseName }}"
     displayName: 'Resolve web app / key vault names'
-    inputs:
-      azureSubscription: '${{ parameters.azureServiceConnection }}'
-      scriptType: bash
-      scriptLocation: inlineScript
-      inlineScript: |
-        set -e
-        webAppName=$(az webapp list -g "${{ parameters.resourceGroup }}" --query "[?starts_with(name,'app-${{ parameters.baseName }}-')].name | [0]" -o tsv)
-        keyVaultName=$(az keyvault list -g "${{ parameters.resourceGroup }}" --query "[?starts_with(name,'kv-${{ parameters.baseName }}-')].name | [0]" -o tsv)
-        test -n "$webAppName" && test -n "$keyVaultName"
-        echo "##vso[task.setvariable variable=webAppName]$webAppName"
-        echo "##vso[task.setvariable variable=keyVaultName]$keyVaultName"
