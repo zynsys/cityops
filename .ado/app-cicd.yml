@@ -255,6 +255,8 @@ stages:
                     installDisplayName: 'Install deps (Prisma CLI)'
                 - template: templates/resolve-azure-names.yml
                   parameters:
+                    azureServiceConnection: 'cityops-azure-service-connection'
+                    resourceGroup: '$(resourceGroup)'
                     baseName: '$(baseName)'
                 - task: AzureKeyVault@2
                   displayName: 'Fetch dev DB secret'
@@ -321,6 +323,8 @@ stages:
                     installDisplayName: 'Install deps (Prisma CLI)'
                 - template: templates/resolve-azure-names.yml
                   parameters:
+                    azureServiceConnection: 'cityops-azure-service-connection'
+                    resourceGroup: '$(resourceGroup)'
                     baseName: '$(baseName)'
                 - task: AzureKeyVault@2
                   displayName: 'Fetch prod DB secret'

@@ -1,16 +1,32 @@
-# Shared step: derive the web app / key vault names by naming convention instead of storing
-# them anywhere (see docs/deployment-guidelines.md §5.3 — the "no hardcoding" mechanism).
-# Names are deterministic (main.bicep no longer appends a uniqueString suffix), so this is a
-# plain string computation — no Azure CLI/auth needed. Used by both Deploy_Dev and Deploy_Prod
-# in app.yml so the naming convention lives in one place.
+# Shared step: derive the web app / key vault names by naming convention (deterministic — see
+# docs/deployment-guidelines.md §5.3, the "no hardcoding" mechanism), then verify both resources
+# actually exist and fail FAST if not. Without this check, a missing resource is only discovered
+# deep inside AzureKeyVault@2/AzureWebApp@1, which retry for several minutes before failing (they
+# assume transient DNS propagation, not "doesn't exist") — `az ... show` is a single, non-retrying
+# call that fails in seconds. Used by both Deploy_Dev and Deploy_Prod in app.yml.
 parameters:
+  - name: azureServiceConnection
+    type: string
+  - name: resourceGroup
+    type: string
   - name: baseName
     type: string
     default: cityops
 
 steps:
-  - bash: |
-      set -e
-      echo "##vso[task.setvariable variable=webAppName]app-${{ parameters.baseName }}"
-      echo "##vso[task.setvariable variable=keyVaultName]kv-${{ parameters.baseName }}"
-    displayName: 'Resolve web app / key vault names'
+  - task: AzureCLI@2
+    displayName: 'Resolve & verify web app / key vault exist'
+    inputs:
+      azureSubscription: '${{ parameters.azureServiceConnection }}'
+      scriptType: bash
+      scriptLocation: inlineScript
+      inlineScript: |
+        set -e
+        webAppName="app-${{ parameters.baseName }}"
+        keyVaultName="kv-${{ parameters.baseName }}"
+        az webapp show -g "${{ parameters.resourceGroup }}" -n "$webAppName" -o none \
+          || { echo "##vso[task.logissue type=error]Web app '$webAppName' not found in resource group '${{ parameters.resourceGroup }}' — run the infra pipeline first."; exit 1; }
+        az keyvault show -n "$keyVaultName" -o none \
+          || { echo "##vso[task.logissue type=error]Key Vault '$keyVaultName' not found — run the infra pipeline first."; exit 1; }
+        echo "##vso[task.setvariable variable=webAppName]$webAppName"
+        echo "##vso[task.setvariable variable=keyVaultName]$keyVaultName"
