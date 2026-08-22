@@ -23,11 +23,11 @@ on:
   pull_request:
     branches: [main]
   schedule:
-    - cron: '0 2 * * *' # nightly 02:00 UTC — full e2e run
+    - cron: "0 2 * * *" # nightly 02:00 UTC — full e2e run
   workflow_dispatch: {} # manual run — required to promote to prod
 
 env:
-  NODE_VERSION: '22.x'
+  NODE_VERSION: "22.x"
   # Ephemeral database for integration/e2e. PostGIS image because CityOps uses PostGIS.
   DATABASE_URL: postgresql://postgres:postgres@localhost:5432/cityops_test
 
@@ -178,10 +178,10 @@ jobs:
           --health-timeout=5s
           --health-retries=10
     env:
-      NEXTAUTH_URL: 'http://localhost:3000'
+      NEXTAUTH_URL: "http://localhost:3000"
       # Throwaway 32+ char value for ephemeral CI only — NOT a real secret.
-      AUTH_SECRET: 'ci-e2e-nonsecret-placeholder-0123456789'
-      CI: 'true'
+      AUTH_SECRET: "ci-e2e-nonsecret-placeholder-0123456789"
+      CI: "true"
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup-nodejs
@@ -231,7 +231,7 @@ jobs:
       - uses: ./.github/actions/setup-nodejs
         with:
           node-version: ${{ env.NODE_VERSION }}
-          install-display-name: 'Install deps (Prisma CLI)'
+          install-display-name: "Install deps (Prisma CLI)"
 
       - name: Azure login (OIDC)
         uses: azure/login@v2
@@ -272,7 +272,7 @@ jobs:
           app-name: ${{ steps.names.outputs.web-app-name }}
           slot-name: dev
           package: drop
-          startup-command: 'node server.js'
+          startup-command: "node server.js"
 
   # ---------------------------------------------------------------------------
   # DEPLOY (Production) — migrate the prod DB (cityops), then SWAP dev → production
@@ -301,7 +301,7 @@ jobs:
       - uses: ./.github/actions/setup-nodejs
         with:
           node-version: ${{ env.NODE_VERSION }}
-          install-display-name: 'Install deps (Prisma CLI)'
+          install-display-name: "Install deps (Prisma CLI)"
 
       - name: Azure login (OIDC)
         uses: azure/login@v2

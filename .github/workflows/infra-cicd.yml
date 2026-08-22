@@ -33,15 +33,15 @@ on:
   push:
     branches: [main]
     paths:
-      - 'infra/**'
-      - '.github/workflows/infra-cicd.yml'
+      - "infra/**"
+      - ".github/workflows/infra-cicd.yml"
   pull_request:
     branches: [main]
     paths:
-      - 'infra/**'
-      - '.github/workflows/infra-cicd.yml'
+      - "infra/**"
+      - ".github/workflows/infra-cicd.yml"
   schedule:
-    - cron: '0 3 * * *' # nightly 03:00 UTC — drift detection (what-if only; deploy stays manual-gated)
+    - cron: "0 3 * * *" # nightly 03:00 UTC — drift detection (what-if only; deploy stays manual-gated)
   workflow_dispatch: {} # manual run — required to apply
 
 env:
@@ -111,8 +111,8 @@ jobs:
         uses: ./.github/actions/azure-policy-compliance
         with:
           resource-group: ${{ vars.AZURE_RESOURCE_GROUP }}
-          fail-on-noncompliant: 'true'
-          trigger-scan: 'true' # infra runs are infrequent/manual — the extra minutes for a fresh evaluation are cheap here
+          fail-on-noncompliant: "true"
+          trigger-scan: "true" # infra runs are infrequent/manual — the extra minutes for a fresh evaluation are cheap here
 
   # -------------------------------------------------------------------------
   # COST ESTIMATE = informational, non-blocking. Queries the public Azure Retail
