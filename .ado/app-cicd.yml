@@ -33,6 +33,30 @@ resources:
 
 stages:
   # ---------------------------------------------------------------------------
+  # VERIFY AZURE ENV — fail fast, in its own stage, if the target web app / key vault don't
+  # exist yet (e.g. infra not deployed, or deployed under a different baseName/resourceGroup).
+  # Runs in parallel with Build_and_UnitTest (no dependsOn) so a missing environment surfaces
+  # within seconds rather than after the full build+test pyramid. Deploy_Dev depends on it (and
+  # Deploy_Prod depends on Deploy_Dev), so a missing environment is always its own clearly-named
+  # stage failure — never buried inside a deploy step's retry/backoff logic.
+  # ---------------------------------------------------------------------------
+  - stage: VerifyAzureEnv
+    displayName: 'Verify Azure environment'
+    condition: and(succeeded(), in(variables['Build.Reason'], 'IndividualCI', 'Manual'))
+    variables:
+      - group: cityops-env # resourceGroup, baseName
+    jobs:
+      - job: verify_azure_env
+        pool:
+          vmImage: ubuntu-latest
+        steps:
+          - template: templates/verify-azure-resources.yml
+            parameters:
+              azureServiceConnection: 'cityops-azure-service-connection'
+              resourceGroup: '$(resourceGroup)'
+              baseName: '$(baseName)'
+
+  # ---------------------------------------------------------------------------
   # BUILD + UNIT — fast gate on every push/PR. Environment-agnostic build
   # (lazy Prisma), plus unit tests which need no external services.
   # ---------------------------------------------------------------------------
@@ -235,6 +259,7 @@ stages:
     dependsOn:
       - Build_and_UnitTest
       - IntegrationTest
+      - VerifyAzureEnv
     condition: and(succeeded(), in(variables['Build.Reason'], 'IndividualCI', 'Manual'))
     variables:
       - group: cityops-env # resourceGroup, baseName
@@ -255,8 +280,6 @@ stages:
                     installDisplayName: 'Install deps (Prisma CLI)'
                 - template: templates/resolve-azure-names.yml
                   parameters:
-                    azureServiceConnection: 'cityops-azure-service-connection'
-                    resourceGroup: '$(resourceGroup)'
                     baseName: '$(baseName)'
                 - task: AzureKeyVault@2
                   displayName: 'Fetch dev DB secret'
@@ -323,8 +346,6 @@ stages:
                     installDisplayName: 'Install deps (Prisma CLI)'
                 - template: templates/resolve-azure-names.yml
                   parameters:
-                    azureServiceConnection: 'cityops-azure-service-connection'
-                    resourceGroup: '$(resourceGroup)'
                     baseName: '$(baseName)'
                 - task: AzureKeyVault@2
                   displayName: 'Fetch prod DB secret'

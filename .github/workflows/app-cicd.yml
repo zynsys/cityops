@@ -37,6 +37,38 @@ concurrency:
 
 jobs:
   # ---------------------------------------------------------------------------
+  # VERIFY AZURE ENV — fail fast, in its own job, if the target web app / key vault don't exist
+  # yet (e.g. infra not deployed, or deployed under a different baseName/resource group). Runs
+  # in parallel with build_and_unit_test (no needs:) so a missing environment surfaces within
+  # seconds rather than after the full build+test pyramid. deploy_dev depends on it (and
+  # deploy_prod depends on deploy_dev), so a missing environment is always its own clearly-named
+  # job failure — never buried inside a deploy step's retry/backoff logic. Runs on the same
+  # triggers as deploy_dev (mirrors ADO's Build.Reason in('IndividualCI','Manual')).
+  # ---------------------------------------------------------------------------
+  verify_azure_env:
+    name: Verify Azure environment
+    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+    env:
+      AZURE_BASE_NAME: ${{ vars.AZURE_BASE_NAME || 'cityops' }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Azure login (OIDC)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+      - name: Verify web app / key vault exist
+        uses: ./.github/actions/verify-azure-resources
+        with:
+          resource-group: ${{ vars.AZURE_RESOURCE_GROUP }}
+          base-name: ${{ env.AZURE_BASE_NAME }}
+
+  # ---------------------------------------------------------------------------
   # BUILD + UNIT — fast gate on every push/PR. Environment-agnostic build
   # (lazy Prisma), plus unit tests which need no external services.
   # ---------------------------------------------------------------------------
@@ -217,7 +249,7 @@ jobs:
   # ---------------------------------------------------------------------------
   deploy_dev:
     name: Deploy to Dev slot
-    needs: [build_and_unit_test, integration_test]
+    needs: [build_and_unit_test, integration_test, verify_azure_env]
     if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     environment: dev
@@ -244,7 +276,6 @@ jobs:
         id: names
         uses: ./.github/actions/resolve-azure-names
         with:
-          resource-group: ${{ vars.AZURE_RESOURCE_GROUP }}
           base-name: ${{ env.AZURE_BASE_NAME }}
 
       - name: Fetch dev DB secret
@@ -314,7 +345,6 @@ jobs:
         id: names
         uses: ./.github/actions/resolve-azure-names
         with:
-          resource-group: ${{ vars.AZURE_RESOURCE_GROUP }}
           base-name: ${{ env.AZURE_BASE_NAME }}
 
       - name: Fetch prod DB secret

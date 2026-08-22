@@ -1,14 +1,11 @@
 # Shared step: derive the web app / key vault names by naming convention (deterministic — see
-# docs/deployment-guidelines.md §5.3, the "no hardcoding" mechanism), then verify both resources
-# actually exist and fail FAST if not. Without this check, a missing resource is only discovered
-# deep inside azure/webapps-deploy@v3 / az keyvault secret show, which retry for a while before
-# failing — `az ... show` is a single, non-retrying call that fails in seconds. Mirrors
-# .ado/templates/resolve-azure-names.yml. Requires azure/login to have already run.
+# docs/deployment-guidelines.md §5.3, the "no hardcoding" mechanism). Existence is already
+# verified by the verify_azure_env job (.github/actions/verify-azure-resources) before deploy_dev/
+# deploy_prod ever run, so this is just a plain string computation — no az CLI/auth needed here.
+# Mirrors .ado/templates/resolve-azure-names.yml.
 name: 'Resolve Azure resource names'
-description: 'Resolve web app / key vault names by naming convention and verify they exist'
+description: 'Resolve web app / key vault names by naming convention'
 inputs:
-  resource-group:
-    required: true
   base-name:
     required: false
     default: 'cityops'
@@ -26,11 +23,5 @@ runs:
       shell: bash
       run: |
         set -e
-        webAppName="app-${{ inputs.base-name }}"
-        keyVaultName="kv-${{ inputs.base-name }}"
-        az webapp show -g "${{ inputs.resource-group }}" -n "$webAppName" -o none \
-          || { echo "::error::Web app '$webAppName' not found in resource group '${{ inputs.resource-group }}' — run the infra workflow first."; exit 1; }
-        az keyvault show -n "$keyVaultName" -o none \
-          || { echo "::error::Key Vault '$keyVaultName' not found — run the infra workflow first."; exit 1; }
-        echo "web_app_name=$webAppName" >> "$GITHUB_OUTPUT"
-        echo "key_vault_name=$keyVaultName" >> "$GITHUB_OUTPUT"
+        echo "web_app_name=app-${{ inputs.base-name }}" >> "$GITHUB_OUTPUT"
+        echo "key_vault_name=kv-${{ inputs.base-name }}" >> "$GITHUB_OUTPUT"

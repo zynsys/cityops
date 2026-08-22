@@ -1,0 +1,30 @@
+# Standalone step for the VerifyAzureEnv stage: verify the target web app / key vault exist and
+# fail FAST if not — a single non-retrying `az ... show` call per resource (fails in seconds).
+# Living in its own stage (rather than inline in Deploy_Dev/Deploy_Prod) means a missing Azure
+# environment is reported as a clearly-named, infra-specific stage failure, never buried inside
+# a deploy step's own retry/backoff logic (AzureKeyVault@2/AzureWebApp@1 assume transient DNS
+# propagation, not "doesn't exist", and can take minutes to give up).
+parameters:
+  - name: azureServiceConnection
+    type: string
+  - name: resourceGroup
+    type: string
+  - name: baseName
+    type: string
+    default: cityops
+
+steps:
+  - task: AzureCLI@2
+    displayName: 'Verify web app / key vault exist'
+    inputs:
+      azureSubscription: '${{ parameters.azureServiceConnection }}'
+      scriptType: bash
+      scriptLocation: inlineScript
+      inlineScript: |
+        set -e
+        webAppName="app-${{ parameters.baseName }}"
+        keyVaultName="kv-${{ parameters.baseName }}"
+        az webapp show -g "${{ parameters.resourceGroup }}" -n "$webAppName" -o none \
+          || { echo "##vso[task.logissue type=error]Web app '$webAppName' not found in resource group '${{ parameters.resourceGroup }}' — run the infra pipeline first."; exit 1; }
+        az keyvault show -n "$keyVaultName" -o none \
+          || { echo "##vso[task.logissue type=error]Key Vault '$keyVaultName' not found — run the infra pipeline first."; exit 1; }

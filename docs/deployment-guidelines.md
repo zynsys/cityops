@@ -34,8 +34,12 @@ flowchart LR
     subgraph CI["Build (every push/PR)"]
         A[Build + unit tests] --> B[Integration tests]
     end
+    subgraph V["Verify (parallel with Build)"]
+        V1["VerifyAzureEnv\n(web app / key vault exist?)"]
+    end
     subgraph CD["Deploy (CD)"]
         B --> C["Deploy_Dev\n(dev slot, cityops_dev)\nauto, no approval"]
+        V1 --> C
         C --> D["E2E tests\n(PR / nightly / manual)"]
         D --> E["Deploy_Prod\n(migrate cityops, swap)\nmanual + approval"]
     end
@@ -400,12 +404,19 @@ No secret is ever a plaintext App Service setting or a pipeline YAML literal —
 ### 7.1 App pipeline (`app-cicd`)
 
 ```
-Build & Unit tests → Integration tests → Deploy_Dev (dev slot, migrate cityops_dev) [env: dev, no approval]
-                                       ↘ E2E tests (PR / nightly / manual only)
+VerifyAzureEnv (web app / key vault exist?) ─┐
+Build & Unit tests → Integration tests ──────┴→ Deploy_Dev (dev slot, migrate cityops_dev) [env: dev, no approval]
+                                                ↘ E2E tests (PR / nightly / manual only)
 
 Manual run only: ... → E2E tests (passes) → Deploy_Prod (migrate cityops, swap dev→prod) [env: prod, approval]
 ```
 
+- **VerifyAzureEnv** runs in parallel with Build & Unit tests (no dependency between them) so a
+  missing Azure environment (infra not deployed yet, or deployed under a different
+  `baseName`/`resourceGroup`) fails within seconds — a single non-retrying `az webapp show`/
+  `az keyvault show` per resource — instead of surfacing minutes later inside a deploy step's own
+  retry/backoff logic. `Deploy_Dev` depends on it directly; `Deploy_Prod` depends on `Deploy_Dev`,
+  so it's covered transitively.
 - **Build** produces an environment-agnostic standalone artifact (`drop`) — no runtime config needed.
 - **Deploy_Dev** auto-deploys to the dev slot + migrates `cityops_dev` on every push to `main`, no approval.
 - **E2E tests** run on PRs, nightly, and manual runs only — not on every push, to keep dev-deploy fast.
@@ -533,7 +544,7 @@ in this document need setting up:
 ### 11.3 Pipeline hygiene
 
 - **Lint** and **`npm audit --audit-level=high`** run in `Build_and_UnitTest` as **warn-only** — the repo has 9 pre-existing lint errors; fix those, then make it blocking.
-- **Shared resolve-names template** — [`.ado/templates/resolve-azure-names.yml`](../.ado/templates/resolve-azure-names.yml), used by both `Deploy_Dev` and `Deploy_Prod`. Names are computed deterministically (no uniqueString suffix), then verified with a fast, non-retrying `az webapp show`/`az keyvault show` so a missing resource fails the stage in seconds instead of several minutes into a downstream task's retry loop.
+- **Shared resolve-names template** — [`.ado/templates/resolve-azure-names.yml`](../.ado/templates/resolve-azure-names.yml), used by both `Deploy_Dev` and `Deploy_Prod`. Names are computed deterministically (no uniqueString suffix) — a plain string computation, no Azure CLI needed here, because existence is already verified upstream by the dedicated `VerifyAzureEnv` stage ([`.ado/templates/verify-azure-resources.yml`](../.ado/templates/verify-azure-resources.yml)), which runs a fast, non-retrying `az webapp show`/`az keyvault show` in parallel with `Build_and_UnitTest` and fails the pipeline within seconds — as its own clearly-named stage — if the target environment doesn't exist yet.
 - **Nightly drift detection** — `infra.yml`'s `Validate` stage also runs on a nightly schedule; `Deploy` stays manual-gated, so nothing auto-applies.
 
 ### 11.4 Retention & cost governance
@@ -629,9 +640,10 @@ are actually healthy — not just that ARM reported success:
 | [`infra/modules/openai.bicep`](../infra/modules/openai.bicep)                                 | Azure OpenAI account + model deployment module                  |
 | [`infra/modules/policy.bicep`](../infra/modules/policy.bicep)                                 | Azure Policy assignments applied to the resource group (§11.5)  |
 | [`infra/modules/policy-definitions.bicep`](../infra/modules/policy-definitions.bicep)         | Custom Azure Policy definitions (subscription scope, §11.5)     |
-| [`.ado/app-cicd.yml`](../.ado/app-cicd.yml)                                                   | App CI/CD (build, test, deploy dev/prod)                        |
+| [`.ado/app-cicd.yml`](../.ado/app-cicd.yml)                                                   | App CI/CD (verify env, build, test, deploy dev/prod)            |
 | [`.ado/infra-cicd.yml`](../.ado/infra-cicd.yml)                                               | Infra pipeline (validate + apply)                               |
-| [`.ado/templates/resolve-azure-names.yml`](../.ado/templates/resolve-azure-names.yml)         | Shared web app / Key Vault name resolution step (§11.3)         |
+| [`.ado/templates/verify-azure-resources.yml`](../.ado/templates/verify-azure-resources.yml)   | `VerifyAzureEnv` stage: fail-fast existence check (§11.3)       |
+| [`.ado/templates/resolve-azure-names.yml`](../.ado/templates/resolve-azure-names.yml)         | Shared web app / Key Vault name computation step (§11.3)        |
 | [`.ado/templates/setup-nodejs.yml`](../.ado/templates/setup-nodejs.yml)                       | Shared Node.js install + `npm ci` step                          |
 | [`.ado/templates/azure-policy-compliance.yml`](../.ado/templates/azure-policy-compliance.yml) | Infra-pipeline Azure Policy compliance stage (§11.5)            |
 | [`.env.example`](../.env.example)                                                             | Full list of runtime environment variables                      |

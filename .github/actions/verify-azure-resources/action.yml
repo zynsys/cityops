@@ -1,0 +1,27 @@
+# Standalone job step for verify_azure_env: verify the target web app / key vault exist and
+# fail FAST if not — a single non-retrying `az ... show` call per resource (fails in seconds).
+# Living in its own job (rather than inline in deploy_dev/deploy_prod) means a missing Azure
+# environment is reported as a clearly-named, infra-specific job failure, never buried inside
+# a deploy step's own retry/backoff logic (az keyvault secret show / azure/webapps-deploy@v3
+# assume transient DNS propagation, not "doesn't exist", and can take a while to give up).
+# Requires azure/login to have already run.
+name: 'Verify Azure resources exist'
+description: 'Fail fast if the web app / key vault do not exist yet'
+inputs:
+  resource-group:
+    required: true
+  base-name:
+    required: false
+    default: 'cityops'
+runs:
+  using: 'composite'
+  steps:
+    - shell: bash
+      run: |
+        set -e
+        webAppName="app-${{ inputs.base-name }}"
+        keyVaultName="kv-${{ inputs.base-name }}"
+        az webapp show -g "${{ inputs.resource-group }}" -n "$webAppName" -o none \
+          || { echo "::error::Web app '$webAppName' not found in resource group '${{ inputs.resource-group }}' — run the infra workflow first."; exit 1; }
+        az keyvault show -n "$keyVaultName" -o none \
+          || { echo "::error::Key Vault '$keyVaultName' not found — run the infra workflow first."; exit 1; }
