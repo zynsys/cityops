@@ -234,6 +234,61 @@ stages:
               artifact: playwright-report
 
   # ---------------------------------------------------------------------------
+  # UI TESTS — accessibility (axe-core), visual regression (screenshot diffing), and
+  # cross-browser/responsive (firefox/webkit/mobile viewport) checks. Runs in parallel with
+  # E2ETest (same dependsOn/condition) — separated from it because these have different failure
+  # semantics: a visual diff often means "UI changed on purpose, approve a new baseline" rather
+  # than "the app is broken", so it shouldn't share a stage with the hard functional gate.
+  # Visual baselines are OS/font-rendering-sensitive — generated once in CI (see
+  # docs/deployment-guidelines.md §11.8), not on a local dev machine.
+  # ---------------------------------------------------------------------------
+  - stage: UITest
+    displayName: 'UI tests (a11y, visual, cross-browser)'
+    dependsOn: IntegrationTest
+    condition: and(succeeded(), in(variables['Build.Reason'], 'PullRequest', 'Manual', 'Schedule'))
+    jobs:
+      - job: ui_test
+        pool:
+          vmImage: ubuntu-latest
+        services:
+          postgis: postgis
+        variables:
+          DATABASE_URL: 'postgresql://postgres:postgres@localhost:5432/cityops_test'
+          NEXTAUTH_URL: 'http://localhost:3000'
+          # Throwaway 32+ char value for ephemeral CI only — NOT a real secret.
+          AUTH_SECRET: 'ci-e2e-nonsecret-placeholder-0123456789'
+          CI: 'true'
+        steps:
+          - template: templates/setup-nodejs.yml
+
+          - script: npx playwright install --with-deps chromium firefox webkit
+            displayName: 'Install Playwright browsers'
+
+          - script: |
+              for i in $(seq 1 30); do
+                (exec 3<>/dev/tcp/localhost/5432) >/dev/null 2>&1 && { echo "PostgreSQL is up"; break; }
+                echo "waiting for postgres ($i)…"; sleep 2
+              done
+            displayName: 'Wait for PostgreSQL'
+
+          - script: npm run db:migrate:deploy && npm run db:seed
+            displayName: 'Migrate & seed'
+
+          - script: npm run build
+            displayName: 'Build app'
+
+          - script: npm run test:ui
+            displayName: 'Playwright UI tests (a11y + visual + cross-browser)'
+            # playwright.config starts `npm run start` in CI and waits for http://localhost:3000.
+
+          - task: PublishPipelineArtifact@1
+            displayName: 'Publish UI test report'
+            condition: succeededOrFailed()
+            inputs:
+              targetPath: 'playwright-report'
+              artifact: ui-test-report
+
+  # ---------------------------------------------------------------------------
   # DEPLOY (Dev slot) — deploy the built app to the 'dev' slot and migrate the
   # dev database (cityops_dev). Gated by the 'dev' environment (no approval — fast
   # continuous feedback).
@@ -319,7 +374,8 @@ stages:
   # for a zero-downtime release (rollback = swap back). Gated by 'prod' approval AND
   # only runs on a manually-triggered pipeline run (Build.Reason == 'Manual') — that is
   # the only trigger where E2ETest also runs in the SAME run, so production can never
-  # deploy without E2E passing, without E2E running on every ordinary push.
+  # deploy without E2E passing, without E2E running on every ordinary push. UITest gates
+  # it the same way (also only guaranteed to run on a Manual trigger).
   # To promote to prod: Pipelines → app → Run pipeline (manually) on main.
   # Slot-sticky DATABASE_URL/AUTH_SECRET/NEXTAUTH_URL keep each slot pointed at its own
   # DB and its own Auth.js secret, so a swap never leaks dev config into prod or vice versa.
@@ -329,6 +385,7 @@ stages:
     dependsOn:
       - Deploy_Dev
       - E2ETest
+      - UITest
     condition: and(succeeded(), eq(variables['Build.Reason'], 'Manual'))
     lockBehavior: sequential # exclusive-lock check on the 'prod' Environment (§11.2) serializes prod deploys
     variables:

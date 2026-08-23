@@ -242,6 +242,66 @@ jobs:
           retention-days: 14
 
   # ---------------------------------------------------------------------------
+  # UI TESTS — accessibility (axe-core), visual regression (screenshot diffing), and
+  # cross-browser/responsive (firefox/webkit/mobile viewport) checks. Runs in parallel with
+  # e2e_test (same needs/if) — separated from it because these have different failure
+  # semantics: a visual diff often means "UI changed on purpose, approve a new baseline" rather
+  # than "the app is broken", so it shouldn't share a job with the hard functional gate.
+  # Visual baselines are OS/font-rendering-sensitive — generated once in CI (see
+  # docs/deployment-guidelines.md §11.8), not on a local dev machine.
+  # ---------------------------------------------------------------------------
+  ui_test:
+    name: UI tests (a11y, visual, cross-browser)
+    needs: integration_test
+    if: github.event_name == 'pull_request' || github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    services:
+      postgis:
+        image: postgis/postgis:16-3.4
+        ports:
+          - 5432:5432
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: cityops_test
+        options: >-
+          --health-cmd="pg_isready -U postgres"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=10
+    env:
+      NEXTAUTH_URL: "http://localhost:3000"
+      # Throwaway 32+ char value for ephemeral CI only — NOT a real secret.
+      AUTH_SECRET: "ci-e2e-nonsecret-placeholder-0123456789"
+      CI: "true"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup-nodejs
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Install Playwright browsers
+        run: npx playwright install --with-deps chromium firefox webkit
+
+      - name: Migrate & seed
+        run: npm run db:migrate:deploy && npm run db:seed
+
+      - name: Build app
+        run: npm run build
+
+      - name: Playwright UI tests (a11y + visual + cross-browser)
+        run: npm run test:ui
+        # playwright.config starts `npm run start` in CI and waits for http://localhost:3000.
+
+      - name: Publish UI test report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ui-test-report
+          path: playwright-report/
+          retention-days: 14
+
+  # ---------------------------------------------------------------------------
   # DEPLOY (Dev slot) — deploy the built app to the 'dev' slot and migrate the
   # dev database (cityops_dev). Gated by the 'dev' environment (no approval — fast
   # continuous feedback). Runs on direct pushes to main and manual runs, but NOT
@@ -320,7 +380,7 @@ jobs:
   # ---------------------------------------------------------------------------
   deploy_prod:
     name: Deploy to Production (swap)
-    needs: [deploy_dev, e2e_test]
+    needs: [deploy_dev, e2e_test, ui_test]
     if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     environment: prod

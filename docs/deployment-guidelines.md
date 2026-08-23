@@ -42,7 +42,9 @@ flowchart LR
         V1 --> C
         C --> C2["Smoke test dev slot\n(/api/health, hard gate)"]
         C2 --> D["E2E tests\n(PR / nightly / manual)"]
+        C2 --> U["UI tests\n(a11y, visual, cross-browser)\n(PR / nightly / manual)"]
         D --> E["Deploy_Prod\n(migrate cityops, swap)\nmanual + approval"]
+        U --> E
         E --> E2["Smoke test production\n(/api/health, hard gate)"]
     end
 ```
@@ -410,9 +412,10 @@ VerifyAzureEnv (web app / key vault exist?) ─┐
 Build & Unit tests → Integration tests ──────┴→ Deploy_Dev (dev slot, migrate cityops_dev) [env: dev, no approval]
                                                  → Smoke test dev slot (/api/health, hard gate)
                                                 ↘ E2E tests (PR / nightly / manual only)
+                                                ↘ UI tests: a11y, visual, cross-browser (PR / nightly / manual only)
 
-Manual run only: ... → E2E tests (passes) → Deploy_Prod (migrate cityops, swap dev→prod) [env: prod, approval]
-                                              → Smoke test production (/api/health, hard gate)
+Manual run only: ... → E2E tests + UI tests (both pass) → Deploy_Prod (migrate cityops, swap dev→prod) [env: prod, approval]
+                                                             → Smoke test production (/api/health, hard gate)
 ```
 
 - **VerifyAzureEnv** runs in parallel with Build & Unit tests (no dependency between them) so a
@@ -424,6 +427,9 @@ Manual run only: ... → E2E tests (passes) → Deploy_Prod (migrate cityops, sw
 - **Smoke test** (§11.7) runs immediately after each deploy step (dev-slot deploy, prod swap) —
   curls `/api/health` with retries (covers cold start) and hard-fails if it never returns 200, so a
   broken deploy is caught by the pipeline instead of discovered by a user.
+- **UI tests** (§11.8) run in parallel with E2E tests (same trigger condition) — accessibility,
+  visual regression, and cross-browser/responsive checks, kept as a separate stage from E2E
+  because a visual diff often means "approve a new baseline", not "the app is broken".
 - **Build** produces an environment-agnostic standalone artifact (`drop`) — no runtime config needed.
 - **Deploy_Dev** auto-deploys to the dev slot + migrates `cityops_dev` on every push to `main`, no approval.
 - **E2E tests** run on PRs, nightly, and manual runs only — not on every push, to keep dev-deploy fast.
@@ -648,32 +654,64 @@ just deployed is actually serving traffic:
 
 - **IaC static analysis** — [PSRule for Azure](https://azure.github.io/PSRule.Rules.Azure/) or [Checkov](https://www.checkov.io/) scanning `infra/**` for security/best-practice issues (e.g. public network access, missing diagnostic settings) as part of `Validate`, catching problems before `what-if` even runs.
 
+### 11.8 UI tests (accessibility, visual regression, cross-browser)
+
+`UITest` (ADO stage) / `ui_test` (GH job) runs **in parallel with `E2ETest`**/`e2e_test` (same
+`dependsOn`/`needs`, same trigger condition — PR, nightly, manual only, never on every push) but is
+a **separate** stage/job because its checks have different failure semantics than the functional
+E2E gate: a visual diff often means "the UI changed on purpose, go approve a new baseline", not
+"the app is broken" — mixing that into the hard functional gate would make routine UI changes look
+like regressions. `Deploy_Prod` depends on it too, same as `E2ETest`.
+
+Three concerns, one Playwright config ([`playwright.config.ts`](../playwright.config.ts)), split by
+**project** (selected via `--project`, not by adding new npm scripts per concern):
+
+| Project                            | Specs                                         | Purpose                                                                                                                                                |
+| ---------------------------------- | --------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `chromium`                         | `auth`/`home`/`reports.spec.ts`               | The existing functional E2E suite — used by `test:e2e` only                                                                                            |
+| `firefox`/`webkit`/`mobile-chrome` | same functional specs                         | Cross-browser/responsive — same assertions, different engines/viewport                                                                                 |
+| `a11y`                             | [`e2e/a11y.spec.ts`](../e2e/a11y.spec.ts)     | [`@axe-core/playwright`](https://www.npmjs.com/package/@axe-core/playwright) scan of `/`, `/reports`, `/sign-in`, `/register` — fails on any violation |
+| `visual`                           | [`e2e/visual.spec.ts`](../e2e/visual.spec.ts) | `toHaveScreenshot()` full-page diff of the same key pages                                                                                              |
+
+`npm run test:e2e` runs `--project=chromium` only — **unchanged behavior**, so the existing fast
+dev-deploy gate isn't slowed down by this addition. `npm run test:ui` runs the other five projects.
+
+**Visual baseline gotcha:** screenshots are sensitive to OS/font rendering — a baseline generated
+on a local Windows/macOS machine will mismatch against the `ubuntu-latest` CI agents. Baselines
+must be generated by CI itself. To (re)generate them: temporarily add `--update-snapshots` to the
+`ui_test`/`UITest` step's `npm run test:ui` invocation, run the pipeline once, download the
+`ui-test-report` artifact (or the `e2e/visual.spec.ts-snapshots/` folder it writes to the
+workspace), commit those PNGs, then remove the flag again. A first-ever run (or a run against a
+brand-new/changed page) failing with "no baseline found" is expected, not a bug.
+
 ---
 
 ## 12. Reference files
 
 <!-- markdownlint-disable MD060 -->
 
-| File                                                                                          | Purpose                                                         |
-| --------------------------------------------------------------------------------------------- | --------------------------------------------------------------- |
-| [`infra/main.bicep`](../infra/main.bicep)                                                     | Subscription-scoped infrastructure orchestrator                 |
-| [`infra/modules/resourcegroup.bicep`](../infra/modules/resourcegroup.bicep)                   | Creates (or adopts) the resource group                          |
-| [`infra/modules/resources.bicep`](../infra/modules/resources.bicep)                           | Resource-group-scoped orchestrator (modules, secrets, RBAC)     |
-| [`infra/modules/keyvault.bicep`](../infra/modules/keyvault.bicep)                             | Key Vault module                                                |
-| [`infra/modules/postgres.bicep`](../infra/modules/postgres.bicep)                             | PostgreSQL Flexible Server module                               |
-| [`infra/modules/appservice.bicep`](../infra/modules/appservice.bicep)                         | App Service (plan + web app + dev slot) module                  |
-| [`infra/modules/openai.bicep`](../infra/modules/openai.bicep)                                 | Azure OpenAI account + model deployment module                  |
-| [`infra/modules/policy.bicep`](../infra/modules/policy.bicep)                                 | Azure Policy assignments applied to the resource group (§11.5)  |
-| [`infra/modules/policy-definitions.bicep`](../infra/modules/policy-definitions.bicep)         | Custom Azure Policy definitions (subscription scope, §11.5)     |
-| [`.ado/app-cicd.yml`](../.ado/app-cicd.yml)                                                   | App CI/CD (verify env, build, test, deploy dev/prod)            |
-| [`.ado/infra-cicd.yml`](../.ado/infra-cicd.yml)                                               | Infra pipeline (validate + apply)                               |
-| [`.ado/templates/verify-azure-resources.yml`](../.ado/templates/verify-azure-resources.yml)   | `VerifyAzureEnv` stage: fail-fast existence check (§11.3)       |
-| [`.ado/templates/resolve-azure-names.yml`](../.ado/templates/resolve-azure-names.yml)         | Shared web app / Key Vault name computation step (§11.3)        |
-| [`.ado/templates/smoke-test.yml`](../.ado/templates/smoke-test.yml)                           | App-level post-deploy smoke test step (§11.7)                   |
-| [`.ado/templates/setup-nodejs.yml`](../.ado/templates/setup-nodejs.yml)                       | Shared Node.js install + `npm ci` step                          |
-| [`.ado/templates/azure-policy-compliance.yml`](../.ado/templates/azure-policy-compliance.yml) | Infra-pipeline Azure Policy compliance stage (§11.5)            |
-| [`src/app/api/health/route.ts`](../src/app/api/health/route.ts)                               | Smoke-test target: liveness + DB round-trip (§11.7)             |
-| [`.env.example`](../.env.example)                                                             | Full list of runtime environment variables                      |
-| [`Dockerfile`](../Dockerfile)                                                                 | Optional container build (not used for App Service code deploy) |
+| File                                                                                          | Purpose                                                           |
+| --------------------------------------------------------------------------------------------- | ----------------------------------------------------------------- |
+| [`infra/main.bicep`](../infra/main.bicep)                                                     | Subscription-scoped infrastructure orchestrator                   |
+| [`infra/modules/resourcegroup.bicep`](../infra/modules/resourcegroup.bicep)                   | Creates (or adopts) the resource group                            |
+| [`infra/modules/resources.bicep`](../infra/modules/resources.bicep)                           | Resource-group-scoped orchestrator (modules, secrets, RBAC)       |
+| [`infra/modules/keyvault.bicep`](../infra/modules/keyvault.bicep)                             | Key Vault module                                                  |
+| [`infra/modules/postgres.bicep`](../infra/modules/postgres.bicep)                             | PostgreSQL Flexible Server module                                 |
+| [`infra/modules/appservice.bicep`](../infra/modules/appservice.bicep)                         | App Service (plan + web app + dev slot) module                    |
+| [`infra/modules/openai.bicep`](../infra/modules/openai.bicep)                                 | Azure OpenAI account + model deployment module                    |
+| [`infra/modules/policy.bicep`](../infra/modules/policy.bicep)                                 | Azure Policy assignments applied to the resource group (§11.5)    |
+| [`infra/modules/policy-definitions.bicep`](../infra/modules/policy-definitions.bicep)         | Custom Azure Policy definitions (subscription scope, §11.5)       |
+| [`.ado/app-cicd.yml`](../.ado/app-cicd.yml)                                                   | App CI/CD (verify env, build, test, deploy dev/prod)              |
+| [`.ado/infra-cicd.yml`](../.ado/infra-cicd.yml)                                               | Infra pipeline (validate + apply)                                 |
+| [`.ado/templates/verify-azure-resources.yml`](../.ado/templates/verify-azure-resources.yml)   | `VerifyAzureEnv` stage: fail-fast existence check (§11.3)         |
+| [`.ado/templates/resolve-azure-names.yml`](../.ado/templates/resolve-azure-names.yml)         | Shared web app / Key Vault name computation step (§11.3)          |
+| [`.ado/templates/smoke-test.yml`](../.ado/templates/smoke-test.yml)                           | App-level post-deploy smoke test step (§11.7)                     |
+| [`.ado/templates/setup-nodejs.yml`](../.ado/templates/setup-nodejs.yml)                       | Shared Node.js install + `npm ci` step                            |
+| [`.ado/templates/azure-policy-compliance.yml`](../.ado/templates/azure-policy-compliance.yml) | Infra-pipeline Azure Policy compliance stage (§11.5)              |
+| [`src/app/api/health/route.ts`](../src/app/api/health/route.ts)                               | Smoke-test target: liveness + DB round-trip (§11.7)               |
+| [`e2e/a11y.spec.ts`](../e2e/a11y.spec.ts)                                                     | Accessibility scan (axe-core), part of `UITest`/`ui_test` (§11.8) |
+| [`e2e/visual.spec.ts`](../e2e/visual.spec.ts)                                                 | Visual regression screenshots, part of `UITest`/`ui_test` (§11.8) |
+| [`.env.example`](../.env.example)                                                             | Full list of runtime environment variables                        |
+| [`Dockerfile`](../Dockerfile)                                                                 | Optional container build (not used for App Service code deploy)   |
 
 <!-- markdownlint-enable MD060 -->
