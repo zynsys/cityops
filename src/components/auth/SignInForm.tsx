@@ -6,7 +6,10 @@ import { useSearchParams } from "next/navigation";
 import { AlertCircle, Loader2, X } from "lucide-react";
 import Link from "next/link";
 
-const STAFF_ROLES = new Set(["authority_user", "tenant_admin", "platform_admin"]);
+// Roles whose post-login landing page is the staff console. platform_admin is
+// intentionally excluded — it cannot access /staff/* (see middleware.ts and
+// src/app/staff/layout.tsx), so routing it there would bounce it to /403.
+const STAFF_ROLES = new Set(["authority_user", "tenant_admin"]);
 
 function isRelativePath(url: string): boolean {
   return (
