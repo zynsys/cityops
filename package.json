@@ -15,6 +15,8 @@
     "test:e2e:ui": "playwright test --ui",
     "test:ui": "playwright test --project=firefox --project=webkit --project=mobile-chrome --project=a11y --project=visual",
     "test:coverage": "vitest run --coverage",
+    "check:duplication": "jscpd src --threshold 5 --reporters console,html --output reports/jscpd",
+    "check:bundle-size": "size-limit",
     "postinstall": "prisma generate",
     "db:generate": "prisma generate",
     "db:migrate": "prisma migrate dev",
@@ -64,6 +66,7 @@
   "devDependencies": {
     "@axe-core/playwright": "^4.13.0",
     "@playwright/test": "^1.62.1",
+    "@size-limit/file": "^13.0.3",
     "@tailwindcss/postcss": "^4",
     "@testing-library/jest-dom": "^7.0.0",
     "@testing-library/react": "^16.3.2",
@@ -81,12 +84,21 @@
     "babel-plugin-react-compiler": "1.0.0",
     "eslint": "^9",
     "eslint-config-next": "16.2.0",
+    "jscpd": "^5.0.15",
     "jsdom": "^29.1.1",
     "msw": "^2.15.0",
     "prisma": "^7",
+    "size-limit": "^13.0.3",
     "tailwindcss": "^4",
     "tsx": "^4",
     "typescript": "^5",
     "vitest": "^4.1.10"
-  }
+  },
+  "size-limit": [
+    {
+      "name": "Client JS bundle (.next/static/chunks)",
+      "path": ".next/static/chunks/**/*.js",
+      "limit": "800 kB"
+    }
+  ]
 }

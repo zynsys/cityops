@@ -89,6 +89,23 @@ stages:
               exit 0
             displayName: 'Dependency vulnerability audit (warn-only)'
 
+          - script: |
+              set +e
+              npm run check:duplication
+              rc=$?
+              if [ "$rc" -ne 0 ]; then
+                echo "##vso[task.logissue type=warning]Code duplication exceeds the 5% threshold (warn-only for now)."
+              fi
+              exit 0
+            displayName: 'Code duplication check (warn-only, jscpd)'
+
+          - task: PublishPipelineArtifact@1
+            displayName: 'Publish duplication report'
+            condition: succeededOrFailed()
+            inputs:
+              targetPath: 'reports/jscpd'
+              artifact: jscpd-report
+
           - script: mkdir -p reports && npm run test:unit -- --coverage --reporter=default --reporter=junit --outputFile.junit=reports/unit.xml
             displayName: 'Unit tests'
 
@@ -116,6 +133,16 @@ stages:
           - script: npm run build
             displayName: 'Build'
             # Intentionally no env: — the build must not depend on runtime config or secrets.
+
+          - script: |
+              set +e
+              npm run check:bundle-size
+              rc=$?
+              if [ "$rc" -ne 0 ]; then
+                echo "##vso[task.logissue type=warning]Client JS bundle exceeds the size-limit budget (warn-only for now)."
+              fi
+              exit 0
+            displayName: 'Bundle size check (warn-only, size-limit)'
 
           - script: |
               set -e

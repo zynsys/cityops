@@ -557,6 +557,10 @@ in this document need setting up:
 ### 11.3 Pipeline hygiene
 
 - **Lint** and **`npm audit --audit-level=high`** run in `Build_and_UnitTest` as **warn-only** — the repo has 9 pre-existing lint errors; fix those, then make it blocking.
+- **Code metrics** (also `Build_and_UnitTest`, also warn-only):
+  - **Cyclomatic complexity** — ESLint's built-in `complexity` rule (`eslint.config.mjs`, threshold 15), no new dependency or pipeline step — rides on the existing lint step. 16 pre-existing findings as of introduction.
+  - **Code duplication** — [`jscpd`](https://github.com/kucherenko/jscpd) scans `src/` (`npm run check:duplication`, 5% threshold); HTML report published as the `jscpd-report`/`jscpd-report` pipeline artifact. ~5.9% duplicated lines as of introduction.
+  - **Bundle size** — [`size-limit`](https://github.com/ai/size-limit) + `@size-limit/file` (`npm run check:bundle-size`) checks the built `.next/static/chunks` brotli-compressed size against an 800 kB budget in `package.json`'s `size-limit` key (measured ~475 kB at introduction — this is a fixed budget, not historical trend tracking). Runs after `npm run build`.
 - **Shared resolve-names template** — [`.ado/templates/resolve-azure-names.yml`](../.ado/templates/resolve-azure-names.yml), used by both `Deploy_Dev` and `Deploy_Prod`. Names are computed deterministically (no uniqueString suffix) — a plain string computation, no Azure CLI needed here, because existence is already verified upstream by the dedicated `VerifyAzureEnv` stage ([`.ado/templates/verify-azure-resources.yml`](../.ado/templates/verify-azure-resources.yml)), which runs a fast, non-retrying `az webapp show`/`az keyvault show` in parallel with `Build_and_UnitTest` and fails the pipeline within seconds — as its own clearly-named stage — if the target environment doesn't exist yet.
 - **Nightly drift detection** — `infra.yml`'s `Validate` stage also runs on a nightly schedule; `Deploy` stays manual-gated, so nothing auto-applies.
 
@@ -711,6 +715,7 @@ brand-new/changed page) failing with "no baseline found" is expected, not a bug.
 | [`src/app/api/health/route.ts`](../src/app/api/health/route.ts)                               | Smoke-test target: liveness + DB round-trip (§11.7)               |
 | [`e2e/a11y.spec.ts`](../e2e/a11y.spec.ts)                                                     | Accessibility scan (axe-core), part of `UITest`/`ui_test` (§11.8) |
 | [`e2e/visual.spec.ts`](../e2e/visual.spec.ts)                                                 | Visual regression screenshots, part of `UITest`/`ui_test` (§11.8) |
+| [`eslint.config.mjs`](../eslint.config.mjs)                                                   | Lint rules, incl. `complexity` code metric (§11.3)                |
 | [`.env.example`](../.env.example)                                                             | Full list of runtime environment variables                        |
 | [`Dockerfile`](../Dockerfile)                                                                 | Optional container build (not used for App Service code deploy)   |
 

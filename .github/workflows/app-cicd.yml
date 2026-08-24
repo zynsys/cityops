@@ -87,6 +87,17 @@ jobs:
       - name: Dependency vulnerability audit (warn-only)
         run: npm audit --audit-level=high || echo "::warning::Dependency audit returned a non-zero exit code (warn-only for now)."
 
+      - name: Code duplication check (warn-only, jscpd)
+        run: npm run check:duplication || echo "::warning::Code duplication exceeds the 5% threshold (warn-only for now)."
+
+      - name: Publish duplication report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: jscpd-report
+          path: reports/jscpd/
+          retention-days: 14
+
       - name: Unit tests
         run: mkdir -p reports && npm run test:unit -- --coverage --reporter=default --reporter=junit --outputFile.junit=reports/unit.xml
 
@@ -115,6 +126,9 @@ jobs:
       - name: Build
         run: npm run build
         # Intentionally no env: — the build must not depend on runtime config or secrets.
+
+      - name: Bundle size check (warn-only, size-limit)
+        run: npm run check:bundle-size || echo "::warning::Client JS bundle exceeds the size-limit budget (warn-only for now)."
 
       - name: Assemble and validate standalone deploy package
         run: |

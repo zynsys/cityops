@@ -28,6 +28,8 @@ const eslintConfig = defineConfig([
           caughtErrorsIgnorePattern: '^_',
         },
       ],
+      // Code metric: cyclomatic complexity. Warn-only until existing findings are triaged.
+      complexity: ['warn', 15],
     },
   },
 ]);
