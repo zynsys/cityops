@@ -2,6 +2,17 @@
 # Unit + integration gate every push/PR; e2e runs on PRs and nightly only.
 # https://docs.microsoft.com/azure/devops/pipelines/languages/javascript
 
+parameters:
+  # Visual baselines are OS/font-rendering-sensitive, so they must be generated on the CI image
+  # (ubuntu-latest), never on a dev machine. Queue the pipeline manually with this set to true to
+  # (re)generate them: the UI stage then runs the visual project with --update-snapshots and
+  # publishes the PNGs as the 'visual-baselines' artifact. Download it, commit the files under
+  # e2e/visual.spec.ts-snapshots/, and re-run normally so the visual tests have a baseline to diff.
+  - name: updateVisualBaselines
+    displayName: 'Generate & publish visual baselines (does not gate the run)'
+    type: boolean
+    default: false
+
 trigger:
   - main
 
@@ -304,9 +315,19 @@ stages:
           - script: npm run build
             displayName: 'Build app'
 
-          - script: npm run test:ui
-            displayName: 'Playwright UI tests (a11y + visual + cross-browser)'
-            # playwright.config starts `npm run start` in CI and waits for http://localhost:3000.
+          - ${{ if eq(parameters.updateVisualBaselines, true) }}:
+              - script: npx playwright test --project=visual --update-snapshots
+                displayName: 'Generate visual baselines (--update-snapshots)'
+              - task: PublishPipelineArtifact@1
+                displayName: 'Publish generated visual baselines'
+                inputs:
+                  targetPath: 'e2e/visual.spec.ts-snapshots'
+                  artifact: visual-baselines
+
+          - ${{ if eq(parameters.updateVisualBaselines, false) }}:
+              - script: npm run test:ui
+                displayName: 'Playwright UI tests (a11y + visual + cross-browser)'
+                # playwright.config starts `npm run start` in CI and waits for http://localhost:3000.
 
           - task: PublishPipelineArtifact@1
             displayName: 'Publish UI test report'

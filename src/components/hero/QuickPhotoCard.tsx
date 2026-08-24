@@ -97,9 +97,9 @@ export default function QuickPhotoCard() {
             : "border-gray-600 hover:border-gray-500 hover:bg-white/5",
         ].join(" ")}
       >
-        <Upload className="mb-2 h-8 w-8 text-gray-500" />
+        <Upload className="mb-2 h-8 w-8 text-gray-400" />
         <p className="text-sm text-gray-400">Drop a photo or click to upload</p>
-        <p className="mt-1 text-xs text-gray-500">JPG, PNG up to 10MB</p>
+        <p className="mt-1 text-xs text-gray-400">JPG, PNG up to 10MB</p>
       </div>
 
       {error && (

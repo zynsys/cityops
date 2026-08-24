@@ -46,7 +46,7 @@ export function Footer() {
           {/* Branding column */}
           <div>
             <Link href="/" className="flex items-center gap-2">
-              <Image src="/logo.png" alt="CityOps" width={28} height={28} />
+              <Image src="/logo.png" alt="" width={28} height={28} />
               <span className="text-xl font-bold text-white">CityOps</span>
             </Link>
             <p className="mt-4 text-sm leading-relaxed">
@@ -65,7 +65,7 @@ export function Footer() {
           {/* Link columns */}
           {Object.entries(FOOTER_LINKS).map(([heading, links]) => (
             <div key={heading}>
-              <h3 className="text-xl font-bold text-white">{heading}</h3>
+              <h2 className="text-xl font-bold text-white">{heading}</h2>
               <ul className="mt-4 space-y-3">
                 {links.map((link) => (
                   <li key={link.href}>
@@ -84,8 +84,8 @@ export function Footer() {
       <div className="container mx-auto px-4 sm:px-6 lg:px-8">
         <div className="border-t border-gray-500"></div>
         <div className="py-6 flex flex-col items-center gap-2 sm:flex-row sm:justify-between">
-          <p className="text-sm text-[oklch(55%_0.015_260)]">&copy; {currentYear} CityOps. All rights reserved.</p>
-          <p className="text-sm text-[oklch(55%_0.015_260)] flex items-center gap-1">
+          <p className="text-sm text-[oklch(72%_0.015_260)]">&copy; {currentYear} CityOps. All rights reserved.</p>
+          <p className="text-sm text-[oklch(72%_0.015_260)] flex items-center gap-1">
             Developed by{' '}
             <a
               href="https://www.linkedin.com/in/prasadhonrao/"

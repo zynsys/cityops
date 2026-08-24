@@ -55,7 +55,7 @@ const AUDIENCES: AudienceCard[] = [
       label: "Learn More",
       href: "/demo",
       className:
-        "inline-block w-full rounded-lg bg-orange-500 px-5 py-2.5 text-center text-sm font-semibold text-white transition-opacity hover:opacity-90",
+        "inline-block w-full rounded-lg bg-orange-700 px-5 py-2.5 text-center text-sm font-semibold text-white transition-opacity hover:opacity-90",
     },
   },
   {

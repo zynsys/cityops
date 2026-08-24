@@ -62,7 +62,7 @@ export async function Header() {
     <header className="sticky top-0 z-30 border-b border-border bg-surface">
       <div className="container mx-auto flex h-16 items-center justify-between px-4 sm:px-6 lg:px-8">
         <Link href="/" className="flex items-center gap-2">
-          <Image src="/logo.png" alt="CityOps" width={28} height={28} />
+          <Image src="/logo.png" alt="" width={28} height={28} />
           <span className="text-xl font-bold text-foreground">CityOps</span>
         </Link>
 
