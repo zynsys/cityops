@@ -14,6 +14,7 @@ param location string = 'francecentral'
 param dbLocation string = 'francecentral'
 
 @description('Base name used to derive resource names.')
+@minLength(1)
 param baseName string = 'cityops'
 
 @description('Tags applied to every resource this template creates — for cost allocation and ownership tracking.')
@@ -83,6 +84,9 @@ var kvName = 'kv-${baseName}'
 var pgName = 'pg-${baseName}'
 var dbName = 'cityops'
 var dbNameDev = '${dbName}_dev'
+var storageName = 'st${baseName}'
+var storageContainer = 'report-attachments'
+var storageContainerDev = 'report-attachments-dev'
 var appHost = '${appName}.azurewebsites.net'
 var devSlotName = 'dev'
 var devHost = '${appName}-${devSlotName}.azurewebsites.net'
@@ -146,6 +150,33 @@ module postgres 'postgres.bicep' = {
 
 var databaseUrlProd = 'postgresql://${pgAdminLogin}:${uriComponent(pgAdminPassword)}@${postgres.outputs.fqdn}:5432/${dbName}?sslmode=require'
 var databaseUrlDev = 'postgresql://${pgAdminLogin}:${uriComponent(pgAdminPassword)}@${postgres.outputs.fqdn}:5432/${dbNameDev}?sslmode=require'
+
+// ---------------------------------------------------------------------------
+// Blob storage — one shared account, two containers (prod + dev). Connection string is built
+// from the account key and stored in Key Vault; the app reads it via a Key Vault app-setting
+// reference (STORAGE_PROVIDER=azure).
+// ---------------------------------------------------------------------------
+module storage 'storage.bicep' = {
+  name: 'storageDeploy'
+  params: {
+    location: location
+    name: storageName
+    containerName: storageContainer
+    containerNameDev: storageContainerDev
+    tags: tags
+  }
+}
+
+// Existing-resource lookup so listKeys() can build the connection string (module outputs can't
+// expose keys). dependsOn prevents ARM racing this lookup against storageDeploy on a new account.
+resource storageRef 'Microsoft.Storage/storageAccounts@2023-05-01' existing = {
+  name: storageName
+  dependsOn: [
+    storage
+  ]
+}
+
+var storageConnectionString = 'DefaultEndpointsProtocol=https;AccountName=${storageName};AccountKey=${storageRef.listKeys().keys[0].value};EndpointSuffix=${environment().suffixes.storage}'
 
 // ---------------------------------------------------------------------------
 // Security layer — Key Vault (RBAC) + secrets
@@ -229,6 +260,17 @@ resource secretOpenAiKey 'Microsoft.KeyVault/vaults/secrets@2023-07-01' = {
   ]
 }
 
+resource secretStorageConnectionString 'Microsoft.KeyVault/vaults/secrets@2023-07-01' = {
+  parent: keyVaultRef
+  name: 'AZURE-STORAGE-CONNECTION-STRING'
+  properties: {
+    value: storageConnectionString
+  }
+  dependsOn: [
+    keyVault
+  ]
+}
+
 // ---------------------------------------------------------------------------
 // Compute layer — App Service plan + Web App (Node 20, code deploy)
 // ---------------------------------------------------------------------------
@@ -247,7 +289,11 @@ var commonAppSettings = [
   }
   {
     name: 'STORAGE_PROVIDER'
-    value: 'local'
+    value: 'azure'
+  }
+  {
+    name: 'AZURE_STORAGE_CONNECTION_STRING'
+    value: '@Microsoft.KeyVault(VaultName=${kvName};SecretName=AZURE-STORAGE-CONNECTION-STRING)'
   }
   {
     name: 'AZURE_OPENAI_ENDPOINT'
@@ -284,6 +330,10 @@ var prodAppSettings = [
     name: 'AUTH_SECRET'
     value: '@Microsoft.KeyVault(VaultName=${kvName};SecretName=AUTH-SECRET)'
   }
+  {
+    name: 'AZURE_STORAGE_CONTAINER'
+    value: storageContainer
+  }
 ]
 
 // Dev slot points at its own dedicated database and its own auth secret — genuine isolation
@@ -300,6 +350,10 @@ var devAppSettings = [
   {
     name: 'AUTH_SECRET'
     value: '@Microsoft.KeyVault(VaultName=${kvName};SecretName=AUTH-SECRET-DEV)'
+  }
+  {
+    name: 'AZURE_STORAGE_CONTAINER'
+    value: storageContainerDev
   }
 ]
 
@@ -321,6 +375,7 @@ module appService 'appservice.bicep' = {
       'DATABASE_URL'
       'AUTH_SECRET'
       'NEXTAUTH_URL'
+      'AZURE_STORAGE_CONTAINER'
     ]
   }
   dependsOn: [
@@ -329,6 +384,7 @@ module appService 'appservice.bicep' = {
     secretAuthSecret
     secretAuthSecretDev
     secretOpenAiKey
+    secretStorageConnectionString
   ]
 }
 

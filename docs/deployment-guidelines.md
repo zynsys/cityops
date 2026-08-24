@@ -379,25 +379,27 @@ rename the connection, update the literal in both YAML files (and re-authorize i
 
 Runtime config mirrors [`.env.example`](../.env.example): non-secret values are App Service settings; secrets are **Key Vault references** resolved by each slot's managed identity.
 
-| Variable                                            | Source in Azure                                              |
-| --------------------------------------------------- | ------------------------------------------------------------ |
-| `DATABASE_URL`                                      | Key Vault ref (`DATABASE-URL` / `-DEV`), slot-sticky         |
-| `AUTH_SECRET`                                       | Key Vault ref (`AUTH-SECRET` / `-DEV`), slot-sticky          |
-| `NEXTAUTH_URL`                                      | App setting per slot, slot-sticky                            |
-| `NODE_ENV`                                          | `production`                                                 |
-| `STORAGE_PROVIDER`                                  | `local` (or `azure` + storage vars)                          |
-| `AZURE_OPENAI_ENDPOINT` / `AZURE_OPENAI_DEPLOYMENT` | App setting, shared by both slots                            |
-| `AZURE_OPENAI_API_KEY`                              | Key Vault ref (`AZURE-OPENAI-API-KEY`), shared by both slots |
+| Variable                                            | Source in Azure                                                   |
+| --------------------------------------------------- | ----------------------------------------------------------------- |
+| `DATABASE_URL`                                      | Key Vault ref (`DATABASE-URL` / `-DEV`), slot-sticky              |
+| `AUTH_SECRET`                                       | Key Vault ref (`AUTH-SECRET` / `-DEV`), slot-sticky               |
+| `NEXTAUTH_URL`                                      | App setting per slot, slot-sticky                                 |
+| `NODE_ENV`                                          | `production`                                                      |
+| `STORAGE_PROVIDER`                                  | `azure` (uploads go to Blob Storage; `local` writes to disk)      |
+| `AZURE_STORAGE_CONNECTION_STRING`                   | Key Vault ref (`AZURE-STORAGE-CONNECTION-STRING`), shared         |
+| `AZURE_STORAGE_CONTAINER`                           | App setting per slot (`report-attachments` / `-dev`), slot-sticky |
+| `AZURE_OPENAI_ENDPOINT` / `AZURE_OPENAI_DEPLOYMENT` | App setting, shared by both slots                                 |
+| `AZURE_OPENAI_API_KEY`                              | Key Vault ref (`AZURE-OPENAI-API-KEY`), shared by both slots      |
 
 Config is validated at startup by `validateEnv()` (`src/instrumentation.ts`) — a missing required variable fails fast.
 
 ### Secrets model — three tiers
 
-| Tier                             | Used by             | Stored in                                  | Examples                                                          |
-| -------------------------------- | ------------------- | ------------------------------------------ | ----------------------------------------------------------------- |
-| **Provisioning-time**            | Infra pipeline only | `cityops-infra` variable group (secret)    | `pgAdminPassword`, `authSecret`, `authSecretDev`                  |
-| **Runtime**                      | The running app     | Azure Key Vault, read via managed identity | `DATABASE-URL(-DEV)`, `AUTH-SECRET(-DEV)`, `AZURE-OPENAI-API-KEY` |
-| **Pipeline config (non-secret)** | Both pipelines      | `cityops-env` variable group               | `resourceGroup`, `location`, `dbLocation`, `baseName`             |
+| Tier                             | Used by             | Stored in                                  | Examples                                                                                             |
+| -------------------------------- | ------------------- | ------------------------------------------ | ---------------------------------------------------------------------------------------------------- |
+| **Provisioning-time**            | Infra pipeline only | `cityops-infra` variable group (secret)    | `pgAdminPassword`, `authSecret`, `authSecretDev`                                                     |
+| **Runtime**                      | The running app     | Azure Key Vault, read via managed identity | `DATABASE-URL(-DEV)`, `AUTH-SECRET(-DEV)`, `AZURE-OPENAI-API-KEY`, `AZURE-STORAGE-CONNECTION-STRING` |
+| **Pipeline config (non-secret)** | Both pipelines      | `cityops-env` variable group               | `resourceGroup`, `location`, `dbLocation`, `baseName`                                                |
 
 No secret is ever a plaintext App Service setting or a pipeline YAML literal — always `@Microsoft.KeyVault(VaultName=...;SecretName=...)`, resolved via **Key Vault Secrets User** RBAC. `AZURE-OPENAI-API-KEY` is pulled from the OpenAI account with `listKeys()` inside Bicep, never exposed as an output.
 

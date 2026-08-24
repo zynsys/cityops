@@ -39,15 +39,39 @@ async function uploadToLocal(file: File, reportId: number | string, storageName:
   };
 }
 
-async function uploadToAzure(_file: File, _reportId: number | string, _storageName: string): Promise<UploadedFile> {
-  // TODO: integrate @azure/storage-blob
-  // const { BlobServiceClient } = await import("@azure/storage-blob");
-  // const client = BlobServiceClient.fromConnectionString(process.env.AZURE_STORAGE_CONNECTION_STRING!);
-  // const container = client.getContainerClient(process.env.AZURE_STORAGE_CONTAINER!);
-  // const blobClient = container.getBlockBlobClient(`${reportId}/${storageName}`);
-  // await blobClient.uploadData(await file.arrayBuffer(), { blobHTTPHeaders: { blobContentType: file.type } });
-  // return { storagePath: blobClient.url };
-  throw new Error('Azure Blob Storage is not yet configured. Set STORAGE_PROVIDER=local or implement uploadToAzure().');
+async function uploadToAzure(file: File, reportId: number | string, storageName: string): Promise<UploadedFile> {
+  const container = await getAzureContainerClient();
+  const blobClient = container.getBlockBlobClient(`${String(reportId)}/${storageName}`);
+  const buffer = Buffer.from(await file.arrayBuffer());
+  await blobClient.uploadData(buffer, {
+    blobHTTPHeaders: { blobContentType: file.type },
+  });
+  // The full blob URL is stored in the DB and rendered directly by next/image
+  // (the container has anonymous blob read; the account host is allow-listed in next.config.ts).
+  return { storagePath: blobClient.url };
+}
+
+async function deleteFromAzure(storagePath: string): Promise<void> {
+  const container = await getAzureContainerClient();
+  // storagePath is the full blob URL — the blob name is the path after "/{container}/".
+  const { pathname } = new URL(storagePath);
+  const marker = `/${container.containerName}/`;
+  const idx = pathname.indexOf(marker);
+  const blobName = decodeURIComponent(idx >= 0 ? pathname.slice(idx + marker.length) : pathname.replace(/^\//, ''));
+  await container.getBlockBlobClient(blobName).deleteIfExists();
+}
+
+/** Builds a container client from the connection-string env vars (validated at startup by env.ts). */
+async function getAzureContainerClient() {
+  const connectionString = process.env.AZURE_STORAGE_CONNECTION_STRING;
+  const containerName = process.env.AZURE_STORAGE_CONTAINER;
+  if (!connectionString || !containerName) {
+    throw new Error(
+      'AZURE_STORAGE_CONNECTION_STRING and AZURE_STORAGE_CONTAINER are required when STORAGE_PROVIDER=azure.',
+    );
+  }
+  const { BlobServiceClient } = await import('@azure/storage-blob');
+  return BlobServiceClient.fromConnectionString(connectionString).getContainerClient(containerName);
 }
 
 /**
@@ -61,7 +85,7 @@ export async function deleteAttachment(storagePath: string): Promise<void> {
   const provider = process.env.STORAGE_PROVIDER ?? 'local';
 
   if (provider === 'azure') {
-    // TODO: delete from Azure Blob Storage
+    await deleteFromAzure(storagePath);
     return;
   }
 

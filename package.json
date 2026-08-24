@@ -32,6 +32,7 @@
   "dependencies": {
     "@azure/identity": "^4.13.1",
     "@azure/monitor-opentelemetry": "^1.19.0",
+    "@azure/storage-blob": "^12.33.0",
     "@hookform/resolvers": "^5.2.2",
     "@prisma/adapter-pg": "^7",
     "@prisma/client": "^7",
