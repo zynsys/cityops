@@ -29,7 +29,10 @@ coverage
 .nyc_output
 
 # Generated test/lint reports (JUnit XML, jscpd duplication report, etc.)
-reports
+# Anchored to the repo root so it only ignores the top-level output folder and
+# NOT src/components/reports/ (a bare `reports` pattern would make Tailwind's
+# .gitignore-aware content scanner skip that whole component folder).
+/reports/
 
 # Grunt intermediate storage (https://gruntjs.com/creating-plugins#storing-task-files)
 .grunt
