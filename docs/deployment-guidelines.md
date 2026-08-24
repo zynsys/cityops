@@ -249,8 +249,8 @@ With §3 done, you're ready to actually provision Azure and deploy the app.
 
 Pipelines → `infra-cicd` → **Run pipeline** → branch `main` → Run.
 
-This runs **Validate** (Bicep lint + `what-if` preview) then, because it was triggered manually,
-**Deploy** — gated by the `prod` approval you configured in §3.3. Approve it when prompted. The
+This runs **Validate** (Bicep lint + `what-if` preview) then **Deploy** — gated by the `prod`
+approval you configured in §3.3. Approve it when prompted. The
 `Deploy` stage runs `az deployment sub create` against `infra/main.bicep` (subscription-scoped —
 it creates the resource group itself), provisioning:
 
@@ -263,8 +263,9 @@ it creates the resource group itself), provisioning:
 Confirm it succeeded: Pipelines → `infra-cicd` → latest run → **Deploy** stage should be green, and
 the published `infra-outputs` artifact contains `webAppName`, `webAppUrl`, `keyVaultName`, etc.
 
-> A plain push to `main` that touches `infra/**` only runs **Validate** (the `what-if` diff) —
-> `Deploy` never runs automatically. You must manually trigger a run to actually apply changes.
+> A push to `main` that touches `infra/**` runs **Validate** (the `what-if` diff) → the gates →
+> **Deploy**, which applies the changes after you approve the `prod` environment gate. PRs run
+> **Validate** only (no apply), and the nightly schedule is what-if only too.
 
 ### 4.2 Run the `app-cicd` pipeline (build, test, deploy to dev)
 
@@ -440,12 +441,12 @@ Manual run only: ... → E2E tests + UI tests (both pass) → Deploy_Prod (migra
 ### 7.2 Infra pipeline (`infra-cicd`)
 
 ```
-Validate (bicep lint + what-if, every push/PR) → Deploy (manual run only) [env: prod, approval]
+Validate (bicep lint + what-if, every push/PR) → Deploy (push to main or manual; not PR) [env: prod, approval]
 ```
 
-`what-if` runs automatically on every push/PR — read the diff before applying. `Deploy` only runs on a manual pipeline run, gated by the same `prod` approval.
+`what-if` runs automatically on every push/PR — read the diff. On a push to `main` (or a manual run), `Deploy` then applies it, gated by the `prod` approval; PRs run `Validate` only.
 
-> Infra provisions **shared** resources in one apply (one Key Vault, one Postgres server, one plan for both slots), so there's no separate "dev infra" to test first the way the app tests in the dev slot before promoting — the automatic `what-if` diff plus the manual-run + approval gate is the equivalent safeguard. Full dev/prod infra isolation (separate resource groups) would enable that, but roughly doubles cost and retires the slot-swap design (§1.1) — not implemented by default.
+> Infra provisions **shared** resources in one apply (one Key Vault, one Postgres server, one plan for both slots), so there's no separate "dev infra" to test first the way the app tests in the dev slot before promoting — the automatic `what-if` diff plus the `prod` approval gate is the equivalent safeguard. Full dev/prod infra isolation (separate resource groups) would enable that, but roughly doubles cost and retires the slot-swap design (§1.1) — not implemented by default.
 
 ---
 
@@ -564,7 +565,7 @@ in this document need setting up:
   - **Code duplication** — [`jscpd`](https://github.com/kucherenko/jscpd) scans `src/` (`npm run check:duplication`, 5% threshold); HTML report published as the `jscpd-report`/`jscpd-report` pipeline artifact. ~5.9% duplicated lines as of introduction.
   - **Bundle size** — [`size-limit`](https://github.com/ai/size-limit) + `@size-limit/file` (`npm run check:bundle-size`) checks the built `.next/static/chunks` brotli-compressed size against an 800 kB budget in `package.json`'s `size-limit` key (measured ~475 kB at introduction — this is a fixed budget, not historical trend tracking). Runs after `npm run build`.
 - **Shared resolve-names template** — [`.ado/templates/resolve-azure-names.yml`](../.ado/templates/resolve-azure-names.yml), used by both `Deploy_Dev` and `Deploy_Prod`. Names are computed deterministically (no uniqueString suffix) — a plain string computation, no Azure CLI needed here, because existence is already verified upstream by the dedicated `VerifyAzureEnv` stage ([`.ado/templates/verify-azure-resources.yml`](../.ado/templates/verify-azure-resources.yml)), which runs a fast, non-retrying `az webapp show`/`az keyvault show` in parallel with `Build_and_UnitTest` and fails the pipeline within seconds — as its own clearly-named stage — if the target environment doesn't exist yet.
-- **Nightly drift detection** — `infra.yml`'s `Validate` stage also runs on a nightly schedule; `Deploy` stays manual-gated, so nothing auto-applies.
+- **Nightly drift detection** — `infra.yml`'s `Validate` stage also runs on a nightly schedule; `Deploy` doesn't run on the schedule (only on push to `main` or a manual run), so the nightly run only previews drift.
 
 ### 11.4 Retention & cost governance
 
@@ -581,7 +582,7 @@ than in the app pipeline because the app pipeline never creates or modifies Azur
 only deploys code onto infrastructure that already exists.
 
 - **The policy** — `cityops-require-tags` (custom definition, subscription-scoped, in [`infra/modules/policy-definitions.bicep`](../infra/modules/policy-definitions.bicep)) flags any resource missing the `requiredTagName` tag. Assigned to the RG by [`infra/modules/policy.bicep`](../infra/modules/policy.bicep) (wired via `resources.bicep`) on every `az deployment` — no manual `az policy assignment create`.
-- **The stage** — [`.ado/templates/azure-policy-compliance.yml`](../.ado/templates/azure-policy-compliance.yml) runs `az policy state summarize -g <rg>` and fails if `nonCompliantResources > 0` (with `triggerScan: true` for a fresh evaluation). It runs on the same triggers as `Validate` (push/PR/nightly) for continuous drift visibility, and `Deploy` (manual-gated) `dependsOn` it — so an apply is blocked, not just flagged. The built-in `AzurePolicyCheckGate@0` task is Classic-release-only, hence the CLI approach.
+- **The stage** — [`.ado/templates/azure-policy-compliance.yml`](../.ado/templates/azure-policy-compliance.yml) runs `az policy state summarize -g <rg>` and fails if `nonCompliantResources > 0` (with `triggerScan: true` for a fresh evaluation). It runs on the same triggers as `Validate` (push/PR/nightly) for continuous drift visibility, and `Deploy` `dependsOn` it — so an apply is blocked, not just flagged. The built-in `AzurePolicyCheckGate@0` task is Classic-release-only, hence the CLI approach.
 - **Effect must be `Audit`** — `requireTagsEffect` defaults to **`Audit`** (not `Deny`) precisely so the stage is the enforcement point. With `Deny`, Azure would reject a tag-removal update itself, so drift could never be created (or demoed) in the first place. `requiredTagName` defaults to **`project`** (Bicep applies it, so resources start compliant).
 - **RBAC** — the stage needs `Microsoft.PolicyInsights/policyStates/*/read` + `.../triggerEvaluation/action` (covered by the SP's **Contributor**); creating the assignment needs `Microsoft.Authorization/policyAssignments/write` (covered by **User Access Administrator**). No managed identity needed for Audit.
 
@@ -597,7 +598,7 @@ only deploys code onto infrastructure that already exists.
    ```
 
 3. **Run the infra pipeline** — `Validate` passes, then `PolicyCompliance` triggers a fresh scan, sees `nonCompliantResources ≥ 1`, logs the offending resource + policy, and **fails before `Deploy`** — the apply is blocked.
-4. **Restore** — re-add `project=cityops` and rerun → the stage passes and `Deploy` proceeds (on a manual run).
+4. **Restore** — re-add `project=cityops` and rerun → the stage passes and `Deploy` proceeds.
 
 > **Timing note.** Compliance state is evaluated **asynchronously** by Azure. `triggerScan: true` forces a fresh evaluation each run, but a brand-new assignment can still take a few minutes to produce its first results. Give the assignment a few minutes after the first infra deploy before running the remove-tag demo, and always change the tag on a **top-level** resource (deployment slots are child resources and aren't reliably counted).
 

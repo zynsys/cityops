@@ -55,7 +55,7 @@ pr:
       - .ado/infra-cicd.yml
 
 schedules:
-  - cron: '0 3 * * *' # nightly 03:00 UTC — drift detection (what-if only; Deploy stays manual-gated)
+  - cron: '0 3 * * *' # nightly 03:00 UTC — drift detection (what-if only; Deploy never runs on schedule)
     displayName: Nightly drift detection
     branches:
       include:
@@ -206,25 +206,25 @@ stages:
             displayName: 'Estimate monthly infra cost (Azure Retail Prices API)'
 
   # -------------------------------------------------------------------------
-  # DEPLOY = the "release/CD": apply the template. Only runs on a manually-triggered
-  # pipeline run (Build.Reason == 'Manual') — never automatically on push/PR. This
+  # DEPLOY = the "release/CD": apply the template. Runs on push to main (IndividualCI)
+  # and on manual runs — but NOT on PRs or the nightly schedule. This
   # infra apply is a single, atomic operation against SHARED resources (one Key Vault,
   # one Postgres server, one App Service plan) serving both dev and prod at once, so
   # there is no separate "dev infra" to validate in isolation first, the way the app
-  # tests in the dev slot before promoting. Instead, the Validate stage's `what-if`
-  # output — which runs automatically on every push/PR — IS the pre-apply review: a
-  # human must read that diff and deliberately run this pipeline to apply it. The
-  # PolicyCompliance stage is an additional automated gate: if the resource group has
-  # drifted out of policy compliance since the last apply, Deploy never runs. Still
+  # tests in the dev slot before promoting. The Validate stage's `what-if` output —
+  # which runs automatically on every push/PR — is the pre-apply review; the 'prod'
+  # environment approval below is the deliberate human gate before the apply proceeds.
+  # The PolicyCompliance stage is an additional automated gate: if the resource group
+  # has drifted out of policy compliance since the last apply, Deploy never runs. Still
   # gated by the SAME 'prod' environment/approval used by the app's Deploy_Prod stage.
-  # To apply: Pipelines → infra → Run pipeline (manually) on main.
+  # To apply: push/merge to main (auto) or Pipelines → infra → Run pipeline on main.
   # -------------------------------------------------------------------------
   - stage: Deploy
     displayName: 'Deploy (apply)'
     dependsOn:
       - PolicyCompliance
       - CostEstimate
-    condition: and(succeeded(), eq(variables['Build.Reason'], 'Manual'))
+    condition: and(succeeded(), in(variables['Build.Reason'], 'IndividualCI', 'Manual'))
     lockBehavior: sequential # exclusive-lock check on the 'prod' Environment (§11.2) serializes applies
     jobs:
       - deployment: deploy

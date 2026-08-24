@@ -186,22 +186,21 @@ jobs:
           PYEOF
 
   # -------------------------------------------------------------------------
-  # DEPLOY = the "release/CD": apply the template. Only runs on a manual run
-  # (workflow_dispatch) — never automatically on push/PR. This infra apply is a
+  # DEPLOY = the "release/CD": apply the template. Runs on push to main and on
+  # manual runs (workflow_dispatch) — but NOT on PRs. This infra apply is a
   # single, atomic operation against SHARED resources (one Key Vault, one Postgres
   # server, one App Service plan) serving both dev and prod at once, so there is
-  # no separate "dev infra" to validate in isolation first. Instead, the validate
-  # job's `what-if` output — which runs automatically on every push/PR — IS the
-  # pre-apply review: a human must read that diff and deliberately run this
-  # workflow to apply it. policy_compliance is an additional automated gate: if
-  # the resource group has drifted out of policy compliance since the last apply,
-  # deploy never runs. Gated by the 'prod' environment's required reviewers.
-  # To apply: Actions → CityOps Infra CI/CD → Run workflow (on main).
+  # no separate "dev infra" to validate in isolation first. The validate job's
+  # `what-if` output (runs on every push/PR) is the pre-apply review; the 'prod'
+  # environment's required reviewers are the deliberate human gate before apply.
+  # policy_compliance is an additional automated gate: if the resource group has
+  # drifted out of policy compliance since the last apply, deploy never runs.
+  # To apply: push/merge to main (auto) or Actions → CityOps Infra CI/CD → Run workflow.
   # -------------------------------------------------------------------------
   deploy:
     name: Deploy (apply)
     needs: [policy_compliance, cost_estimate]
-    if: github.event_name == 'workflow_dispatch'
+    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     environment: prod
     concurrency:
