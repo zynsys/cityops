@@ -62,6 +62,25 @@ jobs:
       contents: read
     steps:
       - uses: actions/checkout@v4
+      - name: Bicep unit tests (Pester)
+        shell: pwsh
+        run: |
+          Install-Module -Name Pester -RequiredVersion 5.6.1 -Force -SkipPublisherCheck -Scope CurrentUser
+          Import-Module Pester -RequiredVersion 5.6.1
+          $config = New-PesterConfiguration
+          $config.Run.Path = 'infra/tests/Bicep.Unit.Tests.ps1'
+          $config.Run.Exit = $true
+          $config.Output.Verbosity = 'Detailed'
+          $config.TestResult.Enabled = $true
+          $config.TestResult.OutputFormat = 'NUnitXml'
+          $config.TestResult.OutputPath = 'bicep-unit-tests.xml'
+          Invoke-Pester -Configuration $config
+      - name: Upload Bicep unit test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: bicep-unit-tests
+          path: bicep-unit-tests.xml
       - name: Azure login (OIDC)
         uses: azure/login@v2
         with:
@@ -274,6 +293,7 @@ jobs:
       id-token: write
       contents: read
     steps:
+      - uses: actions/checkout@v4
       - name: Azure login (OIDC)
         uses: azure/login@v2
         with:
@@ -286,44 +306,28 @@ jobs:
         with:
           name: infra-outputs
 
-      - name: Verify provisioned resources are healthy
+      - name: Verify provisioned resources are healthy (Pester)
+        shell: pwsh
         run: |
-          set -e
-          OUT="infra-outputs.json"
-          WEBAPP_URL=$(python3 -c "import json; print(json.load(open('$OUT'))['webAppUrl']['value'])")
-          DEVSLOT_URL=$(python3 -c "import json; print(json.load(open('$OUT'))['devSlotUrl']['value'])")
-          KV_NAME=$(python3 -c "import json; print(json.load(open('$OUT'))['keyVaultName']['value'])")
-          PG_NAME=$(python3 -c "import json; print(json.load(open('$OUT'))['postgresServerName']['value'])")
-          RG='${{ vars.AZURE_RESOURCE_GROUP }}'
-          FAILED=0
+          Install-Module -Name Pester -RequiredVersion 5.6.1 -Force -SkipPublisherCheck -Scope CurrentUser
+          Import-Module Pester -RequiredVersion 5.6.1
+          $container = New-PesterContainer -Path 'infra/tests/Infra.Integration.Tests.ps1' -Data @{
+            OutputsPath       = 'infra-outputs.json'
+            ResourceGroup     = '${{ vars.AZURE_RESOURCE_GROUP }}'
+            OpenAiAccountName = '${{ vars.AZURE_OPENAI_ACCOUNT_NAME }}'
+          }
+          $config = New-PesterConfiguration
+          $config.Run.Container = $container
+          $config.Run.Exit = $true
+          $config.Output.Verbosity = 'Detailed'
+          $config.TestResult.Enabled = $true
+          $config.TestResult.OutputFormat = 'NUnitXml'
+          $config.TestResult.OutputPath = 'infra-integration-tests.xml'
+          Invoke-Pester -Configuration $config
 
-          echo "== Key Vault =="
-          KV_STATE=$(az keyvault show -n "$KV_NAME" -g "$RG" --query "properties.provisioningState" -o tsv)
-          echo "$KV_NAME provisioningState: $KV_STATE"
-          [ "$KV_STATE" = "Succeeded" ] || { echo "::error::Key Vault '$KV_NAME' is not provisioned (state: $KV_STATE)"; FAILED=1; }
-
-          echo "== PostgreSQL Flexible Server =="
-          PG_STATE=$(az postgres flexible-server show -g "$RG" -n "$PG_NAME" --query "state" -o tsv)
-          echo "$PG_NAME state: $PG_STATE"
-          [ "$PG_STATE" = "Ready" ] || { echo "::error::PostgreSQL server '$PG_NAME' is not ready (state: $PG_STATE)"; FAILED=1; }
-
-          echo "== Azure OpenAI =="
-          AI_STATE=$(az cognitiveservices account show -g "$RG" -n "${{ vars.AZURE_OPENAI_ACCOUNT_NAME }}" --query "properties.provisioningState" -o tsv)
-          echo "${{ vars.AZURE_OPENAI_ACCOUNT_NAME }} provisioningState: $AI_STATE"
-          [ "$AI_STATE" = "Succeeded" ] || { echo "::error::Azure OpenAI account is not provisioned (state: $AI_STATE)"; FAILED=1; }
-
-          echo "== Web app reachability (informational) =="
-          for pair in "production:$WEBAPP_URL" "dev slot:$DEVSLOT_URL"; do
-            label="${pair%%:*}"; url="${pair#*:}"
-            status=$(curl -s -o /dev/null -w '%{http_code}' --max-time 15 "$url" || echo "000")
-            echo "$label ($url): HTTP $status"
-            if [ "$status" -ge 500 ] || [ "$status" = "000" ]; then
-              echo "::warning::$label web app returned $status — expected until app-cicd.yml has deployed code at least once."
-            fi
-          done
-
-          if [ "$FAILED" -ne 0 ]; then
-            echo "::error::One or more provisioned resources are not healthy."
-            exit 1
-          fi
-          echo "Smoke test passed: Key Vault, PostgreSQL, and Azure OpenAI are all healthy."
+      - name: Upload infra integration test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: infra-integration-tests
+          path: infra-integration-tests.xml

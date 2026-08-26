@@ -687,7 +687,40 @@ just deployed is actually serving traffic:
   Service's own platform-level health check (evicts unhealthy instances from rotation), separate
   from and complementary to the pipeline step above.
 
-#### 11.7.1 Further pipeline ideas (not yet implemented)
+#### 11.7.1 Bicep unit tests + Pester integration tests
+
+Two [Pester](https://pester.dev/) (v5) test files under [`infra/tests/`](../infra/tests/) give the
+infra pipeline structured, assertion-based test coverage instead of ad hoc shell parsing:
+
+- **[`Bicep.Unit.Tests.ps1`](../infra/tests/Bicep.Unit.Tests.ps1)** — unit tests. Compiles
+  `infra/main.bicep`, `infra/modules/resources.bicep`, and `infra/modules/alerts.bicep` via
+  `az bicep build` and asserts on the resulting ARM JSON (e.g. secure params never ship a
+  default, region params default to `francecentral`, the `alerts` module is correctly gated on
+  `alertEmailAddress`, `alerts.bicep` creates exactly one action group + two metric alerts). No
+  Azure login, subscription, or deployment needed — runs first in the `Validate` stage/job
+  (`Bicep unit tests (Pester)` step), before the `what-if` preview.
+- **[`Infra.Integration.Tests.ps1`](../infra/tests/Infra.Integration.Tests.ps1)** — a like-for-like
+  Pester port of the infra-level smoke test described above (same `az` CLI calls, same hard vs.
+  informational split — a 5xx/unreachable web app calls `Set-ItResult -Skipped`, not a failure).
+  Runs in the `SmokeTest` stage/job in place of the old bash script, parameterized via
+  `New-PesterContainer -Data @{ OutputsPath; ResourceGroup; OpenAiAccountName }`.
+
+Both steps run via `pwsh` (preinstalled on `ubuntu-latest`), pin `Install-Module -Name Pester
+-RequiredVersion 5.6.1` for a deterministic version regardless of what an agent image happens to
+preinstall, and set `$config.Run.Exit = $true` so a failed assertion fails the step. Results are
+written as NUnit XML and published: ADO via `PublishTestResults@2` (`testResultsFormat: NUnit`,
+visible in the pipeline's **Tests** tab); GitHub Actions via `actions/upload-artifact@v4` (no
+built-in NUnit viewer — download the artifact, consistent with how `app-cicd` already publishes
+unit/integration test artifacts, §7.1).
+
+Run either locally (no Azure login needed for the unit tests; the integration tests need an
+active `az login` session and a real `infra-outputs.json`):
+
+```bash
+pwsh -Command "Invoke-Pester infra/tests/Bicep.Unit.Tests.ps1 -Output Detailed"
+```
+
+#### 11.7.2 Further pipeline ideas (not yet implemented)
 
 - **IaC static analysis** — [PSRule for Azure](https://azure.github.io/PSRule.Rules.Azure/) or [Checkov](https://www.checkov.io/) scanning `infra/**` for security/best-practice issues (e.g. public network access, missing diagnostic settings) as part of `Validate`, catching problems before `what-if` even runs.
 
@@ -738,6 +771,8 @@ brand-new/changed page) failing with "no baseline found" is expected, not a bug.
 | [`infra/modules/openai.bicep`](../infra/modules/openai.bicep)                                 | Azure OpenAI account + model deployment module                    |
 | [`infra/modules/policy.bicep`](../infra/modules/policy.bicep)                                 | Azure Policy assignments applied to the resource group (§11.5)    |
 | [`infra/modules/policy-definitions.bicep`](../infra/modules/policy-definitions.bicep)         | Custom Azure Policy definitions (subscription scope, §11.5)       |
+| [`infra/tests/Bicep.Unit.Tests.ps1`](../infra/tests/Bicep.Unit.Tests.ps1)                     | Pester unit tests — compiled ARM JSON assertions (§11.7.1)        |
+| [`infra/tests/Infra.Integration.Tests.ps1`](../infra/tests/Infra.Integration.Tests.ps1)       | Pester integration tests — post-deploy resource health (§11.7.1)  |
 | [`.ado/app-cicd.yml`](../.ado/app-cicd.yml)                                                   | App CI/CD (verify env, build, test, deploy dev/prod)              |
 | [`.ado/infra-cicd.yml`](../.ado/infra-cicd.yml)                                               | Infra pipeline (validate + apply)                                 |
 | [`.ado/templates/verify-azure-resources.yml`](../.ado/templates/verify-azure-resources.yml)   | `VerifyAzureEnv` stage: fail-fast existence check (§11.3)         |
