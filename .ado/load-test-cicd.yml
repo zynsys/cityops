@@ -1,0 +1,59 @@
+# CityOps — Load testing pipeline (k6), deliberately SEPARATE from app-cicd/infra-cicd.
+# Runs on its own schedule + manual trigger only, against the ALREADY-DEPLOYED dev slot — it never
+# builds, tests, or deploys anything itself, so it doesn't need to be chained to any specific
+# app-cicd run. Kept out of app-cicd because a multi-minute sustained-load run against the shared
+# dev App Service (S1) + Postgres (B1MS) on every ordinary push would repeatedly hammer infra other
+# work relies on being responsive, and would slow/noisy up the fast push -> deploy feedback loop for
+# a concern that doesn't need commit-level granularity. See docs/deployment-guidelines.md §11.9.
+#
+# PREREQUISITES: same 'cityops-env' variable group as app-cicd/infra-cicd (baseName only). No Azure
+# login/service connection needed — resolve-azure-names is a pure string computation, and the
+# endpoints exercised (/, /map, /api/health) are all public (no auth required).
+
+trigger: none
+pr: none
+
+schedules:
+  - cron: '0 4 * * 1' # weekly Monday 04:00 UTC
+    displayName: Weekly load test
+    branches:
+      include:
+        - main
+    always: true
+
+variables:
+  - group: cityops-env # baseName
+
+stages:
+  - stage: LoadTest
+    displayName: 'k6 load test (dev slot)'
+    jobs:
+      - job: load_test
+        pool:
+          vmImage: ubuntu-latest
+        steps:
+          - template: templates/resolve-azure-names.yml
+            parameters:
+              baseName: '$(baseName)'
+
+          - script: |
+              set +e
+              mkdir -p "$(Build.ArtifactStagingDirectory)/k6"
+              docker run --rm \
+                -v "$(System.DefaultWorkingDirectory)/k6:/scripts:ro" \
+                -v "$(Build.ArtifactStagingDirectory)/k6:/out:rw" \
+                -e BASE_URL="https://$(webAppName)-dev.azurewebsites.net" \
+                grafana/k6 run --summary-export=/out/k6-summary.json /scripts/load-test.js
+              status=$?
+              if [ "$status" -ne 0 ]; then
+                echo "##vso[task.logissue type=warning]k6 load test reported a threshold breach (exit $status) — see the published summary."
+              fi
+              exit 0
+            displayName: 'k6 load test'
+
+          - task: PublishPipelineArtifact@1
+            displayName: 'Publish k6 summary'
+            condition: succeededOrFailed()
+            inputs:
+              targetPath: '$(Build.ArtifactStagingDirectory)/k6'
+              artifact: k6-load-test-report

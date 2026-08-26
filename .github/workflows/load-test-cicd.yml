@@ -1,0 +1,52 @@
+# CityOps — Load testing workflow (k6), GitHub Actions equivalent of .ado/load-test-cicd.yml.
+# Deliberately SEPARATE from app-cicd/infra-cicd — see docs/deployment-guidelines.md §11.9 for why
+# a sustained-load run doesn't belong on every push. Schedule + manual dispatch only, targets the
+# already-deployed dev slot directly (no build/deploy of its own).
+#
+# PREREQUISITES: repo variable AZURE_BASE_NAME (defaults to 'cityops' if unset) — same one used by
+# app-cicd/infra-cicd. No Azure credentials needed — the endpoints exercised (/, /map, /api/health)
+# are all public.
+name: CityOps Load Test
+
+on:
+  schedule:
+    - cron: "0 4 * * 1" # weekly Monday 04:00 UTC
+  workflow_dispatch: {}
+
+env:
+  AZURE_BASE_NAME: ${{ vars.AZURE_BASE_NAME || 'cityops' }}
+
+jobs:
+  load_test:
+    name: k6 load test (dev slot)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Resolve web app name
+        id: names
+        uses: ./.github/actions/resolve-azure-names
+        with:
+          base-name: ${{ env.AZURE_BASE_NAME }}
+
+      - name: k6 load test
+        run: |
+          set +e
+          mkdir -p k6-out
+          docker run --rm \
+            -v "$(pwd)/k6:/scripts:ro" \
+            -v "$(pwd)/k6-out:/out:rw" \
+            -e BASE_URL="https://${{ steps.names.outputs.web-app-name }}-dev.azurewebsites.net" \
+            grafana/k6 run --summary-export=/out/k6-summary.json /scripts/load-test.js
+          status=$?
+          if [ "$status" -ne 0 ]; then
+            echo "::warning::k6 load test reported a threshold breach (exit $status) — see the published summary."
+          fi
+          exit 0
+
+      - name: Upload k6 summary
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: k6-load-test-report
+          path: k6-out/
