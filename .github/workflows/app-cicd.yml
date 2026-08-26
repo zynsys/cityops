@@ -385,6 +385,50 @@ jobs:
           url: "https://${{ steps.names.outputs.web-app-name }}-dev.azurewebsites.net/api/health"
 
   # ---------------------------------------------------------------------------
+  # ZAP SCAN — OWASP ZAP baseline (passive) DAST scan against the just-deployed dev slot.
+  # App-pipeline only: unlike the infra pipeline (which never deploys app code), this is the
+  # only place a real, scannable app exists (see docs/deployment-guidelines.md §11.7.3).
+  # Warn-only, like lint/npm audit/jscpd/bundle-size elsewhere in this pipeline (`-I` tells
+  # zap-baseline.py not to fail on WARN-level alerts) — a first run is expected to surface
+  # pre-existing findings that shouldn't block deploys immediately. Does NOT gate deploy_prod.
+  # ---------------------------------------------------------------------------
+  zap_scan:
+    name: OWASP ZAP baseline scan (dev slot)
+    needs: deploy_dev
+    if: success()
+    runs-on: ubuntu-latest
+    env:
+      AZURE_BASE_NAME: ${{ vars.AZURE_BASE_NAME || 'cityops' }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Resolve web app name
+        id: names
+        uses: ./.github/actions/resolve-azure-names
+        with:
+          base-name: ${{ env.AZURE_BASE_NAME }}
+
+      - name: OWASP ZAP baseline scan
+        run: |
+          set +e
+          mkdir -p zap
+          docker run --rm -v "$(pwd)/zap:/zap/wrk:rw" \
+            -t ghcr.io/zaproxy/zaproxy:stable zap-baseline.py \
+            -t "https://${{ steps.names.outputs.web-app-name }}-dev.azurewebsites.net" \
+            -m 5 -r zap-baseline-report.html -J zap-baseline-report.json -I
+          status=$?
+          if [ "$status" -ne 0 ]; then
+            echo "::warning::OWASP ZAP baseline scan reported a problem (exit $status) — see the published report."
+          fi
+          exit 0
+
+      - name: Upload ZAP baseline report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: zap-baseline-report
+          path: zap/
+
+  # ---------------------------------------------------------------------------
   # DEPLOY (Production) — migrate the prod DB (cityops), then SWAP dev → production
   # for a zero-downtime release (rollback = swap back). Gated by the 'prod' environment's
   # required reviewers AND only runs on a manual run (workflow_dispatch) — the only

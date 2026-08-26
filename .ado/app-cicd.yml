@@ -430,6 +430,49 @@ stages:
                     displayName: 'Smoke test dev slot (/api/health)'
 
   # ---------------------------------------------------------------------------
+  # ZAP SCAN — OWASP ZAP baseline (passive) DAST scan against the just-deployed dev slot.
+  # App-pipeline only: unlike the infra pipeline (which never deploys app code), this is the
+  # only place a real, scannable app exists (see docs/deployment-guidelines.md §11.7.3).
+  # Warn-only, like lint/npm audit/jscpd/bundle-size elsewhere in this pipeline (`-I` tells
+  # zap-baseline.py not to fail on WARN-level alerts) — a first run is expected to surface
+  # pre-existing findings that shouldn't block deploys immediately. Does NOT gate Deploy_Prod.
+  # ---------------------------------------------------------------------------
+  - stage: ZapScan
+    displayName: 'OWASP ZAP baseline scan (dev slot)'
+    dependsOn: Deploy_Dev
+    condition: succeeded()
+    variables:
+      - group: cityops-env # baseName
+    jobs:
+      - job: zap_scan
+        pool:
+          vmImage: ubuntu-latest
+        steps:
+          - checkout: none
+          - template: templates/resolve-azure-names.yml
+            parameters:
+              baseName: '$(baseName)'
+          - script: |
+              set +e
+              mkdir -p "$(Build.ArtifactStagingDirectory)/zap"
+              docker run --rm -v "$(Build.ArtifactStagingDirectory)/zap:/zap/wrk:rw" \
+                -t ghcr.io/zaproxy/zaproxy:stable zap-baseline.py \
+                -t "https://$(webAppName)-dev.azurewebsites.net" \
+                -m 5 -r zap-baseline-report.html -J zap-baseline-report.json -I
+              status=$?
+              if [ "$status" -ne 0 ]; then
+                echo "##vso[task.logissue type=warning]OWASP ZAP baseline scan reported a problem (exit $status) — see the published report."
+              fi
+              exit 0
+            displayName: 'OWASP ZAP baseline scan'
+          - task: PublishPipelineArtifact@1
+            displayName: 'Publish ZAP baseline report'
+            condition: succeededOrFailed()
+            inputs:
+              targetPath: '$(Build.ArtifactStagingDirectory)/zap'
+              artifact: zap-baseline-report
+
+  # ---------------------------------------------------------------------------
   # DEPLOY (Production) — migrate the prod DB (cityops), then SWAP dev → production
   # for a zero-downtime release (rollback = swap back). Gated by 'prod' approval AND
   # only runs on a manually-triggered pipeline run (Build.Reason == 'Manual') — that is

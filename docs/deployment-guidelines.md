@@ -720,7 +720,29 @@ active `az login` session and a real `infra-outputs.json`):
 pwsh -Command "Invoke-Pester infra/tests/Bicep.Unit.Tests.ps1 -Output Detailed"
 ```
 
-#### 11.7.2 Further pipeline ideas (not yet implemented)
+#### 11.7.2 OWASP ZAP baseline scan (dev slot, app pipeline only)
+
+`app-cicd`'s `ZapScan` stage (ADO) / `zap_scan` job (GH) runs an [OWASP ZAP](https://www.zaproxy.org/)
+**baseline** (passive-only) DAST scan against the dev slot right after `Deploy_Dev`/`deploy_dev`
+succeeds — `docker run ghcr.io/zaproxy/zaproxy:stable zap-baseline.py -t <dev-slot-url> ...`. This is
+deliberately **app-pipeline only**: ZAP attacks a _running application_ (forms, auth pages, API
+routes, response headers) — the infra pipeline never deploys app code, so there is nothing for it
+to meaningfully scan there (the same reason infra's `SmokeTest` treats web app HTTP reachability as
+informational-only, §11.7).
+
+- **Warn-only**, matching lint/`npm audit`/jscpd/bundle-size elsewhere in this pipeline: the
+  `-I` flag tells `zap-baseline.py` not to fail on WARN-level alerts, and the step itself always
+  `exit 0`s (logging a warning if ZAP's exit code is non-zero) rather than failing the stage/job.
+  A first run is expected to surface pre-existing findings that shouldn't block deploys
+  immediately. **Does not gate `Deploy_Prod`/`deploy_prod`.**
+- `-m 5` caps the spider at 5 minutes so a slow/unresponsive target can't hang the stage.
+- Reports (`zap-baseline-report.html`/`.json`) are published as the `zap-baseline-report`
+  artifact either way (`condition: succeededOrFailed()` / `if: always()`).
+- Not a substitute for a real penetration test — ZAP finds known vulnerability classes and missing
+  security controls; it can't reason about CityOps-specific business logic like cross-tenant RBAC
+  bypass. Treat it as continuous regression coverage between periodic human-led pen tests.
+
+#### 11.7.3 Further pipeline ideas (not yet implemented)
 
 - **IaC static analysis** — [PSRule for Azure](https://azure.github.io/PSRule.Rules.Azure/) or [Checkov](https://www.checkov.io/) scanning `infra/**` for security/best-practice issues (e.g. public network access, missing diagnostic settings) as part of `Validate`, catching problems before `what-if` even runs.
 
