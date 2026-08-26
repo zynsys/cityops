@@ -74,6 +74,9 @@ param requireTagsPolicyId string
 @description('Effect for the require-tags policy assignment.')
 param requireTagsEffect string = 'Audit'
 
+@description('Email address to notify on app exceptions/failed (5xx) requests. Leave empty to skip creating alert resources (e.g. ad-hoc/local test deployments).')
+param alertEmailAddress string = ''
+
 // Deterministic names (no uniqueString suffix) — app/kv/pg names must be globally unique across
 // all of Azure, so baseName must be distinctive enough to avoid collisions. Verified available
 // for baseName='cityops' via the Microsoft.Web/Microsoft.KeyVault/Microsoft.DBforPostgreSQL
@@ -129,6 +132,19 @@ module appInsights 'appinsights.bicep' = {
     location: location
     baseName: baseName
     tags: tags
+  }
+}
+
+// Opt-in email alerting on app exceptions/failed requests — only created when alertEmailAddress
+// is supplied. Bicep can safely reference this conditional module's outputs later in an
+// expression guarded by the same !empty(alertEmailAddress) condition (see output below).
+module alerts 'alerts.bicep' = if (!empty(alertEmailAddress)) {
+  name: 'alertsDeploy'
+  params: {
+    baseName: baseName
+    tags: tags
+    appInsightsId: appInsights.outputs.resourceId
+    alertEmailAddress: alertEmailAddress
   }
 }
 
@@ -456,4 +472,5 @@ output postgresFqdn string = postgres.outputs.fqdn
 output postgresServerName string = postgres.outputs.serverName
 output resourceGroupName string = resourceGroup().name
 output appInsightsName string = appInsights.outputs.appInsightsName
+output actionGroupName string = alerts.?outputs.actionGroupName ?? ''
 

@@ -161,7 +161,7 @@ literal (see §5.3 for details on why).
 
 **`cityops-env`** (plain, non-secret — used by both pipelines):
 
-**UI:** Pipelines → Library → + Variable group → name `cityops-env` → add the 5 variables below → toggle **Allow access to all pipelines** → Save.
+**UI:** Pipelines → Library → + Variable group → name `cityops-env` → add the 6 variables below → toggle **Allow access to all pipelines** → Save.
 
 **CLI equivalent:**
 
@@ -169,8 +169,12 @@ literal (see §5.3 for details on why).
 az pipelines variable-group create --name cityops-env --authorize true \
   --variables resourceGroup=rg-cityops \
               location=francecentral dbLocation=francecentral \
-              baseName=cityops openAiAccountName=azopenai-cityops
+              baseName=cityops openAiAccountName=azopenai-cityops \
+              alertEmailAddress=ops@example.com
 ```
+
+Leave `alertEmailAddress` blank to fall back to the pipeline's own notion of "who triggered this
+run" (ADO: `Build.RequestedForEmail`; GitHub: the triggering commit's author email) — see §4.1.1.
 
 **`cityops-infra`** (secret, provisioning-time — used by `infra.yml` only):
 
@@ -267,6 +271,29 @@ the published `infra-outputs` artifact contains `webAppName`, `webAppUrl`, `keyV
 > **Deploy**, which applies the changes after you approve the `prod` environment gate. PRs run
 > **Validate** only (no apply), and the nightly schedule is what-if only too.
 
+### 4.1.1 Email alerts on app errors
+
+If `alertEmailAddress` (§3.2) is non-empty, the same `Deploy` run also creates an Azure Monitor
+Action Group plus two metric alerts scoped to the Application Insights resource:
+
+- **`alert-<baseName>-exceptions`** — fires when `exceptions/count` > 0 in a 5-minute window
+  (any unhandled exception the app raises).
+- **`alert-<baseName>-failed-requests`** — fires when `requests/failed` > 0 in a 5-minute window
+  (any 5xx response).
+
+Both alerts notify the single email receiver on `ag-<baseName>-errors` (Action Group). This
+requires no app code changes — the app already sends telemetry (including exceptions) to
+Application Insights via `APPLICATIONINSIGHTS_CONNECTION_STRING`. If `cityops-env`'s
+`alertEmailAddress` is left blank, both pipelines resolve a default before calling Bicep rather
+than skipping alerting outright: ADO uses the built-in `Build.RequestedForEmail` (the person who
+queued/pushed the triggering run), GitHub Actions uses `git log -1 --pretty=format:'%ae'` (the
+triggering commit's author email) — in each case a real, accountable inbox rather than a fixed
+"admin" address, which Azure/GitHub don't expose directly. `scripts/setup.sh` does the same for
+local bootstraps, defaulting to the signed-in `az` account's email. The Bicep param itself still
+defaults to `''` and skips creating alert resources only if every one of these resolves empty
+(e.g. calling `az deployment sub create` directly with no override) — see
+[`infra/modules/alerts.bicep`](../infra/modules/alerts.bicep).
+
 ### 4.2 Run the `app-cicd` pipeline (build, test, deploy to dev)
 
 A push to `main` (or a manual run) triggers `app-cicd` automatically: **Build & Unit tests** →
@@ -316,6 +343,8 @@ resource-group-scoped module:
 | [`infra/modules/postgres.bicep`](../infra/modules/postgres.bicep)           | Flexible Server, `cityops`/`cityops_dev` DBs, PostGIS, firewall                         |
 | [`infra/modules/appservice.bicep`](../infra/modules/appservice.bicep)       | Plan, Web App **+ `dev` deployment slot**                                               |
 | [`infra/modules/openai.bicep`](../infra/modules/openai.bicep)               | Azure OpenAI account + `gpt-4o` model deployment                                        |
+| [`infra/modules/appinsights.bicep`](../infra/modules/appinsights.bicep)     | Application Insights + Log Analytics Workspace                                          |
+| [`infra/modules/alerts.bicep`](../infra/modules/alerts.bicep)               | Action Group (email) + exception/failed-request metric alerts (opt-in, §4.1.1)          |
 
 Resource names are derived deterministically from `baseName` alone (`app-<baseName>`, `kv-<baseName>`, `pg-<baseName>` — no random suffix), so re-running a deployment on the same resource group **adopts and updates** existing resources rather than creating duplicates. `app`/`kv`/`pg` names must be globally unique across all of Azure (not just this subscription), so `baseName` needs to be distinctive enough to avoid collisions — verified available for the default `cityops` via the `Microsoft.Web`/`Microsoft.KeyVault`/`Microsoft.DBforPostgreSQL` `checkNameAvailability` APIs. If you ever get a naming conflict on first deploy, change `baseName` to something more specific and redeploy.
 
@@ -331,6 +360,7 @@ Key parameters (set via the `cityops-env`/`cityops-infra` variable groups, §3.2
 | `openAiAccountName`                                               | `azopenai-cityops`                 | Azure OpenAI account name                                                                   |
 | `openAiDeploymentName` / `openAiModelName` / `openAiModelVersion` | `gpt-4o` / `gpt-4o` / `2024-11-20` | Model deployment                                                                            |
 | `openAiSkuName` / `openAiCapacity`                                | `GlobalStandard` / `100`           | Throughput (TPM), subject to quota                                                          |
+| `alertEmailAddress`                                               | _(empty)_                          | Email notified on app exceptions/failed requests; blank skips alert resources (§4.1.1)      |
 | `pgAdminPassword`                                                 | _(secure)_                         | PostgreSQL admin password                                                                   |
 | `authSecret` / `authSecretDev`                                    | _(secure)_                         | Prod / dev-slot `AUTH_SECRET`                                                               |
 

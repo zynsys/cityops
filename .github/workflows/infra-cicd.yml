@@ -15,7 +15,9 @@
 #        AZURE_CLIENT_ID, AZURE_TENANT_ID, AZURE_SUBSCRIPTION_ID
 #   2. Repo variables (Settings → Secrets and variables → Actions → Variables):
 #        AZURE_RESOURCE_GROUP, AZURE_LOCATION, AZURE_DB_LOCATION, AZURE_BASE_NAME (default
-#        'cityops'), AZURE_OPENAI_ACCOUNT_NAME
+#        'cityops'), AZURE_OPENAI_ACCOUNT_NAME, ALERT_EMAIL_ADDRESS (email that receives Azure
+#        Monitor alerts when the deployed app raises exceptions/failed requests; leave unset/blank
+#        to fall back to the triggering commit's author email)
 #   3. Repo/environment secrets (Settings → Secrets and variables → Actions → Secrets):
 #        PG_ADMIN_PASSWORD  (fixed — changing it rotates the DB admin password)
 #        AUTH_SECRET        (fixed, >= 32 chars — changing it invalidates prod sessions)
@@ -70,6 +72,12 @@ jobs:
       - name: Bicep lint + what-if preview
         run: |
           set -e
+          # Falls back to the triggering commit's author email when ALERT_EMAIL_ADDRESS is
+          # unset — a real, accountable inbox by default.
+          ALERT_EMAIL="${{ vars.ALERT_EMAIL_ADDRESS }}"
+          if [[ -z "$ALERT_EMAIL" ]]; then
+            ALERT_EMAIL="$(git log -1 --pretty=format:'%ae')"
+          fi
           az bicep build --file infra/main.bicep
           az deployment sub what-if \
             --location "${{ vars.AZURE_LOCATION }}" \
@@ -79,6 +87,7 @@ jobs:
                dbLocation="${{ vars.AZURE_DB_LOCATION }}" \
                baseName="${{ env.AZURE_BASE_NAME }}" \
                openAiAccountName="${{ vars.AZURE_OPENAI_ACCOUNT_NAME }}" \
+               alertEmailAddress="$ALERT_EMAIL" \
                pgAdminPassword="${{ secrets.PG_ADMIN_PASSWORD }}" \
                authSecret="${{ secrets.AUTH_SECRET }}" \
                authSecretDev="${{ secrets.AUTH_SECRET_DEV }}"
@@ -221,6 +230,12 @@ jobs:
       - name: az deployment sub create
         run: |
           set -e
+          # Falls back to the triggering commit's author email when ALERT_EMAIL_ADDRESS is
+          # unset — a real, accountable inbox by default.
+          ALERT_EMAIL="${{ vars.ALERT_EMAIL_ADDRESS }}"
+          if [[ -z "$ALERT_EMAIL" ]]; then
+            ALERT_EMAIL="$(git log -1 --pretty=format:'%ae')"
+          fi
           az deployment sub create \
             --location "${{ vars.AZURE_LOCATION }}" \
             -n cityops-infra \
@@ -230,6 +245,7 @@ jobs:
                dbLocation="${{ vars.AZURE_DB_LOCATION }}" \
                baseName="${{ env.AZURE_BASE_NAME }}" \
                openAiAccountName="${{ vars.AZURE_OPENAI_ACCOUNT_NAME }}" \
+               alertEmailAddress="$ALERT_EMAIL" \
                pgAdminPassword="${{ secrets.PG_ADMIN_PASSWORD }}" \
                authSecret="${{ secrets.AUTH_SECRET }}" \
                authSecretDev="${{ secrets.AUTH_SECRET_DEV }}" \

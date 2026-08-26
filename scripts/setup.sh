@@ -42,6 +42,7 @@ NAME_HASH="${NAME_HASH:-}"                       # resource-name hash suffix ove
 OPENAI_ACCOUNT_NAME="${OPENAI_ACCOUNT_NAME:-}"  # defaults to azopenai-<BASE_NAME>-<hash> below, once BASE_NAME/hash are known
 LOCATION="${LOCATION:-francecentral}"         # App Service + Key Vault region (confirmed capacity)
 DB_LOCATION="${DB_LOCATION:-francecentral}"   # PostgreSQL Flexible Server region (confirmed capacity)
+ALERT_EMAIL_ADDRESS="${ALERT_EMAIL_ADDRESS:-}" # email to notify on app exceptions/failed requests; blank = skip alert resources
 AZURE_SUBSCRIPTION_ID="${AZURE_SUBSCRIPTION_ID:-}"
 
 ADO_ORG_URL="${ADO_ORG_URL:-}"                # e.g. https://dev.azure.com/my-org
@@ -122,6 +123,12 @@ log "Configuration (press Enter to accept each default)"
 CURRENT_SUB_ID="$(az account show --query id -o tsv 2>/dev/null || true)"
 CURRENT_ADO_ORG="$(az devops configure --list 2>/dev/null | sed -n 's/^organization *= *//p' || true)"
 CURRENT_ADO_PROJECT="$(az devops configure --list 2>/dev/null | sed -n 's/^project *= *//p' || true)"
+# Best available proxy for "the admin running this": the signed-in Azure account's email (mail
+# for an AAD user; falls back to the account's UPN, which is the email for most AAD tenants).
+CURRENT_USER_EMAIL="$(az ad signed-in-user show --query mail -o tsv 2>/dev/null || true)"
+if [[ -z "$CURRENT_USER_EMAIL" || "$CURRENT_USER_EMAIL" == "None" ]]; then
+  CURRENT_USER_EMAIL="$(az account show --query user.name -o tsv 2>/dev/null || true)"
+fi
 
 prompt AZURE_SUBSCRIPTION_ID "Azure subscription ID" "${AZURE_SUBSCRIPTION_ID:-$CURRENT_SUB_ID}"
 prompt BASE_NAME "Base name for Azure resources (app-<base>, kv-<base>, pg-<base>, etc.)" "$BASE_NAME"
@@ -137,6 +144,7 @@ prompt RESOURCE_GROUP "Resource group name" "${RESOURCE_GROUP_ENV:-rg-$BASE_NAME
 prompt OPENAI_ACCOUNT_NAME "Azure OpenAI account name" "${OPENAI_ACCOUNT_NAME:-azopenai-$BASE_NAME-$NAME_HASH}"
 prompt LOCATION "App Service / Key Vault region" "$LOCATION"
 prompt DB_LOCATION "PostgreSQL region" "$DB_LOCATION"
+prompt ALERT_EMAIL_ADDRESS "Email to notify on app exceptions/failed requests (blank = skip alert resources)" "${ALERT_EMAIL_ADDRESS:-$CURRENT_USER_EMAIL}"
 prompt ADO_ORG_URL "Azure DevOps org URL (blank = Azure infra only, no ADO wiring)" "${ADO_ORG_URL:-$CURRENT_ADO_ORG}"
 prompt ADO_PROJECT "Azure DevOps project name" "${ADO_PROJECT:-$CURRENT_ADO_PROJECT}"
 if [[ -n "$ADO_ORG_URL" ]]; then
@@ -197,6 +205,7 @@ DEPLOY_OUTPUT="$(az deployment sub create \
   -p resourceGroupName="$RESOURCE_GROUP" \
      location="$LOCATION" dbLocation="$DB_LOCATION" \
      baseName="$BASE_NAME" openAiAccountName="$OPENAI_ACCOUNT_NAME" \
+     alertEmailAddress="$ALERT_EMAIL_ADDRESS" \
      pgAdminPassword="$PG_ADMIN_PASSWORD" \
      authSecret="$AUTH_SECRET" \
      authSecretDev="$AUTH_SECRET_DEV" \
@@ -311,7 +320,7 @@ if [[ -z "$ENV_VG_ID" || "$ENV_VG_ID" == "None" ]]; then
   az pipelines variable-group create --name cityops-env --authorize true \
     --variables resourceGroup="$RESOURCE_GROUP" \
                 location="$LOCATION" dbLocation="$DB_LOCATION" baseName="$BASE_NAME" \
-                openAiAccountName="$OPENAI_ACCOUNT_NAME" -o none
+                openAiAccountName="$OPENAI_ACCOUNT_NAME" alertEmailAddress="$ALERT_EMAIL_ADDRESS" -o none
 else
   # Always reconcile to this run's values — reusing an existing NAME_HASH means "update this
   # deployment", so a stale resourceGroup/baseName/etc. left over from a prior run must not win.
@@ -320,6 +329,7 @@ else
   set_group_variable "$ENV_VG_ID" dbLocation "$DB_LOCATION"
   set_group_variable "$ENV_VG_ID" baseName "$BASE_NAME"
   set_group_variable "$ENV_VG_ID" openAiAccountName "$OPENAI_ACCOUNT_NAME"
+  set_group_variable "$ENV_VG_ID" alertEmailAddress "$ALERT_EMAIL_ADDRESS"
   warn "Variable group 'cityops-env' already existed — updated its values to match this run."
 fi
 

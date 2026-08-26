@@ -83,6 +83,9 @@ param requireTagsEffect string = 'Audit'
 @description('Tag name the require-tag policy checks for. Defaults to project (Bicep already applies it, so resources pass); set to a tag nothing has to demo a blocked deploy.')
 param requiredTagName string = 'project'
 
+@description('Email address to notify on app exceptions/failed (5xx) requests. Leave empty to skip creating alert resources.')
+param alertEmailAddress string = ''
+
 // Custom policy definitions live at subscription scope (can't be created on a resource group),
 // then get assigned to the resource group inside resources.bicep.
 module policyDefinitions 'modules/policy-definitions.bicep' = {
@@ -128,6 +131,7 @@ module resources 'modules/resources.bicep' = {
     openAiCapacity: openAiCapacity
     requireTagsPolicyId: policyDefinitions.outputs.requireTagsPolicyId
     requireTagsEffect: requireTagsEffect
+    alertEmailAddress: alertEmailAddress
   }
 }
 
@@ -139,3 +143,4 @@ output keyVaultName string = resources.outputs.keyVaultName
 output postgresFqdn string = resources.outputs.postgresFqdn
 output postgresServerName string = resources.outputs.postgresServerName
 output resourceGroupName string = resources.outputs.resourceGroupName
+output actionGroupName string = resources.outputs.actionGroupName
