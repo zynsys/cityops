@@ -81,8 +81,8 @@ jobs:
         with:
           node-version: ${{ env.NODE_VERSION }}
 
-      - name: Lint (warn-only — pre-existing findings not yet triaged)
-        run: npm run lint || echo "::warning::Lint returned a non-zero exit code (known pre-existing findings not yet triaged)."
+      - name: Lint
+        run: npm run lint
 
       - name: Dependency vulnerability audit (warn-only)
         run: npm audit --audit-level=high || echo "::warning::Dependency audit returned a non-zero exit code (warn-only for now)."

@@ -30,6 +30,8 @@ const eslintConfig = defineConfig([
       ],
       // Code metric: cyclomatic complexity. Warn-only until existing findings are triaged.
       complexity: ['warn', 15],
+      // Flag empty blocks, including empty catch blocks (silently swallowed errors).
+      'no-empty': ['error', { allowEmptyCatch: false }],
     },
   },
 ]);

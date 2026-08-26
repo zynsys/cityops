@@ -70,7 +70,9 @@ function FitToBounds({
           map.fitBounds(bounds, { padding: [20, 20] });
           return;
         }
-      } catch {}
+      } catch {
+        // Invalid/unsupported GeoJSON geometry — fall back to postcode/points bounds below.
+      }
     }
 
     if (postcodeCenter) {
@@ -154,7 +156,9 @@ export default function DashboardHeatmap({ points, councilSlug, postcode }: Dash
         if (!cancelled && Array.isArray(results) && results[0]?.lat && results[0]?.lon) {
           setPostcodeData({ postcode, center: [Number(results[0].lat), Number(results[0].lon)] });
         }
-      } catch {}
+      } catch {
+        // Geocoding is best-effort — silently ignore network/parse failures.
+      }
     })();
 
     return () => {

@@ -80,15 +80,27 @@ stages:
         steps:
           - template: templates/setup-nodejs.yml
 
-          - script: |
-              set +e
-              npm run lint
-              rc=$?
-              if [ "$rc" -ne 0 ]; then
-                echo "##vso[task.logissue type=warning]Lint returned exit code $rc (known pre-existing findings not yet triaged)."
-              fi
-              exit 0
-            displayName: 'Lint (warn-only — pre-existing findings not yet triaged)'
+          - script: mkdir -p reports && npm run lint:report
+            displayName: 'Lint'
+
+          - task: PublishTestResults@2
+            displayName: 'Publish lint results'
+            condition: succeededOrFailed()
+            inputs:
+              testResultsFormat: JUnit
+              testResultsFiles: 'reports/lint-results.xml'
+              testRunTitle: 'Lint'
+
+          - script: mkdir -p reports/sarif && npm run lint:sarif
+            displayName: 'Lint (SARIF report)'
+            condition: succeededOrFailed()
+
+          - task: PublishPipelineArtifact@1
+            displayName: 'Publish lint SARIF log (Scans tab)'
+            condition: succeededOrFailed()
+            inputs:
+              targetPath: 'reports/sarif'
+              artifact: CodeAnalysisLogs
 
           - script: |
               set +e
