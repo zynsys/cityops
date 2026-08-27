@@ -117,6 +117,14 @@ jobs:
           path: coverage/
           retention-days: 14
 
+      - name: Upload unit coverage report for code-quality API
+        if: always() && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
+        uses: actions/upload-artifact@v4
+        with:
+          name: unit-coverage-cobertura
+          path: coverage/cobertura-coverage.xml
+          retention-days: 14
+
       - name: Coverage gate (warn-only, target 60%)
         if: always()
         continue-on-error: true
@@ -198,6 +206,58 @@ jobs:
           name: integration-coverage
           path: coverage/
           retention-days: 14
+
+      - name: Upload integration coverage report for code-quality API
+        if: always() && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
+        uses: actions/upload-artifact@v4
+        with:
+          name: integration-coverage-cobertura
+          path: coverage/cobertura-coverage.xml
+          retention-days: 14
+
+  # ---------------------------------------------------------------------------
+  # UPLOAD COVERAGE — upload Cobertura reports to GitHub code-quality API.
+  # Runs after the respective test jobs; skipped for fork PRs (no write token).
+  # ---------------------------------------------------------------------------
+  upload-coverage-typescript-unit:
+    name: Upload unit coverage (TypeScript)
+    needs: build_and_unit_test
+    if: ${{ !cancelled() && needs.build_and_unit_test.result == 'success' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      code-quality: write
+    steps:
+      - name: Download unit coverage artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: unit-coverage-cobertura
+      - name: Upload unit coverage to GitHub
+        uses: actions/upload-code-coverage@v1
+        with:
+          file: cobertura-coverage.xml
+          language: TypeScript
+          label: code-coverage-agent
+
+  upload-coverage-typescript-integration:
+    name: Upload integration coverage (TypeScript)
+    needs: integration_test
+    if: ${{ !cancelled() && needs.integration_test.result == 'success' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      code-quality: write
+    steps:
+      - name: Download integration coverage artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: integration-coverage-cobertura
+      - name: Upload integration coverage to GitHub
+        uses: actions/upload-code-coverage@v1
+        with:
+          file: cobertura-coverage.xml
+          language: TypeScript
+          label: code-coverage-agent
 
   # ---------------------------------------------------------------------------
   # E2E — Playwright against the built app. Runs on PRs (pre-merge safety net),
