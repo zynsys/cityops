@@ -1,16 +1,16 @@
-# Real-World AI Development with GitHub Copilot
+# Learn GitHub Copilot with a Real-World App
 
-Welcome to this full-day hands-on workshop on **GitHub Copilot**! In this session, you'll go far beyond autocomplete — exploring the full spectrum of Copilot features using **CityOps**, a real production-grade civic reporting platform.
+Welcome! This is the landing page for a hands-on learning path on **GitHub Copilot**, built around **CityOps**, a real production-grade civic reporting platform. It's not a single scheduled session — think of it as a library of self-contained modules. Browse the tables below, pick the sections that match what you want to learn, and jump straight in.
 
-## Workshop Overview
+## Overview
 
-This workshop is different from most. Instead of a toy project built for the occasion, you'll be working with **CityOps** — a fully featured, multi-tenant civic reporting SaaS platform with real architectural complexity: multi-tenant isolation, RBAC, geospatial queries, AI validation, authentication, and more.
+This project is different from most Copilot learning material. Instead of a toy project built for the occasion, every module works against **CityOps** — a fully featured, multi-tenant civic reporting SaaS platform with real architectural complexity: multi-tenant isolation, RBAC, geospatial queries, AI validation, authentication, and more.
 
-Every exercise uses real code, real specs, and real problems. By the end of the day you'll have experienced the full Copilot workflow — from understanding an unfamiliar codebase to deploying features through autonomous agents.
+Every exercise uses real code, real specs, and real problems. Modules are grouped by topic, not by a fixed schedule, so you can go deep on the areas most relevant to you — whether that's Agent Mode, MCP servers, custom agents, or spec-driven development — and skip the rest.
 
 ### Learning Objectives
 
-By the end of this workshop, you will be able to:
+Depending on which sections you explore, you'll learn how to:
 
 1. **Understand an unfamiliar codebase** — Use Copilot Ask mode to navigate a real full-stack application
 2. **Configure custom instructions** — Set up repository and task-level instruction files to guide code generation
@@ -61,7 +61,7 @@ Understanding these will help you get more from the exercises:
 
 ## Prerequisites
 
-Before attending this workshop, please ensure you have:
+Before working through any module, please ensure you have:
 
 - [ ] A GitHub account with an active **Copilot Pro, Pro+, Business, or Enterprise** subscription
 - [ ] **VS Code** with the GitHub Copilot extension installed
@@ -77,7 +77,9 @@ Before attending this workshop, please ensure you have:
 > [!TIP]
 > You can complete most exercises without Azure OpenAI — the AI validation feature will gracefully skip if the environment variables are not set. However, Module 06 and beyond work best with it configured.
 
-## Workshop Modules
+## Explore the Modules
+
+The modules below are organised by topic, not by day or sequence. Start wherever your interest (or need) is greatest — each module is self-contained, though the **Foundation** section is a good starting point if you're new to CityOps.
 
 ### Foundation
 
@@ -156,8 +158,8 @@ Before attending this workshop, please ensure you have:
 
 ## Support
 
-- **During the workshop**: Raise your hand or ask in the event chat
-- **After the workshop**: Open an issue in the [workshop repository](https://github.com/zynsys/cityops)
+- **While working through a module**: Ask in the event chat, if you're part of a live session
+- **Anytime**: Open an issue in the [workshop repository](https://github.com/zynsys/cityops)
 
 ---
 

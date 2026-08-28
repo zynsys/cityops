@@ -1,6 +1,6 @@
 # Workshop Overview
 
-Welcome to **Real-World AI Development with GitHub Copilot**! This workshop takes you well beyond autocomplete — exploring the full spectrum of Copilot features applied to **CityOps**, a real production-grade civic reporting platform.
+Welcome to **Learn GitHub Copilot with a Real-World App**! This workshop takes you well beyond autocomplete — exploring the full spectrum of Copilot features applied to **CityOps**, a real production-grade civic reporting platform.
 
 ## What Makes This Workshop Different
 
