@@ -147,10 +147,13 @@ body::before {
   gap: 1.5rem;
 }
 .feature-card {
+  display: block;
   background: var(--bg-card);
   border: 1px solid var(--border-color);
   border-radius: 12px;
   padding: 2rem;
+  text-decoration: none;
+  color: inherit;
   transition: all 0.3s ease;
 }
 .feature-card:hover {
