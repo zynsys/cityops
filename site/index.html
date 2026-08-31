@@ -40,97 +40,195 @@
     <section class="features">
       <div class="container">
         <h2 class="section-title">What You'll Learn</h2>
-        <div class="features-grid">
-          <a href="step.html?step=ext-01-custom-instructions" class="feature-card">
-            <div class="feature-icon">📝</div>
-            <h3>Custom Instructions</h3>
-            <p>
-              Configure Copilot with project-specific context, coding standards, and prompt files tuned to the CityOps
-              codebase.
-            </p>
-          </a>
-          <a href="step.html?step=cli-01-installation" class="feature-card">
-            <div class="feature-icon">💻</div>
-            <h3>Copilot CLI</h3>
-            <p>
-              Use Copilot directly from the terminal to explore, explain, and modify a real Next.js + Prisma codebase.
-            </p>
-          </a>
-          <a href="step.html?step=ext-05-mcp-servers" class="feature-card">
-            <div class="feature-icon">🔌</div>
-            <h3>MCP Servers</h3>
-            <p>Connect GitHub and PostgreSQL MCP servers to drive database-aware, issue-linked code changes.</p>
-          </a>
-          <a href="step.html?step=ext-04-agent-skills" class="feature-card">
-            <div class="feature-icon">⚡</div>
-            <h3>Agent Skills</h3>
-            <p>
-              Explore and create reusable SKILL.md definitions that give agents domain expertise in CityOps workflows.
-            </p>
-          </a>
-          <a href="step.html?step=ext-03-custom-agents" class="feature-card">
-            <div class="feature-icon">🤖</div>
-            <h3>Custom Agents</h3>
-            <p>
-              Build specialised agents like a RBAC reviewer or database migration assistant tailored to CityOps
-              conventions.
-            </p>
-          </a>
-          <a href="step.html?step=agentic-04-workflows" class="feature-card">
-            <div class="feature-icon">🔄</div>
-            <h3>Agentic Workflows</h3>
-            <p>
-              Chain complex multi-step tasks — migration, API route, UI component — in a single autonomous agent
-              session.
-            </p>
-          </a>
-          <a href="step.html?step=agentic-05-multi-agent" class="feature-card">
-            <div class="feature-icon">👥</div>
-            <h3>Multi-Agent Development</h3>
-            <p>
-              Orchestrate parallel agents working simultaneously on different layers of the stack, then coordinate the
-              merge.
-            </p>
-          </a>
-          <a href="step.html?step=testing-03-security" class="feature-card">
-            <div class="feature-icon">🔍</div>
-            <h3>Code Review & Security</h3>
-            <p>
-              Use Copilot to review PRs, identify security gaps in auth middleware, and validate tenant isolation logic.
-            </p>
-          </a>
-          <a href="step.html?step=dev-03-plan-mode" class="feature-card">
-            <div class="feature-icon">📋</div>
-            <h3>Plan Mode</h3>
-            <p>
-              Draft structured architecture plans before writing code. Iterate with the Plan Agent until the design is
-              right, then hand off to the implementation agent.
-            </p>
-          </a>
-          <a href="step.html?step=agentic-03-background" class="feature-card">
-            <div class="feature-icon">🌤️</div>
-            <h3>Background Agents</h3>
-            <p>
-              Offload parallel tasks to background and cloud agents. Work on one thing while Copilot implements another,
-              then review the result.
-            </p>
-          </a>
-          <a href="step.html?step=agentic-06-hooks" class="feature-card">
-            <div class="feature-icon">🪝</div>
-            <h3>Agent Hooks</h3>
-            <p>
-              Enforce policies and automate workflows at agent lifecycle events — lint on file save, block destructive
-              commands, inject context at session start.
-            </p>
-          </a>
-          <a href="step.html?step=dev-05-approval-types" class="feature-card">
-            <div class="feature-icon">🎚️</div>
-            <h3>Approval Types</h3>
-            <p>
-              Control how much autonomy Agent Mode has — from step-by-step approval to fully autonomous Autopilot for
-              well-scoped tasks.
-            </p>
-          </a>
+        <p class="features-intro">
+          Explore the complete learning path, from understanding CityOps to orchestrating autonomous development
+          workflows. Expand a module to see the skills and exercises it includes.
+        </p>
+        <div class="learning-accordion">
+          <details class="learning-item" name="learning-modules" open>
+            <summary class="learning-trigger">
+              <span class="learning-icon" aria-hidden="true">🏙️</span>
+              <span class="learning-heading">
+                <span class="learning-title">Project Overview</span>
+                <span class="learning-summary">Set up CityOps and understand its real-world architecture.</span>
+              </span>
+              <span class="learning-count">4 lessons</span>
+              <svg class="learning-chevron" viewBox="0 0 24 24" aria-hidden="true">
+                <path d="m6 9 6 6 6-6" />
+              </svg>
+            </summary>
+            <div class="learning-content">
+              <p>
+                Get oriented with the workshop, prepare your environment, walk through the citizen-to-council report
+                lifecycle, and explore CityOps architecture, RBAC, multi-tenancy, and data model.
+              </p>
+              <ul class="learning-lessons">
+                <li><a href="step.html?step=foundation-01-workshop-overview">Workshop Overview</a></li>
+                <li><a href="step.html?step=foundation-02-prereqs">Prerequisites</a></li>
+                <li><a href="step.html?step=foundation-03-project-walkthrough">Project Walkthrough</a></li>
+                <li><a href="step.html?step=foundation-04-understanding-codebase">Understanding a Codebase</a></li>
+              </ul>
+            </div>
+          </details>
+
+          <details class="learning-item" name="learning-modules">
+            <summary class="learning-trigger">
+              <span class="learning-icon" aria-hidden="true">🚀</span>
+              <span class="learning-heading">
+                <span class="learning-title">Developer Productivity</span>
+                <span class="learning-summary">Work faster with Copilot's core modes and approval controls.</span>
+              </span>
+              <span class="learning-count">5 lessons</span>
+              <svg class="learning-chevron" viewBox="0 0 24 24" aria-hidden="true">
+                <path d="m6 9 6 6 6-6" />
+              </svg>
+            </summary>
+            <div class="learning-content">
+              <p>
+                Use Ask, Inline Chat, Edit, Plan, and Agent modes to understand code, make focused changes, plan
+                features, and implement full-stack work with the right level of autonomy.
+              </p>
+              <ul class="learning-lessons">
+                <li><a href="step.html?step=dev-01-ask-mode">Ask Mode</a></li>
+                <li><a href="step.html?step=dev-02-inline-chat">Inline Chat &amp; Edit Mode</a></li>
+                <li><a href="step.html?step=dev-03-plan-mode">Plan Mode</a></li>
+                <li><a href="step.html?step=dev-04-agent-mode">Agent Mode</a></li>
+                <li><a href="step.html?step=dev-05-approval-types">Approval Types</a></li>
+              </ul>
+            </div>
+          </details>
+
+          <details class="learning-item" name="learning-modules">
+            <summary class="learning-trigger">
+              <span class="learning-icon" aria-hidden="true">🧩</span>
+              <span class="learning-heading">
+                <span class="learning-title">Extending Copilot</span>
+                <span class="learning-summary">Tailor Copilot with reusable context, agents, skills, and tools.</span>
+              </span>
+              <span class="learning-count">6 lessons</span>
+              <svg class="learning-chevron" viewBox="0 0 24 24" aria-hidden="true">
+                <path d="m6 9 6 6 6-6" />
+              </svg>
+            </summary>
+            <div class="learning-content">
+              <p>
+                Configure repository instructions and prompt files, create custom agents and Agent Skills, connect MCP
+                servers, and discover community-built Copilot customisations.
+              </p>
+              <ul class="learning-lessons">
+                <li><a href="step.html?step=ext-01-custom-instructions">Custom Instructions</a></li>
+                <li><a href="step.html?step=ext-02-prompt-files">Prompt Files</a></li>
+                <li><a href="step.html?step=ext-03-custom-agents">Custom Agents</a></li>
+                <li><a href="step.html?step=ext-04-agent-skills">Agent Skills</a></li>
+                <li><a href="step.html?step=ext-05-mcp-servers">MCP Servers</a></li>
+                <li><a href="step.html?step=ext-06-awesome-copilot">Awesome Copilot</a></li>
+              </ul>
+            </div>
+          </details>
+
+          <details class="learning-item" name="learning-modules">
+            <summary class="learning-trigger">
+              <span class="learning-icon" aria-hidden="true">⌨️</span>
+              <span class="learning-heading">
+                <span class="learning-title">GitHub Copilot CLI</span>
+                <span class="learning-summary">Bring Copilot workflows into your terminal.</span>
+              </span>
+              <span class="learning-count">4 lessons</span>
+              <svg class="learning-chevron" viewBox="0 0 24 24" aria-hidden="true">
+                <path d="m6 9 6 6 6-6" />
+              </svg>
+            </summary>
+            <div class="learning-content">
+              <p>
+                Install and authenticate GitHub Copilot CLI, use common commands against CityOps, and combine terminal
+                sessions with MCP servers and Agent Skills for richer context.
+              </p>
+              <ul class="learning-lessons">
+                <li><a href="step.html?step=cli-01-installation">CLI Installation</a></li>
+                <li><a href="step.html?step=cli-02-commands">Commonly Used Commands</a></li>
+                <li><a href="step.html?step=cli-03-mcp">CLI + MCP Servers</a></li>
+                <li><a href="step.html?step=cli-04-skills">CLI + Agent Skills</a></li>
+              </ul>
+            </div>
+          </details>
+
+          <details class="learning-item" name="learning-modules">
+            <summary class="learning-trigger">
+              <span class="learning-icon" aria-hidden="true">🧪</span>
+              <span class="learning-heading">
+                <span class="learning-title">Testing</span>
+                <span class="learning-summary">Generate robust tests and review security-critical code.</span>
+              </span>
+              <span class="learning-count">3 lessons</span>
+              <svg class="learning-chevron" viewBox="0 0 24 24" aria-hidden="true">
+                <path d="m6 9 6 6 6-6" />
+              </svg>
+            </summary>
+            <div class="learning-content">
+              <p>
+                Generate unit and integration coverage, create Playwright tests for real user journeys, and use Copilot
+                Code Review to identify authentication and tenant-isolation risks.
+              </p>
+              <ul class="learning-lessons">
+                <li><a href="step.html?step=testing-01-unit">Unit Testing with Copilot</a></li>
+                <li><a href="step.html?step=testing-02-playwright">UI Testing with Playwright</a></li>
+                <li><a href="step.html?step=testing-03-security">Security Review</a></li>
+              </ul>
+            </div>
+          </details>
+
+          <details class="learning-item" name="learning-modules">
+            <summary class="learning-trigger">
+              <span class="learning-icon" aria-hidden="true">📐</span>
+              <span class="learning-heading">
+                <span class="learning-title">Spec-Driven Development</span>
+                <span class="learning-summary">Turn requirements into structured, traceable implementations.</span>
+              </span>
+              <span class="learning-count">3 lessons</span>
+              <svg class="learning-chevron" viewBox="0 0 24 24" aria-hidden="true">
+                <path d="m6 9 6 6 6-6" />
+              </svg>
+            </summary>
+            <div class="learning-content">
+              <p>
+                Install Spec Kit, transform feature requirements into a clear specification, and guide Agent Mode from
+                an approved spec through implementation and validation.
+              </p>
+              <ul class="learning-lessons">
+                <li><a href="step.html?step=sdd-01-speckit-installation">Spec Kit Installation</a></li>
+                <li><a href="step.html?step=sdd-02-generating-spec">Generating a Spec</a></li>
+                <li><a href="step.html?step=sdd-03-implementation">Implementation from Spec</a></li>
+              </ul>
+            </div>
+          </details>
+
+          <details class="learning-item" name="learning-modules">
+            <summary class="learning-trigger">
+              <span class="learning-icon" aria-hidden="true">🤖</span>
+              <span class="learning-heading">
+                <span class="learning-title">Agentic Development</span>
+                <span class="learning-summary">Delegate, review, and orchestrate increasingly autonomous work.</span>
+              </span>
+              <span class="learning-count">6 lessons</span>
+              <svg class="learning-chevron" viewBox="0 0 24 24" aria-hidden="true">
+                <path d="m6 9 6 6 6-6" />
+              </svg>
+            </summary>
+            <div class="learning-content">
+              <p>
+                Assign issues to the Coding Agent, review generated pull requests, run background and multi-agent work,
+                orchestrate full-stack workflows, and automate guardrails with agent hooks.
+              </p>
+              <ul class="learning-lessons">
+                <li><a href="step.html?step=agentic-01-coding-agent">Copilot Coding Agent</a></li>
+                <li><a href="step.html?step=agentic-02-pr-review">PR Descriptions &amp; Review</a></li>
+                <li><a href="step.html?step=agentic-03-background">Background Agents</a></li>
+                <li><a href="step.html?step=agentic-04-workflows">Agentic Workflows</a></li>
+                <li><a href="step.html?step=agentic-05-multi-agent">Multi-Agent Development</a></li>
+                <li><a href="step.html?step=agentic-06-hooks">Agent Hooks</a></li>
+              </ul>
+            </div>
+          </details>
         </div>
       </div>
     </section>
@@ -140,39 +238,134 @@
         <h2 class="section-title">Prerequisites</h2>
         <div class="prereqs-grid">
           <div class="prereq-item">
-            <span class="prereq-check">✓</span>
-            <span>GitHub account with Copilot subscription</span>
+            <span class="prereq-icon" aria-hidden="true">
+              <img
+                class="prereq-logo prereq-logo-github"
+                src="https://cdn.jsdelivr.net/gh/devicons/devicon@latest/icons/github/github-original.svg"
+                alt=""
+              />
+            </span>
+            <span class="prereq-content">
+              <strong>GitHub account</strong>
+              <span>With an active Copilot subscription</span>
+            </span>
           </div>
           <div class="prereq-item">
-            <span class="prereq-check">✓</span>
-            <span>VS Code with GitHub Copilot extension</span>
+            <span class="prereq-icon" aria-hidden="true">
+              <img
+                class="prereq-logo"
+                src="https://cdn.jsdelivr.net/gh/devicons/devicon@latest/icons/vscode/vscode-original.svg"
+                alt=""
+              />
+            </span>
+            <span class="prereq-content">
+              <strong>Visual Studio Code</strong>
+              <span>With the GitHub Copilot extension</span>
+            </span>
           </div>
           <div class="prereq-item">
-            <span class="prereq-check">✓</span>
-            <span>Node.js 20+ installed</span>
+            <span class="prereq-icon" aria-hidden="true">
+              <img
+                class="prereq-logo"
+                src="https://cdn.jsdelivr.net/gh/devicons/devicon@latest/icons/nodejs/nodejs-original.svg"
+                alt=""
+              />
+            </span>
+            <span class="prereq-content">
+              <strong>Node.js 20+</strong>
+              <span>Installed and available in your terminal</span>
+            </span>
           </div>
           <div class="prereq-item">
-            <span class="prereq-check">✓</span>
-            <span>Git installed and configured</span>
+            <span class="prereq-icon" aria-hidden="true">
+              <img
+                class="prereq-logo"
+                src="https://cdn.jsdelivr.net/gh/devicons/devicon@latest/icons/git/git-original.svg"
+                alt=""
+              />
+            </span>
+            <span class="prereq-content">
+              <strong>Git</strong>
+              <span>Installed and configured for GitHub</span>
+            </span>
           </div>
           <div class="prereq-item">
-            <span class="prereq-check">✓</span>
-            <span>Docker Desktop — for PostgreSQL (with PostGIS) and Mailpit email testing</span>
+            <span class="prereq-icon" aria-hidden="true">
+              <img
+                class="prereq-logo"
+                src="https://cdn.jsdelivr.net/gh/devicons/devicon@latest/icons/powershell/powershell-original.svg"
+                alt=""
+              />
+            </span>
+            <span class="prereq-content">
+              <strong>Terminal basics</strong>
+              <span>Comfortable navigating folders and running commands</span>
+            </span>
           </div>
           <div class="prereq-item">
-            <span class="prereq-check">✓</span>
-            <span>Basic familiarity with TypeScript &amp; SQL</span>
+            <span class="prereq-icon" aria-hidden="true">
+              <img
+                class="prereq-logo"
+                src="https://cdn.jsdelivr.net/gh/devicons/devicon@latest/icons/docker/docker-original.svg"
+                alt=""
+              />
+            </span>
+            <span class="prereq-content">
+              <strong>Docker Desktop</strong>
+              <span>For PostgreSQL, PostGIS, and Mailpit</span>
+            </span>
           </div>
           <div class="prereq-item">
-            <span class="prereq-check">✓</span>
-            <span
-              >Azure account — free tier available at
-              <a href="https://azure.microsoft.com/free" target="_blank">azure.microsoft.com/free</a></span
-            >
+            <span class="prereq-icon prereq-icon-pair" aria-hidden="true">
+              <img
+                class="prereq-logo"
+                src="https://cdn.jsdelivr.net/gh/devicons/devicon@latest/icons/typescript/typescript-original.svg"
+                alt=""
+              />
+              <img
+                class="prereq-logo"
+                src="https://cdn.jsdelivr.net/gh/devicons/devicon@latest/icons/postgresql/postgresql-original.svg"
+                alt=""
+              />
+            </span>
+            <span class="prereq-content">
+              <strong>Development knowledge</strong>
+              <span>Basic familiarity with TypeScript and SQL</span>
+            </span>
           </div>
           <div class="prereq-item">
-            <span class="prereq-check">✓</span>
-            <span>Azure OpenAI service instance with a vision-capable model deployed (e.g. gpt-4o)</span>
+            <span class="prereq-icon" aria-hidden="true">
+              <img
+                class="prereq-logo"
+                src="https://cdn.jsdelivr.net/gh/devicons/devicon@latest/icons/azure/azure-original.svg"
+                alt=""
+              />
+            </span>
+            <span class="prereq-content">
+              <strong>Azure account</strong>
+              <span
+                >A <a href="https://azure.microsoft.com/free" target="_blank" rel="noreferrer">free tier</a> is
+                available</span
+              >
+            </span>
+          </div>
+          <div class="prereq-item">
+            <span class="prereq-icon prereq-icon-pair" aria-hidden="true">
+              <img
+                class="prereq-logo"
+                src="https://cdn.jsdelivr.net/gh/devicons/devicon@latest/icons/azure/azure-original.svg"
+                alt=""
+              />
+              <img
+                class="prereq-logo prereq-logo-openai"
+                src="https://cdn.jsdelivr.net/npm/simple-icons@latest/icons/openai.svg"
+                alt=""
+              />
+            </span>
+            <span class="prereq-content">
+              <strong>Azure OpenAI</strong>
+              <span>A service instance with a vision-capable model such as GPT-4o</span>
+            </span>
           </div>
         </div>
       </div>
