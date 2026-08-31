@@ -140,6 +140,22 @@ body::before {
   padding: 0.5rem 0.75rem 0.25rem;
   opacity: 0.75;
 }
+.sidebar-module-link {
+  display: block;
+  margin: 0 0.5rem 0.75rem;
+  padding: 0.75rem;
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  color: var(--neon-cyan);
+  font-size: 0.85rem;
+  font-weight: 600;
+  text-decoration: none;
+}
+.sidebar-module-link:hover,
+.sidebar-module-link:focus-visible {
+  border-color: var(--neon-cyan);
+  background: rgba(0, 245, 255, 0.08);
+}
 .step-link {
   display: flex;
   align-items: center;

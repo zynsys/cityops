@@ -14,6 +14,7 @@
     <link rel="stylesheet" href="step.css" />
     <link rel="stylesheet" href="light-theme.css" />
     <script src="theme-toggle.js"></script>
+    <script src="workshop-data.js"></script>
   </head>
   <body>
     <header class="header">
@@ -49,7 +50,7 @@
     </div>
 
     <script>
-      const steps = [
+      const allSteps = [
         // Foundation
         {
           id: 'foundation-01-workshop-overview',
@@ -245,6 +246,15 @@
         },
       ];
 
+      const requestedStepId = new URLSearchParams(window.location.search).get('step');
+      const activeModule =
+        window.WORKSHOP_MODULES.find((module) => module.lessons.some((lesson) => lesson.id === requestedStepId)) ??
+        window.WORKSHOP_MODULES[0];
+      const steps = activeModule.lessons.map((lesson, index) => ({
+        ...lesson,
+        number: String(index + 1).padStart(2, '0'),
+      }));
+
       const isLocal =
         window.location.hostname === 'localhost' ||
         window.location.hostname === '127.0.0.1' ||
@@ -264,37 +274,19 @@
         return params.get('step') || steps[0].id;
       }
 
-      const groups = [
-        { label: 'Foundation', prefix: 'foundation-' },
-        { label: 'Developer Productivity', prefix: 'dev-' },
-        { label: 'Extending Copilot', prefix: 'ext-' },
-        { label: 'Copilot CLI', prefix: 'cli-' },
-        { label: 'Testing', prefix: 'testing-' },
-        { label: 'Spec Driven Development', prefix: 'sdd-' },
-        { label: 'Agentic Development', prefix: 'agentic-' },
-      ];
-
       function buildSidebar() {
         const nav = document.getElementById('stepNav');
-        nav.innerHTML = groups
-          .map((group) => {
-            const groupSteps = steps
-              .map((step, i) => ({ step, i }))
-              .filter(({ step }) => step.id.startsWith(group.prefix));
-            if (groupSteps.length === 0) return '';
-            const items = groupSteps
-              .map(
-                ({ step, i }) => `
+        const items = steps
+          .map(
+            (step, i) => `
                 <a href="?step=${step.id}" class="step-link ${i === currentIndex ? 'active' : ''}" data-index="${i}">
                     <span class="step-number">${step.number}</span>
                     <span>${step.title}</span>
                 </a>
             `,
-              )
-              .join('');
-            return `<div class="sidebar-group"><div class="sidebar-group-label">${group.label}</div>${items}</div>`;
-          })
+          )
           .join('');
+        nav.innerHTML = `<div class="sidebar-group"><a class="sidebar-module-link" href="module.html?module=${activeModule.id}">${activeModule.title}</a>${items}</div>`;
       }
 
       function updateNavButtons() {
@@ -365,7 +357,7 @@
         // Convert internal .md links to step.html links
         md = md.replace(/\[([^\]]+)\]\((?:\.\/)?workshop\/(\d+)-([^)]+)\.md\)/g, function (match, text, num, slug) {
           const stepId = num.replace(/^0+/, '0') + '-' + slug;
-          const found = steps.find((s) => s.id === stepId || s.file === `workshop/${num}-${slug}.md`);
+          const found = allSteps.find((s) => s.id === stepId || s.file === `workshop/${num}-${slug}.md`);
           if (found) {
             return `[${text}](step.html?step=${found.id})`;
           }
@@ -374,7 +366,7 @@
 
         // Convert reference-style link definitions (e.g. [ex0]: ./00-prereqs.md) to step.html links
         md = md.replace(/^(\[[^\]]+\]):\s*\.\/(\d+-[^.\s]+)\.md\s*$/gm, function (match, label, slug) {
-          const found = steps.find((s) => s.id === slug || s.file === `workshop/${slug}.md`);
+          const found = allSteps.find((s) => s.id === slug || s.file === `workshop/${slug}.md`);
           if (found) {
             return `${label}: step.html?step=${found.id}`;
           }
