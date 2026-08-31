@@ -16,6 +16,7 @@
     <link rel="stylesheet" href="styles.css" />
     <link rel="stylesheet" href="light-theme.css" />
     <script src="theme-toggle.js"></script>
+    <script src="workshop-data.js"></script>
   </head>
   <body>
     <div style="position: fixed; top: 1rem; right: 1rem; z-index: 1000">
@@ -31,212 +32,34 @@
           platform.
         </p>
         <div class="hero-cta">
-          <a href="module.html?module=foundation" class="btn btn-primary">🚀 Get Started</a>
+          <a href="#modules" class="btn btn-primary">🚀 Browse Modules</a>
           <a href="https://github.com/zynsys/cityops" class="btn btn-secondary" target="_blank">⭐ GitHub Repo</a>
+        </div>
+        <div class="stats" aria-label="Workshop overview">
+          <div class="stat">
+            <div class="stat-value">7</div>
+            <div class="stat-label">Learning modules</div>
+          </div>
+          <div class="stat">
+            <div class="stat-value">31</div>
+            <div class="stat-label">Hands-on lessons</div>
+          </div>
+          <div class="stat">
+            <div class="stat-value">1</div>
+            <div class="stat-label">Real-world app</div>
+          </div>
         </div>
       </div>
     </section>
 
-    <section class="features">
+    <section class="features" id="modules">
       <div class="container">
-        <h2 class="section-title">What You'll Learn</h2>
-        <p class="features-intro">
-          Explore the complete learning path, from understanding CityOps to orchestrating autonomous development
-          workflows. Expand a module to see the skills and exercises it includes.
+        <h2 class="section-title">Explore the Modules</h2>
+        <p class="section-subtitle module-section-intro">
+          Pick a learning path, build against the real CityOps codebase, and progress from Copilot fundamentals to
+          advanced agentic development.
         </p>
-        <div class="learning-accordion">
-          <details class="learning-item" name="learning-modules" open>
-            <summary class="learning-trigger">
-              <span class="learning-icon" aria-hidden="true">🏙️</span>
-              <span class="learning-heading">
-                <span class="learning-title">Project Overview</span>
-                <span class="learning-summary">Set up CityOps and understand its real-world architecture.</span>
-              </span>
-              <span class="learning-count">5 lessons</span>
-              <svg class="learning-chevron" viewBox="0 0 24 24" aria-hidden="true">
-                <path d="m6 9 6 6 6-6" />
-              </svg>
-            </summary>
-            <div class="learning-content">
-              <p>
-                Get oriented with the workshop, prepare your environment, walk through the citizen-to-council report
-                lifecycle, and explore CityOps architecture, RBAC, multi-tenancy, and data model.
-              </p>
-              <ol class="learning-lessons">
-                <li><a href="module.html?module=foundation">Getting Started</a></li>
-                <li><a href="step.html?step=foundation-01-workshop-overview">Workshop Overview</a></li>
-                <li><a href="step.html?step=foundation-02-prereqs">Prerequisites</a></li>
-                <li><a href="step.html?step=foundation-03-project-walkthrough">Project Walkthrough</a></li>
-                <li><a href="step.html?step=foundation-04-understanding-codebase">Understanding a Codebase</a></li>
-              </ol>
-            </div>
-          </details>
-
-          <details class="learning-item" name="learning-modules">
-            <summary class="learning-trigger">
-              <span class="learning-icon" aria-hidden="true">🚀</span>
-              <span class="learning-heading">
-                <span class="learning-title">Developer Productivity</span>
-                <span class="learning-summary">Work faster with Copilot's core modes and approval controls.</span>
-              </span>
-              <span class="learning-count">6 lessons</span>
-              <svg class="learning-chevron" viewBox="0 0 24 24" aria-hidden="true">
-                <path d="m6 9 6 6 6-6" />
-              </svg>
-            </summary>
-            <div class="learning-content">
-              <p>
-                Use Ask, Inline Chat, Edit, Plan, and Agent modes to understand code, make focused changes, plan
-                features, and implement full-stack work with the right level of autonomy.
-              </p>
-              <ol class="learning-lessons">
-                <li><a href="module.html?module=developer-productivity">Getting Started</a></li>
-                <li><a href="step.html?step=dev-01-ask-mode">Ask Mode</a></li>
-                <li><a href="step.html?step=dev-02-inline-chat">Inline Chat &amp; Edit Mode</a></li>
-                <li><a href="step.html?step=dev-03-plan-mode">Plan Mode</a></li>
-                <li><a href="step.html?step=dev-04-agent-mode">Agent Mode</a></li>
-                <li><a href="step.html?step=dev-05-approval-types">Approval Types</a></li>
-              </ol>
-            </div>
-          </details>
-
-          <details class="learning-item" name="learning-modules">
-            <summary class="learning-trigger">
-              <span class="learning-icon" aria-hidden="true">🧩</span>
-              <span class="learning-heading">
-                <span class="learning-title">Extending Copilot</span>
-                <span class="learning-summary">Tailor Copilot with reusable context, agents, skills, and tools.</span>
-              </span>
-              <span class="learning-count">7 lessons</span>
-              <svg class="learning-chevron" viewBox="0 0 24 24" aria-hidden="true">
-                <path d="m6 9 6 6 6-6" />
-              </svg>
-            </summary>
-            <div class="learning-content">
-              <p>
-                Configure repository instructions and prompt files, create custom agents and Agent Skills, connect MCP
-                servers, and discover community-built Copilot customisations.
-              </p>
-              <ol class="learning-lessons">
-                <li><a href="module.html?module=extending-copilot">Getting Started</a></li>
-                <li><a href="step.html?step=ext-01-custom-instructions">Custom Instructions</a></li>
-                <li><a href="step.html?step=ext-02-prompt-files">Prompt Files</a></li>
-                <li><a href="step.html?step=ext-03-custom-agents">Custom Agents</a></li>
-                <li><a href="step.html?step=ext-04-agent-skills">Agent Skills</a></li>
-                <li><a href="step.html?step=ext-05-mcp-servers">MCP Servers</a></li>
-                <li><a href="step.html?step=ext-06-awesome-copilot">Awesome Copilot</a></li>
-              </ol>
-            </div>
-          </details>
-
-          <details class="learning-item" name="learning-modules">
-            <summary class="learning-trigger">
-              <span class="learning-icon" aria-hidden="true">⌨️</span>
-              <span class="learning-heading">
-                <span class="learning-title">GitHub Copilot CLI</span>
-                <span class="learning-summary">Bring Copilot workflows into your terminal.</span>
-              </span>
-              <span class="learning-count">5 lessons</span>
-              <svg class="learning-chevron" viewBox="0 0 24 24" aria-hidden="true">
-                <path d="m6 9 6 6 6-6" />
-              </svg>
-            </summary>
-            <div class="learning-content">
-              <p>
-                Install and authenticate GitHub Copilot CLI, use common commands against CityOps, and combine terminal
-                sessions with MCP servers and Agent Skills for richer context.
-              </p>
-              <ol class="learning-lessons">
-                <li><a href="module.html?module=copilot-cli">Getting Started</a></li>
-                <li><a href="step.html?step=cli-01-installation">CLI Installation</a></li>
-                <li><a href="step.html?step=cli-02-commands">Commonly Used Commands</a></li>
-                <li><a href="step.html?step=cli-03-mcp">CLI + MCP Servers</a></li>
-                <li><a href="step.html?step=cli-04-skills">CLI + Agent Skills</a></li>
-              </ol>
-            </div>
-          </details>
-
-          <details class="learning-item" name="learning-modules">
-            <summary class="learning-trigger">
-              <span class="learning-icon" aria-hidden="true">🧪</span>
-              <span class="learning-heading">
-                <span class="learning-title">Testing</span>
-                <span class="learning-summary">Generate robust tests and review security-critical code.</span>
-              </span>
-              <span class="learning-count">4 lessons</span>
-              <svg class="learning-chevron" viewBox="0 0 24 24" aria-hidden="true">
-                <path d="m6 9 6 6 6-6" />
-              </svg>
-            </summary>
-            <div class="learning-content">
-              <p>
-                Generate unit and integration coverage, create Playwright tests for real user journeys, and use Copilot
-                Code Review to identify authentication and tenant-isolation risks.
-              </p>
-              <ol class="learning-lessons">
-                <li><a href="module.html?module=testing">Getting Started</a></li>
-                <li><a href="step.html?step=testing-01-unit">Unit Testing with Copilot</a></li>
-                <li><a href="step.html?step=testing-02-playwright">UI Testing with Playwright</a></li>
-                <li><a href="step.html?step=testing-03-security">Security Review</a></li>
-              </ol>
-            </div>
-          </details>
-
-          <details class="learning-item" name="learning-modules">
-            <summary class="learning-trigger">
-              <span class="learning-icon" aria-hidden="true">📐</span>
-              <span class="learning-heading">
-                <span class="learning-title">Spec-Driven Development</span>
-                <span class="learning-summary">Turn requirements into structured, traceable implementations.</span>
-              </span>
-              <span class="learning-count">4 lessons</span>
-              <svg class="learning-chevron" viewBox="0 0 24 24" aria-hidden="true">
-                <path d="m6 9 6 6 6-6" />
-              </svg>
-            </summary>
-            <div class="learning-content">
-              <p>
-                Install Spec Kit, transform feature requirements into a clear specification, and guide Agent Mode from
-                an approved spec through implementation and validation.
-              </p>
-              <ol class="learning-lessons">
-                <li><a href="module.html?module=spec-driven-development">Getting Started</a></li>
-                <li><a href="step.html?step=sdd-01-speckit-installation">Spec Kit Installation</a></li>
-                <li><a href="step.html?step=sdd-02-generating-spec">Generating a Spec</a></li>
-                <li><a href="step.html?step=sdd-03-implementation">Implementation from Spec</a></li>
-              </ol>
-            </div>
-          </details>
-
-          <details class="learning-item" name="learning-modules">
-            <summary class="learning-trigger">
-              <span class="learning-icon" aria-hidden="true">🤖</span>
-              <span class="learning-heading">
-                <span class="learning-title">Agentic Development</span>
-                <span class="learning-summary">Delegate, review, and orchestrate increasingly autonomous work.</span>
-              </span>
-              <span class="learning-count">7 lessons</span>
-              <svg class="learning-chevron" viewBox="0 0 24 24" aria-hidden="true">
-                <path d="m6 9 6 6 6-6" />
-              </svg>
-            </summary>
-            <div class="learning-content">
-              <p>
-                Assign issues to the Coding Agent, review generated pull requests, run background and multi-agent work,
-                orchestrate full-stack workflows, and automate guardrails with agent hooks.
-              </p>
-              <ol class="learning-lessons">
-                <li><a href="module.html?module=agentic-development">Getting Started</a></li>
-                <li><a href="step.html?step=agentic-01-coding-agent">Copilot Coding Agent</a></li>
-                <li><a href="step.html?step=agentic-02-pr-review">PR Descriptions &amp; Review</a></li>
-                <li><a href="step.html?step=agentic-03-background">Background Agents</a></li>
-                <li><a href="step.html?step=agentic-04-workflows">Agentic Workflows</a></li>
-                <li><a href="step.html?step=agentic-05-multi-agent">Multi-Agent Development</a></li>
-                <li><a href="step.html?step=agentic-06-hooks">Agent Hooks</a></li>
-              </ol>
-            </div>
-          </details>
-        </div>
+        <div class="module-grid" id="moduleGrid"></div>
       </div>
     </section>
 
@@ -389,5 +212,31 @@
         <p class="footer-credit">Built with 💜 using GitHub Copilot &amp; the CityOps project</p>
       </div>
     </footer>
+    <script>
+      function formatDuration(minutes) {
+        if (minutes < 60) return `~${minutes} min`;
+        const hours = Math.floor(minutes / 60);
+        const remainingMinutes = minutes % 60;
+        return remainingMinutes ? `~${hours} hr ${remainingMinutes} min` : `~${hours} hr`;
+      }
+
+      document.getElementById('moduleGrid').innerHTML = window.WORKSHOP_MODULES.map((module, index) => {
+        const totalMinutes = module.lessons.reduce((total, lesson) => total + Number.parseInt(lesson.duration, 10), 0);
+        const featuredClass = index === window.WORKSHOP_MODULES.length - 1 ? ' module-card-featured' : '';
+        return `
+          <a class="module-card${featuredClass}" href="module.html?module=${module.id}">
+            <span class="module-card-badge">${module.icon} ${module.track}</span>
+            <span class="module-card-title">${module.title}</span>
+            <span class="module-card-description">${module.description}</span>
+            <span class="module-card-meta">
+              <span class="module-card-tag">${module.lessons.length} lessons</span>
+              <span class="module-card-tag">${formatDuration(totalMinutes)}</span>
+              <span class="module-card-tag">Self-paced</span>
+            </span>
+            <span class="module-card-arrow" aria-hidden="true">→</span>
+          </a>
+        `;
+      }).join('');
+    </script>
   </body>
 </html>

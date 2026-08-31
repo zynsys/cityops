@@ -3,6 +3,7 @@ window.WORKSHOP_MODULES = [
     id: 'foundation',
     title: 'Project Overview',
     icon: '🏙️',
+    track: 'Start here',
     summary: 'Set up CityOps and understand its real-world architecture.',
     description:
       'Get oriented with the workshop, prepare your environment, walk through the citizen-to-council report lifecycle, and explore CityOps architecture, RBAC, multi-tenancy, and data model.',
@@ -41,6 +42,7 @@ window.WORKSHOP_MODULES = [
     id: 'developer-productivity',
     title: 'Developer Productivity',
     icon: '🚀',
+    track: 'VS Code workflows',
     summary: "Work faster with Copilot's core modes and approval controls.",
     description:
       'Use Ask, Inline Chat, Edit, Plan, and Agent modes to understand code, make focused changes, plan features, and implement full-stack work with the right level of autonomy.',
@@ -86,6 +88,7 @@ window.WORKSHOP_MODULES = [
     id: 'extending-copilot',
     title: 'Extending Copilot',
     icon: '🧩',
+    track: 'Customisation',
     summary: 'Tailor Copilot with reusable context, agents, skills, and tools.',
     description:
       'Configure repository instructions and prompt files, create custom agents and Agent Skills, connect MCP servers, and discover community-built Copilot customisations.',
@@ -138,6 +141,7 @@ window.WORKSHOP_MODULES = [
     id: 'copilot-cli',
     title: 'GitHub Copilot CLI',
     icon: '⌨️',
+    track: 'Terminal',
     summary: 'Bring Copilot workflows into your terminal.',
     description:
       'Install and authenticate GitHub Copilot CLI, use common commands against CityOps, and combine terminal sessions with MCP servers and Agent Skills for richer context.',
@@ -176,6 +180,7 @@ window.WORKSHOP_MODULES = [
     id: 'testing',
     title: 'Testing',
     icon: '🧪',
+    track: 'Quality and security',
     summary: 'Generate robust tests and review security-critical code.',
     description:
       'Generate unit and integration coverage, create Playwright tests for real user journeys, and use Copilot Code Review to identify authentication and tenant-isolation risks.',
@@ -207,6 +212,7 @@ window.WORKSHOP_MODULES = [
     id: 'spec-driven-development',
     title: 'Spec-Driven Development',
     icon: '📐',
+    track: 'Structured delivery',
     summary: 'Turn requirements into structured, traceable implementations.',
     description:
       'Install Spec Kit, transform feature requirements into a clear specification, and guide Agent Mode from an approved spec through implementation and validation.',
@@ -238,6 +244,7 @@ window.WORKSHOP_MODULES = [
     id: 'agentic-development',
     title: 'Agentic Development',
     icon: '🤖',
+    track: 'Advanced workflows',
     summary: 'Delegate, review, and orchestrate increasingly autonomous work.',
     description:
       'Assign issues to the Coding Agent, review generated pull requests, run background and multi-agent work, orchestrate full-stack workflows, and automate guardrails with agent hooks.',
