@@ -20,6 +20,7 @@ const prerequisites = [
 ] as const;
 
 export default function HomePage(): React.JSX.Element {
+  const handsOnLessons = workshop.lessons.filter((lesson) => !lesson.preview).length;
   return (
     <>
       <div className="theme-floating">
@@ -56,6 +57,10 @@ export default function HomePage(): React.JSX.Element {
             <div className="stat">
               <div className="stat-value">{workshop.modules.length}</div>
               <div className="stat-label">Modules</div>
+            </div>
+            <div className="stat">
+              <div className="stat-value">{handsOnLessons}</div>
+              <div className="stat-label">Hands-on lessons</div>
             </div>
           </div>
         </div>
