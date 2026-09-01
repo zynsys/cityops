@@ -1,0 +1,33 @@
+{
+  "name": "cityops-workshop",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "node scripts/prepare-assets.mjs && next dev",
+    "build": "node scripts/prepare-assets.mjs && next build",
+    "check": "tsx scripts/validate.ts && tsc --noEmit",
+    "verify": "tsx scripts/verify.ts",
+    "lint": "eslint ."
+  },
+  "dependencies": {
+    "cheerio": "1.1.2",
+    "markdown-it": "14.1.0",
+    "markdown-it-task-lists": "2.1.1",
+    "next": "16.2.0",
+    "react": "19.2.4",
+    "react-dom": "19.2.4",
+    "sanitize-html": "2.17.0"
+  },
+  "devDependencies": {
+    "@types/markdown-it": "^14.1.2",
+    "@types/node": "^20",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "@types/sanitize-html": "^2.16.0",
+    "eslint": "^9",
+    "eslint-config-next": "16.2.0",
+    "tsx": "^4",
+    "typescript": "^5"
+  }
+}

@@ -1,4 +1,4 @@
-# Workflow for deploying the CityOps workshop static site to GitHub Pages
+# Workflow for deploying the CityOps workshop site to GitHub Pages
 #
 name: Deploy Workshop Site to Pages
 
@@ -6,7 +6,6 @@ on:
   push:
     branches: ["main"]
     paths:
-      - "site/**"
       - "workshop/**"
       - ".github/workflows/workshop-pages-deploy.yml"
 
@@ -26,15 +25,39 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: workshop/package-lock.json
       - name: Setup Pages
+        id: pages
         uses: actions/configure-pages@v5
-      - name: Bundle workshop content into site artifact
-        run: cp -r workshop site/workshop
+      - name: Install dependencies
+        run: npm ci
+        working-directory: workshop
+      - name: Lint
+        run: npm run lint
+        working-directory: workshop
+      - name: Validate workshop content
+        run: npm run check
+        working-directory: workshop
+      - name: Generate workshop site
+        run: npm run build
+        working-directory: workshop
+        env:
+          NEXT_PUBLIC_BASE_PATH: ${{ steps.pages.outputs.base_path }}
+      - name: Verify generated artifact
+        run: npm run verify
+        working-directory: workshop
+        env:
+          NEXT_PUBLIC_BASE_PATH: ${{ steps.pages.outputs.base_path }}
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
         with:
-          path: ./site
+          path: ./workshop/out
 
   deploy:
     environment:

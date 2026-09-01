@@ -14,7 +14,8 @@ const eslintConfig = defineConfig([
     'next-env.d.ts',
     // Generated / non-app artifacts — not part of the Next.js source tree.
     'coverage/**',
-    'site/**',
+    'workshop/**',
+    'workshop-site/**',
     'src/generated/**',
   ]),
   {

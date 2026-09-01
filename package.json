@@ -5,6 +5,7 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build",
+    "workshop:build": "npm --prefix workshop run build",
     "start": "next start",
     "lint": "eslint",
     "lint:report": "eslint --format junit --output-file reports/lint-results.xml",
