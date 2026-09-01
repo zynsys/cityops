@@ -46,16 +46,16 @@ export default function HomePage(): React.JSX.Element {
           </div>
           <div className="stats" aria-label="Workshop overview">
             <div className="stat">
-              <div className="stat-value">{workshop.modules.length}</div>
-              <div className="stat-label">Curriculum modules</div>
+              <div className="stat-value">1</div>
+              <div className="stat-label">Real-world app</div>
             </div>
             <div className="stat">
               <div className="stat-value">{workshop.tracks.length}</div>
               <div className="stat-label">Platform tracks</div>
             </div>
             <div className="stat">
-              <div className="stat-value">1</div>
-              <div className="stat-label">Real-world app</div>
+              <div className="stat-value">{workshop.modules.length}</div>
+              <div className="stat-label">Modules</div>
             </div>
           </div>
         </div>
