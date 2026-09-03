@@ -91,6 +91,12 @@ jobs:
       - name: Bicep lint + what-if preview
         run: |
           set -e
+          # Secure parameters are required syntactically by the template, but their values are
+          # opaque to ARM what-if. Use validation-only values here so CI and scheduled drift
+          # detection do not require production credentials. The deploy job uses the real secrets.
+          VALIDATION_PG_PASSWORD='ValidationOnly-Pg-Password-2026!'
+          VALIDATION_AUTH_SECRET='validation-only-auth-secret-production'
+          VALIDATION_AUTH_SECRET_DEV='validation-only-auth-secret-development'
           # Falls back to the triggering commit's author email when ALERT_EMAIL_ADDRESS is
           # unset — a real, accountable inbox by default.
           ALERT_EMAIL="${{ vars.ALERT_EMAIL_ADDRESS }}"
@@ -107,9 +113,9 @@ jobs:
                baseName="${{ env.AZURE_BASE_NAME }}" \
                openAiAccountName="${{ vars.AZURE_OPENAI_ACCOUNT_NAME }}" \
                alertEmailAddress="$ALERT_EMAIL" \
-               pgAdminPassword="${{ secrets.PG_ADMIN_PASSWORD }}" \
-               authSecret="${{ secrets.AUTH_SECRET }}" \
-               authSecretDev="${{ secrets.AUTH_SECRET_DEV }}"
+               pgAdminPassword="$VALIDATION_PG_PASSWORD" \
+               authSecret="$VALIDATION_AUTH_SECRET" \
+               authSecretDev="$VALIDATION_AUTH_SECRET_DEV"
 
   # -------------------------------------------------------------------------
   # POLICY COMPLIANCE = governance drift check. Reads the resource group's Azure
@@ -239,6 +245,24 @@ jobs:
       contents: read
     steps:
       - uses: actions/checkout@v4
+      - name: Verify deployment secrets are configured
+        shell: bash
+        env:
+          PG_ADMIN_PASSWORD: ${{ secrets.PG_ADMIN_PASSWORD }}
+          AUTH_SECRET: ${{ secrets.AUTH_SECRET }}
+          AUTH_SECRET_DEV: ${{ secrets.AUTH_SECRET_DEV }}
+        run: |
+          set -e
+          missing=()
+          for name in PG_ADMIN_PASSWORD AUTH_SECRET AUTH_SECRET_DEV; do
+            if [[ -z "${!name}" ]]; then
+              missing+=("$name")
+            fi
+          done
+          if (( ${#missing[@]} > 0 )); then
+            echo "::error::Missing required repository secret(s): ${missing[*]}. Configure them under Settings > Secrets and variables > Actions before deploying."
+            exit 1
+          fi
       - name: Azure login (OIDC)
         uses: azure/login@v2
         with:
