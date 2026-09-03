@@ -65,6 +65,11 @@ schedules:
     always: true
 
 variables:
+  # Optional. Defining an empty default prevents an absent variable-group entry from
+  # reaching Bash as the literal command substitution `$(alertEmailAddress)`.
+  # cityops-env is declared afterwards so a configured alert address overrides it.
+  - name: alertEmailAddress
+    value: ''
   - group: cityops-env # resourceGroup, location, dbLocation, baseName, openAiAccountName, alertEmailAddress
   - group: cityops-infra # secret vars: pgAdminPassword, authSecret, authSecretDev
 
