@@ -33,13 +33,9 @@ set -euo pipefail
 # ---------------------------------------------------------------------------
 # Configuration (each has a default; all are prompted for interactively — see prompt() below)
 # ---------------------------------------------------------------------------
-RESOURCE_GROUP_ENV="${RESOURCE_GROUP:-}"      # explicit caller override, if any (empty = derive from BASE_NAME + hash)
-BASE_NAME="${BASE_NAME:-cityops}"                # prefix for all derived resource names (app-<base>-<hash>, kv-<base>-<hash>, rg-<base>-<hash>, azopenai-<base>-<hash>, etc.)
-NAME_HASH="${NAME_HASH:-}"                       # resource-name hash suffix override; blank = generate a fresh
-                                                  # random 8-char suffix at prompt time. Reuse an existing value
-                                                  # to target/update that deployment; leave blank or type a new
-                                                  # one to provision a separate, independent deployment.
-OPENAI_ACCOUNT_NAME="${OPENAI_ACCOUNT_NAME:-}"  # defaults to azopenai-<BASE_NAME>-<hash> below, once BASE_NAME/hash are known
+RESOURCE_GROUP_ENV="${RESOURCE_GROUP:-}"      # explicit caller override, if any (empty = derive from BASE_NAME)
+BASE_NAME="${BASE_NAME:-cityops}"             # base for all derived resource names (app-<base>, kv-<base>, rg-<base>, azopenai-<base>, etc.)
+OPENAI_ACCOUNT_NAME="${OPENAI_ACCOUNT_NAME:-}"  # defaults to azopenai-<BASE_NAME> below
 LOCATION="${LOCATION:-francecentral}"         # App Service + Key Vault region (confirmed capacity)
 DB_LOCATION="${DB_LOCATION:-francecentral}"   # PostgreSQL Flexible Server region (confirmed capacity)
 ALERT_EMAIL_ADDRESS="${ALERT_EMAIL_ADDRESS:-}" # email to notify on app exceptions/failed requests; blank = skip alert resources
@@ -99,7 +95,7 @@ prompt() {
 }
 
 # Sets a variable-group variable to the given value, creating it first if the group predates
-# this variable. Used so re-running against an existing NAME_HASH always reconciles the group
+# this variable. Used so re-running the setup always reconciles the group
 # to the current run's config/secrets instead of leaving stale values in place.
 set_group_variable() {
   local group_id="$1" var_name="$2" var_value="$3" secret="${4:-false}"
@@ -132,16 +128,10 @@ fi
 
 prompt AZURE_SUBSCRIPTION_ID "Azure subscription ID" "${AZURE_SUBSCRIPTION_ID:-$CURRENT_SUB_ID}"
 prompt BASE_NAME "Base name for Azure resources (app-<base>, kv-<base>, pg-<base>, etc.)" "$BASE_NAME"
-# Fresh random suffix each run, so pressing Enter always starts a NEW, independent deployment.
-# To target/update an existing one, paste its suffix (or pre-set NAME_HASH / the full RESOURCE_GROUP).
-# Note: this only names the resource group (and OpenAI account), for isolating parallel/ad-hoc local
-# test deployments from the shared pipeline-managed rg-<base>. App Service/Key Vault/Postgres names
-# are deterministic (app-<base>/kv-<base>/pg-<base>, no suffix) — verify baseName is globally unique
-# enough before relying on it (see docs/deployment-guidelines.md §4).
-DEFAULT_NAME_HASH="$(openssl rand -hex 4)"
-prompt NAME_HASH "Resource name hash suffix — reuse an existing value to target/update that deployment, or press Enter to generate a fresh one for a new deployment" "${NAME_HASH:-$DEFAULT_NAME_HASH}"
-prompt RESOURCE_GROUP "Resource group name" "${RESOURCE_GROUP_ENV:-rg-$BASE_NAME-$NAME_HASH}"
-prompt OPENAI_ACCOUNT_NAME "Azure OpenAI account name" "${OPENAI_ACCOUNT_NAME:-azopenai-$BASE_NAME-$NAME_HASH}"
+# Resource names are deterministic because only one deployment is maintained at a time.
+# Re-running with the same base name targets and updates the same resources.
+prompt RESOURCE_GROUP "Resource group name" "${RESOURCE_GROUP_ENV:-rg-$BASE_NAME}"
+prompt OPENAI_ACCOUNT_NAME "Azure OpenAI account name" "${OPENAI_ACCOUNT_NAME:-azopenai-$BASE_NAME}"
 prompt LOCATION "App Service / Key Vault region" "$LOCATION"
 prompt DB_LOCATION "PostgreSQL region" "$DB_LOCATION"
 prompt ALERT_EMAIL_ADDRESS "Email to notify on app exceptions/failed requests (blank = skip alert resources)" "${ALERT_EMAIL_ADDRESS:-$CURRENT_USER_EMAIL}"
@@ -322,8 +312,8 @@ if [[ -z "$ENV_VG_ID" || "$ENV_VG_ID" == "None" ]]; then
                 location="$LOCATION" dbLocation="$DB_LOCATION" baseName="$BASE_NAME" \
                 openAiAccountName="$OPENAI_ACCOUNT_NAME" alertEmailAddress="$ALERT_EMAIL_ADDRESS" -o none
 else
-  # Always reconcile to this run's values — reusing an existing NAME_HASH means "update this
-  # deployment", so a stale resourceGroup/baseName/etc. left over from a prior run must not win.
+  # Always reconcile to this run's values so stale resourceGroup/baseName/etc. left over from a
+  # prior run does not win.
   set_group_variable "$ENV_VG_ID" resourceGroup "$RESOURCE_GROUP"
   set_group_variable "$ENV_VG_ID" location "$LOCATION"
   set_group_variable "$ENV_VG_ID" dbLocation "$DB_LOCATION"
