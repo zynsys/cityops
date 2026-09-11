@@ -18,17 +18,5 @@ parameters:
 
 steps:
   - script: |
-      set -e
-      URL="${{ parameters.url }}"
-      for i in $(seq 1 ${{ parameters.maxAttempts }}); do
-        status=$(curl -s -o /dev/null -w '%{http_code}' --max-time 15 "$URL" || echo "000")
-        echo "Attempt $i/${{ parameters.maxAttempts }}: $URL -> HTTP $status"
-        if [ "$status" = "200" ]; then
-          echo "Smoke test passed."
-          exit 0
-        fi
-        sleep ${{ parameters.retryDelaySeconds }}
-      done
-      echo "##vso[task.logissue type=error]Smoke test failed: $URL never returned 200 after ${{ parameters.maxAttempts }} attempts."
-      exit 1
+      bash scripts/app/smoke-test.sh '${{ parameters.url }}' '${{ parameters.maxAttempts }}' '${{ parameters.retryDelaySeconds }}'
     displayName: '${{ parameters.displayName }}'

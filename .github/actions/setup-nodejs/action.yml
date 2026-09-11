@@ -20,15 +20,4 @@ runs:
         cache: 'npm'
     - name: ${{ inputs.install-display-name }}
       shell: bash
-      run: |
-        set -e
-        n=0
-        until npm ci; do
-          n=$((n + 1))
-          # Retries transient registry errors (e.g. a 503 from the npm feed) — a real
-          # lockfile/dependency error fails identically on every attempt, so this only adds
-          # delay in that case, not a false pass.
-          [ "$n" -ge 3 ] && exit 1
-          echo "npm ci failed (attempt $n/3) — retrying in 15s..."
-          sleep 15
-        done
+      run: bash scripts/npm-ci.sh

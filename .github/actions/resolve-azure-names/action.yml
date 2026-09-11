@@ -23,5 +23,6 @@ runs:
       shell: bash
       run: |
         set -e
-        echo "web_app_name=app-${{ inputs.base-name }}" >> "$GITHUB_OUTPUT"
-        echo "key_vault_name=kv-${{ inputs.base-name }}" >> "$GITHUB_OUTPUT"
+        eval "$(bash scripts/app/resolve-azure-names.sh '${{ inputs.base-name }}')"
+        echo "web_app_name=$WEB_APP_NAME" >> "$GITHUB_OUTPUT"
+        echo "key_vault_name=$KEY_VAULT_NAME" >> "$GITHUB_OUTPUT"

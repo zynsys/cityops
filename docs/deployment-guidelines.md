@@ -1,10 +1,14 @@
 # CityOps — Deployment Guidelines
 
-Provision Azure infrastructure and deploy CityOps from scratch, using Bicep (IaC) and Azure
-DevOps YAML pipelines. Follow §1–§4 top to bottom on a clean subscription + a clean Azure DevOps
-project to get a working dev + prod environment with gated CI/CD and no secrets in source
-control — ending with the `infra-cicd` pipeline provisioning Azure and the `app-cicd` pipeline deploying
-CityOps onto it.
+CityOps supports local scripts, GitHub Actions, and Azure DevOps as three deployment experiences
+over the same Bicep and shared deployment scripts. Start with the
+[deployment options guide](deployment/README.md) to select a method and review the canonical
+[configuration mapping](deployment/configuration.md). This document remains the deep technical
+reference and describes the Azure DevOps path in greatest detail.
+
+When demonstrating this reference architecture, enable deployment in only one CI provider at a
+time. GitHub and Azure DevOps may both validate changes, but their deployment locks cannot
+coordinate with each other.
 
 ---
 

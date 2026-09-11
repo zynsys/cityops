@@ -14,6 +14,10 @@
 #   - Touch unrelated service connections (e.g. a pre-existing 'Docker Hub' connection) or
 #     unrelated resource groups.
 #
+# Key Vault and Azure OpenAI are soft-deleted by Azure, which keeps their names reserved after
+# the resource group is gone. PURGE_SOFT_DELETED=true (the default) purges those two names so
+# setup.sh can immediately recreate them; purging waits for resource-group deletion to finish.
+#
 # Usage:
 #   ./scripts/cleanup.sh
 #
@@ -23,13 +27,11 @@
 
 set -euo pipefail
 
-RESOURCE_GROUP_ENV="${RESOURCE_GROUP:-}"      # explicit caller override, if any (empty = derive from BASE_NAME + hash)
+RESOURCE_GROUP_ENV="${RESOURCE_GROUP:-}"      # explicit caller override, if any (empty = derive from BASE_NAME)
 BASE_NAME="${BASE_NAME:-cityops}"
-NAME_HASH="${NAME_HASH:-}"                    # resource-name hash suffix override; blank = derive deterministically
-                                               # from subscription+BASE_NAME (see hash8 below) — set this to the exact
-                                               # hash setup.sh used if you have multiple deployments and want to
-                                               # target a specific one.
+OPENAI_ACCOUNT_NAME="${OPENAI_ACCOUNT_NAME:-}"  # defaults to azopenai-<BASE_NAME> below
 DELETE_RESOURCE_GROUP="${DELETE_RESOURCE_GROUP:-true}"
+PURGE_SOFT_DELETED="${PURGE_SOFT_DELETED:-true}"
 AZURE_SUBSCRIPTION_ID="${AZURE_SUBSCRIPTION_ID:-}"
 ADO_ORG_URL="${ADO_ORG_URL:-}"
 ADO_PROJECT="${ADO_PROJECT:-}"
@@ -51,15 +53,14 @@ prompt() {
   printf -v "$var_name" '%s' "${input:-$default_value}"
 }
 
-# Same deterministic hash as setup.sh (sha256 of subscription + base name), so the suggested
-# resource-group default here matches whatever setup.sh actually created.
-hash8() { printf '%s' "$1" | openssl dgst -sha256 | awk '{print $NF}' | cut -c1-8; }
+# Same deterministic naming as setup.sh, so the suggested defaults here match what it created.
 
 # ---------------------------------------------------------------------------
 # 0. Preflight + configuration
 # ---------------------------------------------------------------------------
 log "Preflight checks"
 command -v az >/dev/null || die "Azure CLI not found."
+command -v jq >/dev/null || die "jq not found."
 az account show >/dev/null 2>&1 || die "Not logged in. Run: az login"
 
 CURRENT_SUB_ID="$(az account show --query id -o tsv 2>/dev/null || true)"
@@ -68,10 +69,11 @@ CURRENT_ADO_PROJECT="$(az devops configure --list 2>/dev/null | sed -n 's/^proje
 
 log "Configuration (press Enter to accept each default)"
 prompt AZURE_SUBSCRIPTION_ID "Azure subscription ID" "${AZURE_SUBSCRIPTION_ID:-$CURRENT_SUB_ID}"
-prompt BASE_NAME "Base name used when provisioning (for the resource-group name guess)" "$BASE_NAME"
-prompt NAME_HASH "Resource name hash suffix used when provisioning" "${NAME_HASH:-$(hash8 "${AZURE_SUBSCRIPTION_ID}${BASE_NAME}")}"
-prompt RESOURCE_GROUP "Resource group to delete" "${RESOURCE_GROUP_ENV:-rg-$BASE_NAME-$NAME_HASH}"
+prompt BASE_NAME "Base name used when provisioning" "$BASE_NAME"
+prompt RESOURCE_GROUP "Resource group to delete" "${RESOURCE_GROUP_ENV:-rg-$BASE_NAME}"
+prompt OPENAI_ACCOUNT_NAME "Azure OpenAI account name" "${OPENAI_ACCOUNT_NAME:-azopenai-$BASE_NAME}"
 prompt DELETE_RESOURCE_GROUP "Delete the resource group too? (true|false)" "$DELETE_RESOURCE_GROUP"
+prompt PURGE_SOFT_DELETED "Purge soft-deleted Key Vault / Azure OpenAI so the names free up? (true|false)" "$PURGE_SOFT_DELETED"
 prompt ADO_ORG_URL "Azure DevOps org URL (blank = skip ADO cleanup)" "${ADO_ORG_URL:-$CURRENT_ADO_ORG}"
 prompt ADO_PROJECT "Azure DevOps project name" "${ADO_PROJECT:-$CURRENT_ADO_PROJECT}"
 if [[ -n "$ADO_ORG_URL" ]]; then
@@ -99,6 +101,7 @@ fi
 log "About to delete:"
 echo "  Subscription:        $SUBSCRIPTION_ID"
 [[ "$DELETE_RESOURCE_GROUP" == "true" ]] && echo "  Resource group:      $RESOURCE_GROUP (ALL resources inside it)"
+[[ "$PURGE_SOFT_DELETED" == "true" ]] && echo "  Purged permanently:  kv-$BASE_NAME, $OPENAI_ACCOUNT_NAME (irreversible — no recovery after this)"
 if [[ "$DO_ADO" == "true" ]]; then
   echo "  ADO project (NOT deleted — only these resources within it): $ADO_ORG_URL/$ADO_PROJECT"
   echo "  Pipelines:            infra-cicd, app-cicd"
@@ -170,13 +173,53 @@ fi
 if [[ "$DELETE_RESOURCE_GROUP" == "true" ]]; then
   log "Deleting resource group '$RESOURCE_GROUP'"
   if az group show -n "$RESOURCE_GROUP" >/dev/null 2>&1; then
-    az group delete -n "$RESOURCE_GROUP" --yes --no-wait
-    echo "  Deletion started (--no-wait) — check progress: az group show -n $RESOURCE_GROUP"
+    if [[ "$PURGE_SOFT_DELETED" == "true" ]]; then
+      # Key Vault / Azure OpenAI only enter the soft-deleted state once the group is actually gone.
+      echo "  Waiting for deletion to complete (required before purging soft-deleted resources)..."
+      az group delete -n "$RESOURCE_GROUP" --yes
+      echo "  Deleted."
+    else
+      az group delete -n "$RESOURCE_GROUP" --yes --no-wait
+      echo "  Deletion started (--no-wait) — check progress: az group show -n $RESOURCE_GROUP"
+      warn "Names stay reserved until deletion finishes, and soft-deleted Key Vault / Azure OpenAI names remain taken until purged."
+    fi
   else
     echo "  '$RESOURCE_GROUP' not found — skipping."
   fi
 else
   log "Skipping resource group deletion (DELETE_RESOURCE_GROUP=false)"
+fi
+
+# ---------------------------------------------------------------------------
+# 3. Purge soft-deleted resources whose names would otherwise stay reserved
+# ---------------------------------------------------------------------------
+if [[ "$PURGE_SOFT_DELETED" == "true" ]]; then
+  KEY_VAULT_NAME="kv-$BASE_NAME"
+  log "Purging soft-deleted '$KEY_VAULT_NAME' (Key Vault)"
+  KV_LOCATION="$(az keyvault list-deleted --query "[?name=='$KEY_VAULT_NAME'].properties.location | [0]" -o tsv 2>/dev/null || true)"
+  if [[ -z "$KV_LOCATION" || "$KV_LOCATION" == "None" ]]; then
+    echo "  Not in the soft-deleted list — nothing to purge."
+  elif [[ "$(az keyvault list-deleted --query "[?name=='$KEY_VAULT_NAME'].properties.purgeProtectionEnabled | [0]" -o tsv 2>/dev/null || true)" == "true" ]]; then
+    warn "Purge protection is enabled on '$KEY_VAULT_NAME' — Azure forbids purging it."
+    warn "The name stays reserved until its retention period expires; use a different base name to redeploy sooner."
+  else
+    az keyvault purge --name "$KEY_VAULT_NAME" --location "$KV_LOCATION" -o none 2>/dev/null \
+      && echo "  Purged '$KEY_VAULT_NAME' — the name is now free." \
+      || warn "Could not purge '$KEY_VAULT_NAME'. Purge it manually: az keyvault purge --name $KEY_VAULT_NAME --location $KV_LOCATION"
+  fi
+
+  log "Purging soft-deleted '$OPENAI_ACCOUNT_NAME' (Azure OpenAI)"
+  OPENAI_DELETED="$(az cognitiveservices account list-deleted --query "[?name=='$OPENAI_ACCOUNT_NAME'].{location:location,id:id} | [0]" -o json 2>/dev/null || true)"
+  if [[ -z "$OPENAI_DELETED" || "$OPENAI_DELETED" == "null" ]]; then
+    echo "  Not in the soft-deleted list — nothing to purge."
+  else
+    OPENAI_LOCATION="$(printf '%s' "$OPENAI_DELETED" | jq -r '.location')"
+    # The originating resource group is only recoverable from the soft-deleted resource ID.
+    OPENAI_RG="$(printf '%s' "$OPENAI_DELETED" | jq -r '.id' | sed -n 's#.*/resourceGroups/\([^/]*\)/.*#\1#p')"
+    az cognitiveservices account purge --name "$OPENAI_ACCOUNT_NAME" --location "$OPENAI_LOCATION" --resource-group "$OPENAI_RG" -o none 2>/dev/null \
+      && echo "  Purged '$OPENAI_ACCOUNT_NAME' — the name is now free." \
+      || warn "Could not purge '$OPENAI_ACCOUNT_NAME'. Purge it manually: az cognitiveservices account purge --name $OPENAI_ACCOUNT_NAME --location $OPENAI_LOCATION --resource-group $OPENAI_RG"
+  fi
 fi
 
 log "Done. Run ./scripts/setup.sh to recreate everything from scratch."

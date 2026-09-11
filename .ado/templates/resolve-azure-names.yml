@@ -10,6 +10,7 @@ parameters:
 steps:
   - bash: |
       set -e
-      echo "##vso[task.setvariable variable=webAppName]app-${{ parameters.baseName }}"
-      echo "##vso[task.setvariable variable=keyVaultName]kv-${{ parameters.baseName }}"
+      eval "$(bash scripts/app/resolve-azure-names.sh '${{ parameters.baseName }}')"
+      echo "##vso[task.setvariable variable=webAppName]$WEB_APP_NAME"
+      echo "##vso[task.setvariable variable=keyVaultName]$KEY_VAULT_NAME"
     displayName: 'Resolve web app / key vault names'

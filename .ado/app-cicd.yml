@@ -168,16 +168,7 @@ stages:
             displayName: 'Bundle size check (warn-only, size-limit)'
 
           - script: |
-              set -e
-              APP="$(Build.ArtifactStagingDirectory)"
-              # Assemble the Next.js standalone server into a ready-to-run App Service package.
-              cp -r .next/standalone/. "$APP/"
-              mkdir -p "$APP/.next"
-              cp -r .next/static "$APP/.next/static"
-              cp -r public "$APP/public"
-              test -f "$APP/server.js"
-              test -d "$APP/.next/static"
-              test -d "$APP/public"
+              bash scripts/app/assemble-package.sh "$(Build.ArtifactStagingDirectory)"
             displayName: 'Assemble and validate standalone deploy package'
 
           - task: PublishPipelineArtifact@1
@@ -448,7 +439,8 @@ stages:
         pool:
           vmImage: ubuntu-latest
         steps:
-          - checkout: none
+          # Checked out because resolve-azure-names.yml runs a repository script.
+          - checkout: self
           - template: templates/resolve-azure-names.yml
             parameters:
               baseName: '$(baseName)'

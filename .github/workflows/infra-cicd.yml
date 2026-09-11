@@ -89,33 +89,25 @@ jobs:
           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 
       - name: Bicep lint + what-if preview
+        env:
+          AZURE_RESOURCE_GROUP: ${{ vars.AZURE_RESOURCE_GROUP }}
+          AZURE_LOCATION: ${{ vars.AZURE_LOCATION }}
+          AZURE_DB_LOCATION: ${{ vars.AZURE_DB_LOCATION }}
+          AZURE_BASE_NAME: ${{ env.AZURE_BASE_NAME }}
+          AZURE_OPENAI_ACCOUNT_NAME: ${{ vars.AZURE_OPENAI_ACCOUNT_NAME }}
+          ALERT_EMAIL_ADDRESS: ${{ vars.ALERT_EMAIL_ADDRESS }}
+          PG_ADMIN_PASSWORD: ValidationOnly-Pg-Password-2026!
+          AUTH_SECRET: validation-only-auth-secret-production
+          AUTH_SECRET_DEV: validation-only-auth-secret-development
         run: |
           set -e
-          # Secure parameters are required syntactically by the template, but their values are
-          # opaque to ARM what-if. Use validation-only values here so CI and scheduled drift
-          # detection do not require production credentials. The deploy job uses the real secrets.
-          VALIDATION_PG_PASSWORD='ValidationOnly-Pg-Password-2026!'
-          VALIDATION_AUTH_SECRET='validation-only-auth-secret-production'
-          VALIDATION_AUTH_SECRET_DEV='validation-only-auth-secret-development'
           # Falls back to the triggering commit's author email when ALERT_EMAIL_ADDRESS is
           # unset — a real, accountable inbox by default.
-          ALERT_EMAIL="${{ vars.ALERT_EMAIL_ADDRESS }}"
-          if [[ -z "$ALERT_EMAIL" ]]; then
-            ALERT_EMAIL="$(git log -1 --pretty=format:'%ae')"
+          if [[ -z "$ALERT_EMAIL_ADDRESS" ]]; then
+            export ALERT_EMAIL_ADDRESS="$(git log -1 --pretty=format:'%ae')"
           fi
-          az bicep build --file infra/main.bicep
-          az deployment sub what-if \
-            --location "${{ vars.AZURE_LOCATION }}" \
-            -f infra/main.bicep \
-            -p resourceGroupName="${{ vars.AZURE_RESOURCE_GROUP }}" \
-               location="${{ vars.AZURE_LOCATION }}" \
-               dbLocation="${{ vars.AZURE_DB_LOCATION }}" \
-               baseName="${{ env.AZURE_BASE_NAME }}" \
-               openAiAccountName="${{ vars.AZURE_OPENAI_ACCOUNT_NAME }}" \
-               alertEmailAddress="$ALERT_EMAIL" \
-               pgAdminPassword="$VALIDATION_PG_PASSWORD" \
-               authSecret="$VALIDATION_AUTH_SECRET" \
-               authSecretDev="$VALIDATION_AUTH_SECRET_DEV"
+          bash scripts/infra/deploy.sh validate
+          bash scripts/infra/deploy.sh what-if
 
   # -------------------------------------------------------------------------
   # POLICY COMPLIANCE = governance drift check. Reads the resource group's Azure
@@ -271,28 +263,25 @@ jobs:
           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 
       - name: az deployment sub create
+        env:
+          AZURE_RESOURCE_GROUP: ${{ vars.AZURE_RESOURCE_GROUP }}
+          AZURE_LOCATION: ${{ vars.AZURE_LOCATION }}
+          AZURE_DB_LOCATION: ${{ vars.AZURE_DB_LOCATION }}
+          AZURE_BASE_NAME: ${{ env.AZURE_BASE_NAME }}
+          AZURE_OPENAI_ACCOUNT_NAME: ${{ vars.AZURE_OPENAI_ACCOUNT_NAME }}
+          ALERT_EMAIL_ADDRESS: ${{ vars.ALERT_EMAIL_ADDRESS }}
+          PG_ADMIN_PASSWORD: ${{ secrets.PG_ADMIN_PASSWORD }}
+          AUTH_SECRET: ${{ secrets.AUTH_SECRET }}
+          AUTH_SECRET_DEV: ${{ secrets.AUTH_SECRET_DEV }}
+          INFRA_OUTPUT_FILE: ${{ github.workspace }}/infra-outputs.json
         run: |
           set -e
           # Falls back to the triggering commit's author email when ALERT_EMAIL_ADDRESS is
           # unset — a real, accountable inbox by default.
-          ALERT_EMAIL="${{ vars.ALERT_EMAIL_ADDRESS }}"
-          if [[ -z "$ALERT_EMAIL" ]]; then
-            ALERT_EMAIL="$(git log -1 --pretty=format:'%ae')"
+          if [[ -z "$ALERT_EMAIL_ADDRESS" ]]; then
+            export ALERT_EMAIL_ADDRESS="$(git log -1 --pretty=format:'%ae')"
           fi
-          az deployment sub create \
-            --location "${{ vars.AZURE_LOCATION }}" \
-            -n cityops-infra \
-            -f infra/main.bicep \
-            -p resourceGroupName="${{ vars.AZURE_RESOURCE_GROUP }}" \
-               location="${{ vars.AZURE_LOCATION }}" \
-               dbLocation="${{ vars.AZURE_DB_LOCATION }}" \
-               baseName="${{ env.AZURE_BASE_NAME }}" \
-               openAiAccountName="${{ vars.AZURE_OPENAI_ACCOUNT_NAME }}" \
-               alertEmailAddress="$ALERT_EMAIL" \
-               pgAdminPassword="${{ secrets.PG_ADMIN_PASSWORD }}" \
-               authSecret="${{ secrets.AUTH_SECRET }}" \
-               authSecretDev="${{ secrets.AUTH_SECRET_DEV }}" \
-            --query "properties.outputs" -o json | tee infra-outputs.json
+          bash scripts/infra/deploy.sh deploy
 
       - name: Publish deployment outputs (webAppName, keyVaultName, etc.)
         uses: actions/upload-artifact@v4

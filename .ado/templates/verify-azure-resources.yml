@@ -20,11 +20,7 @@ steps:
       azureSubscription: '${{ parameters.azureServiceConnection }}'
       scriptType: bash
       scriptLocation: inlineScript
-      inlineScript: |
-        set -e
-        webAppName="app-${{ parameters.baseName }}"
-        keyVaultName="kv-${{ parameters.baseName }}"
-        az webapp show -g "${{ parameters.resourceGroup }}" -n "$webAppName" -o none \
-          || { echo "##vso[task.logissue type=error]Web app '$webAppName' not found in resource group '${{ parameters.resourceGroup }}' — run the infra pipeline first."; exit 1; }
-        az keyvault show -n "$keyVaultName" -o none \
-          || { echo "##vso[task.logissue type=error]Key Vault '$keyVaultName' not found — run the infra pipeline first."; exit 1; }
+      inlineScript: bash scripts/app/verify-azure-resources.sh
+    env:
+      AZURE_RESOURCE_GROUP: '${{ parameters.resourceGroup }}'
+      AZURE_BASE_NAME: '${{ parameters.baseName }}'

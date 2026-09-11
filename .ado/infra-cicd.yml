@@ -118,23 +118,21 @@ stages:
                 set -e
                 # Falls back to the person who triggered this run when cityops-env's
                 # alertEmailAddress is blank — a real, accountable inbox by default.
-                ALERT_EMAIL="$(alertEmailAddress)"
-                if [[ -z "$ALERT_EMAIL" ]]; then
-                  ALERT_EMAIL="$(Build.RequestedForEmail)"
+                if [[ -z "$ALERT_EMAIL_ADDRESS" ]]; then
+                  export ALERT_EMAIL_ADDRESS="$(Build.RequestedForEmail)"
                 fi
-                az bicep build --file infra/main.bicep
-                az deployment sub what-if \
-                  --location "$(location)" \
-                  -f infra/main.bicep \
-                  -p resourceGroupName="$(resourceGroup)" \
-                     location="$(location)" \
-                     dbLocation="$(dbLocation)" \
-                     baseName="$(baseName)" \
-                     openAiAccountName="$(openAiAccountName)" \
-                     alertEmailAddress="$ALERT_EMAIL" \
-                     pgAdminPassword="$(pgAdminPassword)" \
-                     authSecret="$(authSecret)" \
-                     authSecretDev="$(authSecretDev)"
+                bash scripts/infra/deploy.sh validate
+                bash scripts/infra/deploy.sh what-if
+            env:
+              AZURE_RESOURCE_GROUP: $(resourceGroup)
+              AZURE_LOCATION: $(location)
+              AZURE_DB_LOCATION: $(dbLocation)
+              AZURE_BASE_NAME: $(baseName)
+              AZURE_OPENAI_ACCOUNT_NAME: $(openAiAccountName)
+              ALERT_EMAIL_ADDRESS: $(alertEmailAddress)
+              PG_ADMIN_PASSWORD: ValidationOnly-Pg-Password-2026!
+              AUTH_SECRET: validation-only-auth-secret-production
+              AUTH_SECRET_DEV: validation-only-auth-secret-development
 
   # -------------------------------------------------------------------------
   # POLICY COMPLIANCE = governance drift check. Reads the resource group's Azure
@@ -274,7 +272,7 @@ stages:
               steps:
                 - checkout: self
                 - task: AzureCLI@2
-                  displayName: 'az deployment group create'
+                  displayName: 'az deployment sub create'
                   inputs:
                     azureSubscription: 'cityops-azure-service-connection'
                     scriptType: bash
@@ -283,24 +281,21 @@ stages:
                       set -e
                       # Falls back to the person who triggered this run when cityops-env's
                       # alertEmailAddress is blank — a real, accountable inbox by default.
-                      ALERT_EMAIL="$(alertEmailAddress)"
-                      if [[ -z "$ALERT_EMAIL" ]]; then
-                        ALERT_EMAIL="$(Build.RequestedForEmail)"
+                      if [[ -z "$ALERT_EMAIL_ADDRESS" ]]; then
+                        export ALERT_EMAIL_ADDRESS="$(Build.RequestedForEmail)"
                       fi
-                      az deployment sub create \
-                        --location "$(location)" \
-                        -n cityops-infra \
-                        -f infra/main.bicep \
-                        -p resourceGroupName="$(resourceGroup)" \
-                           location="$(location)" \
-                           dbLocation="$(dbLocation)" \
-                           baseName="$(baseName)" \
-                           openAiAccountName="$(openAiAccountName)" \
-                           alertEmailAddress="$ALERT_EMAIL" \
-                           pgAdminPassword="$(pgAdminPassword)" \
-                           authSecret="$(authSecret)" \
-                           authSecretDev="$(authSecretDev)" \
-                        --query "properties.outputs" -o json | tee "$(Build.ArtifactStagingDirectory)/infra-outputs.json"
+                      bash scripts/infra/deploy.sh deploy
+                  env:
+                    AZURE_RESOURCE_GROUP: $(resourceGroup)
+                    AZURE_LOCATION: $(location)
+                    AZURE_DB_LOCATION: $(dbLocation)
+                    AZURE_BASE_NAME: $(baseName)
+                    AZURE_OPENAI_ACCOUNT_NAME: $(openAiAccountName)
+                    ALERT_EMAIL_ADDRESS: $(alertEmailAddress)
+                    PG_ADMIN_PASSWORD: $(pgAdminPassword)
+                    AUTH_SECRET: $(authSecret)
+                    AUTH_SECRET_DEV: $(authSecretDev)
+                    INFRA_OUTPUT_FILE: $(Build.ArtifactStagingDirectory)/infra-outputs.json
 
                 - publish: '$(Build.ArtifactStagingDirectory)/infra-outputs.json'
                   artifact: infra-outputs

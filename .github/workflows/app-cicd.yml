@@ -139,18 +139,7 @@ jobs:
         run: npm run check:bundle-size || echo "::warning::Client JS bundle exceeds the size-limit budget (warn-only for now)."
 
       - name: Assemble and validate standalone deploy package
-        run: |
-          set -e
-          APP="$GITHUB_WORKSPACE/deploy-package"
-          mkdir -p "$APP"
-          # Assemble the Next.js standalone server into a ready-to-run App Service package.
-          cp -r .next/standalone/. "$APP/"
-          mkdir -p "$APP/.next"
-          cp -r .next/static "$APP/.next/static"
-          cp -r public "$APP/public"
-          test -f "$APP/server.js"
-          test -d "$APP/.next/static"
-          test -d "$APP/public"
+        run: bash scripts/app/assemble-package.sh "$GITHUB_WORKSPACE/deploy-package"
 
       - name: Publish artifact
         uses: actions/upload-artifact@v7

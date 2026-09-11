@@ -93,6 +93,7 @@ Open [http://localhost:3000](http://localhost:3000) for CityOps. Captured develo
 
 ## Project documentation
 
+- [Deployment options and runbooks](docs/deployment/README.md)
 - [Product requirements](docs/product-requirements.md)
 - [Technical architecture](docs/technical-architecture.md)
 - [Data model](docs/data-model.md)

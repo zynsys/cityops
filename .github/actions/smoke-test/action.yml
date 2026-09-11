@@ -17,17 +17,4 @@ runs:
   using: 'composite'
   steps:
     - shell: bash
-      run: |
-        set -e
-        URL="${{ inputs.url }}"
-        for i in $(seq 1 ${{ inputs.max-attempts }}); do
-          status=$(curl -s -o /dev/null -w '%{http_code}' --max-time 15 "$URL" || echo "000")
-          echo "Attempt $i/${{ inputs.max-attempts }}: $URL -> HTTP $status"
-          if [ "$status" = "200" ]; then
-            echo "Smoke test passed."
-            exit 0
-          fi
-          sleep ${{ inputs.retry-delay-seconds }}
-        done
-        echo "::error::Smoke test failed: $URL never returned 200 after ${{ inputs.max-attempts }} attempts."
-        exit 1
+      run: bash scripts/app/smoke-test.sh '${{ inputs.url }}' '${{ inputs.max-attempts }}' '${{ inputs.retry-delay-seconds }}'

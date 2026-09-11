@@ -77,10 +77,11 @@ param requireTagsEffect string = 'Audit'
 @description('Email address to notify on app exceptions/failed (5xx) requests. Leave empty to skip creating alert resources (e.g. ad-hoc/local test deployments).')
 param alertEmailAddress string = ''
 
-// Deterministic names (no uniqueString suffix) — app/kv/pg names must be globally unique across
-// all of Azure, so baseName must be distinctive enough to avoid collisions. Verified available
-// for baseName='cityops' via the Microsoft.Web/Microsoft.KeyVault/Microsoft.DBforPostgreSQL
-// checkNameAvailability APIs before switching off the uniqueString-suffixed scheme (2026-08-22).
+// Deterministic names (no uniqueString suffix) — app/kv/pg/storage names must be globally unique
+// across all of Azure, so baseName must be distinctive enough to avoid collisions. The default
+// 'cityops' is NOT globally available (app-cityops and stcityops are taken by other tenants), so
+// set baseName to something distinctive. scripts/infra/check-names.sh checks every name up front.
+// Storage allows only lowercase alphanumerics, so baseName must be lowercase alphanumeric.
 var planName = 'asp-${baseName}'
 var appName = 'app-${baseName}'
 var kvName = 'kv-${baseName}'

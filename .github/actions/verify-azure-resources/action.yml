@@ -17,11 +17,7 @@ runs:
   using: 'composite'
   steps:
     - shell: bash
-      run: |
-        set -e
-        webAppName="app-${{ inputs.base-name }}"
-        keyVaultName="kv-${{ inputs.base-name }}"
-        az webapp show -g "${{ inputs.resource-group }}" -n "$webAppName" -o none \
-          || { echo "::error::Web app '$webAppName' not found in resource group '${{ inputs.resource-group }}' — run the infra workflow first."; exit 1; }
-        az keyvault show -n "$keyVaultName" -o none \
-          || { echo "::error::Key Vault '$keyVaultName' not found — run the infra workflow first."; exit 1; }
+      env:
+        AZURE_RESOURCE_GROUP: ${{ inputs.resource-group }}
+        AZURE_BASE_NAME: ${{ inputs.base-name }}
+      run: bash scripts/app/verify-azure-resources.sh
