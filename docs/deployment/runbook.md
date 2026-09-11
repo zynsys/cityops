@@ -46,11 +46,11 @@ Deleting the resource group removes the application, databases, Key Vault, and a
 
 Name availability after deletion differs by resource type:
 
-| Resource | Name freed |
-| --- | --- |
-| Storage account, App Service, PostgreSQL | Once deletion completes |
-| Key Vault | Only after purge; otherwise reserved for the retention period |
-| Azure OpenAI | Only after purge |
+| Resource                                 | Name freed                                                    |
+| ---------------------------------------- | ------------------------------------------------------------- |
+| Storage account, App Service, PostgreSQL | Once deletion completes                                       |
+| Key Vault                                | Only after purge; otherwise reserved for the retention period |
+| Azure OpenAI                             | Only after purge                                              |
 
 `PURGE_SOFT_DELETED` defaults to `true`, which waits for resource-group deletion and then purges `kv-<baseName>` and the Azure OpenAI account so the names can be reused immediately. Purging is irreversible and removes any recovery option. Set it to `false` to keep the soft-deleted copies, in which case redeploying under the same base name fails until the retention period expires.
 
