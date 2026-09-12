@@ -1,11 +1,16 @@
 #!/usr/bin/env bash
-# CityOps — teardown counterpart to scripts/setup.sh. Deletes everything that script creates,
-# so you can re-run setup.sh against a truly clean Azure DevOps project + subscription.
+# CityOps — teardown counterpart to scripts/setup.sh. Deletes what that script creates, so you
+# can re-run setup.sh against a clean subscription.
 #
-# Deletes: the 2 YAML pipelines (infra-cicd, app-cicd), both Library variable groups (cityops-env,
-# cityops-infra), the ARM + GitHub service connections and their service principal/app
-# registration, and (unless DELETE_RESOURCE_GROUP=false) the Azure resource group itself. The
-# Azure DevOps project itself is never deleted — only the resources setup.sh created inside it.
+# Azure, Azure DevOps and GitHub cleanup all run by default, so a single confirmed run returns
+# every system to its pre-setup state. Set CLEANUP_ADO=false or CLEANUP_GITHUB=false to keep
+# either CI provider's configuration in place.
+#
+# Azure DevOps cleanup removes only the objects setup-ado.sh creates inside the project: the 3
+# YAML pipeline definitions (infra-cicd, app-cicd, load-test-cicd), the cityops-env and
+# cityops-infra variable groups, the ARM + GitHub service connections, and their service
+# principal. The project itself, its repos, boards, work items and artifacts are never touched,
+# and the pipeline YAML in git is untouched — only the ADO pipeline definitions are removed.
 #
 # What this script does NOT do:
 #   - Delete the 'dev'/'prod' Environments. The azure-devops CLI extension has no working
@@ -33,10 +38,14 @@ OPENAI_ACCOUNT_NAME="${OPENAI_ACCOUNT_NAME:-}"  # defaults to azopenai-<BASE_NAM
 DELETE_RESOURCE_GROUP="${DELETE_RESOURCE_GROUP:-true}"
 PURGE_SOFT_DELETED="${PURGE_SOFT_DELETED:-true}"
 AZURE_SUBSCRIPTION_ID="${AZURE_SUBSCRIPTION_ID:-}"
+CLEANUP_ADO="${CLEANUP_ADO:-true}"
 ADO_ORG_URL="${ADO_ORG_URL:-}"
 ADO_PROJECT="${ADO_PROJECT:-}"
 SERVICE_CONNECTION_NAME="${SERVICE_CONNECTION_NAME:-cityops-azure-service-connection}"
 GITHUB_SERVICE_CONNECTION_NAME="${GITHUB_SERVICE_CONNECTION_NAME:-cityops-github-service-connection}"
+CLEANUP_GITHUB="${CLEANUP_GITHUB:-true}"
+GITHUB_REPO_URL="${GITHUB_REPO_URL:-https://github.com/zynsys/cityops}"
+GITHUB_APP_NAME="${GITHUB_APP_NAME:-cityops-github-actions}"
 CONFIRM="${CONFIRM:-}"
 
 log() { printf '\n\033[1;34m==>\033[0m %s\n' "$*"; }
@@ -74,11 +83,18 @@ prompt RESOURCE_GROUP "Resource group to delete" "${RESOURCE_GROUP_ENV:-rg-$BASE
 prompt OPENAI_ACCOUNT_NAME "Azure OpenAI account name" "${OPENAI_ACCOUNT_NAME:-azopenai-$BASE_NAME}"
 prompt DELETE_RESOURCE_GROUP "Delete the resource group too? (true|false)" "$DELETE_RESOURCE_GROUP"
 prompt PURGE_SOFT_DELETED "Purge soft-deleted Key Vault / Azure OpenAI so the names free up? (true|false)" "$PURGE_SOFT_DELETED"
-prompt ADO_ORG_URL "Azure DevOps org URL (blank = skip ADO cleanup)" "${ADO_ORG_URL:-$CURRENT_ADO_ORG}"
-prompt ADO_PROJECT "Azure DevOps project name" "${ADO_PROJECT:-$CURRENT_ADO_PROJECT}"
-if [[ -n "$ADO_ORG_URL" ]]; then
+prompt CLEANUP_ADO "Remove Azure DevOps configuration too? (true|false)" "$CLEANUP_ADO"
+if [[ "$CLEANUP_ADO" == "true" ]]; then
+  prompt ADO_ORG_URL "Azure DevOps org URL" "${ADO_ORG_URL:-$CURRENT_ADO_ORG}"
+  prompt ADO_PROJECT "Azure DevOps project name" "${ADO_PROJECT:-$CURRENT_ADO_PROJECT}"
   prompt SERVICE_CONNECTION_NAME "ARM service connection name" "$SERVICE_CONNECTION_NAME"
   prompt GITHUB_SERVICE_CONNECTION_NAME "GitHub service connection name" "$GITHUB_SERVICE_CONNECTION_NAME"
+fi
+prompt CLEANUP_GITHUB "Remove GitHub Actions configuration too? (true|false)" "$CLEANUP_GITHUB"
+if [[ "$CLEANUP_GITHUB" == "true" ]]; then
+  prompt GITHUB_REPO_URL "GitHub repository URL" "$GITHUB_REPO_URL"
+  prompt GITHUB_APP_NAME "Entra app registration name for GitHub OIDC" "$GITHUB_APP_NAME"
+  GITHUB_REPO_SLUG="$(printf '%s' "$GITHUB_REPO_URL" | sed -E 's#^https://github.com/##; s#\.git$##')"
 fi
 
 if [[ -n "$AZURE_SUBSCRIPTION_ID" ]]; then
@@ -86,12 +102,11 @@ if [[ -n "$AZURE_SUBSCRIPTION_ID" ]]; then
 fi
 SUBSCRIPTION_ID="$(az account show --query id -o tsv)"
 
-if [[ -n "$ADO_ORG_URL" && -n "$ADO_PROJECT" ]]; then
+if [[ "$CLEANUP_ADO" == "true" && -n "$ADO_ORG_URL" && -n "$ADO_PROJECT" ]]; then
   az extension show -n azure-devops >/dev/null 2>&1 || az extension add -n azure-devops -y
   az devops configure --defaults organization="$ADO_ORG_URL" project="$ADO_PROJECT"
   DO_ADO=true
 else
-  warn "ADO_ORG_URL / ADO_PROJECT not set — skipping Azure DevOps cleanup (Azure infra only)."
   DO_ADO=false
 fi
 
@@ -103,12 +118,19 @@ echo "  Subscription:        $SUBSCRIPTION_ID"
 [[ "$DELETE_RESOURCE_GROUP" == "true" ]] && echo "  Resource group:      $RESOURCE_GROUP (ALL resources inside it)"
 [[ "$PURGE_SOFT_DELETED" == "true" ]] && echo "  Purged permanently:  kv-$BASE_NAME, $OPENAI_ACCOUNT_NAME (irreversible — no recovery after this)"
 if [[ "$DO_ADO" == "true" ]]; then
-  echo "  ADO project (NOT deleted — only these resources within it): $ADO_ORG_URL/$ADO_PROJECT"
-  echo "  Pipelines:            infra-cicd, app-cicd"
-  echo "  Variable groups:      cityops-env, cityops-infra"
-  echo "  Service connections:  $SERVICE_CONNECTION_NAME, $GITHUB_SERVICE_CONNECTION_NAME (+ SP/app registration)"
+  echo "  ADO project:          $ADO_ORG_URL/$ADO_PROJECT (the project itself is NOT deleted)"
+  echo "    Pipelines:          infra-cicd, app-cicd, load-test-cicd (definitions only, not the YAML in git)"
+  echo "    Variable groups:    cityops-env, cityops-infra"
+  echo "    Service connections: $SERVICE_CONNECTION_NAME, $GITHUB_SERVICE_CONNECTION_NAME (+ SP/app registration)"
+  echo "    Untouched:          repos, boards, work items, artifacts, and the dev/prod Environments"
 fi
-echo "  NOT deleted: the ADO project itself, or 'dev'/'prod' Environments (delete Environments manually — see header comment)."
+if [[ "$CLEANUP_GITHUB" == "true" ]]; then
+  echo "  GitHub repo:          $GITHUB_REPO_SLUG"
+  echo "    Secrets:            AZURE_CLIENT_ID, AZURE_TENANT_ID, AZURE_SUBSCRIPTION_ID, PG_ADMIN_PASSWORD, AUTH_SECRET, AUTH_SECRET_DEV"
+  echo "    Variables:          AZURE_RESOURCE_GROUP, AZURE_LOCATION, AZURE_DB_LOCATION, AZURE_BASE_NAME, AZURE_OPENAI_ACCOUNT_NAME, ALERT_EMAIL_ADDRESS"
+  echo "    Environments:       dev, prod (all others are left untouched)"
+  echo "    App registration:   $GITHUB_APP_NAME"
+fi
 
 if [[ -t 0 ]]; then
   read -r -p $'\nType "delete" to confirm: ' CONFIRM
@@ -120,7 +142,7 @@ fi
 # ---------------------------------------------------------------------------
 if [[ "$DO_ADO" == "true" ]]; then
   log "Deleting pipelines"
-  for NAME in infra-cicd app-cicd; do
+  for NAME in infra-cicd app-cicd load-test-cicd; do
     ID="$(az pipelines list --query "[?name=='$NAME'].id | [0]" -o tsv 2>/dev/null || true)"
     if [[ -n "$ID" && "$ID" != "None" ]]; then
       az pipelines delete --id "$ID" --yes \
@@ -219,6 +241,47 @@ if [[ "$PURGE_SOFT_DELETED" == "true" ]]; then
     az cognitiveservices account purge --name "$OPENAI_ACCOUNT_NAME" --location "$OPENAI_LOCATION" --resource-group "$OPENAI_RG" -o none 2>/dev/null \
       && echo "  Purged '$OPENAI_ACCOUNT_NAME' — the name is now free." \
       || warn "Could not purge '$OPENAI_ACCOUNT_NAME'. Purge it manually: az cognitiveservices account purge --name $OPENAI_ACCOUNT_NAME --location $OPENAI_LOCATION --resource-group $OPENAI_RG"
+  fi
+fi
+
+# ---------------------------------------------------------------------------
+# 4. GitHub Actions configuration
+# ---------------------------------------------------------------------------
+if [[ "$CLEANUP_GITHUB" == "true" ]]; then
+  if ! command -v gh >/dev/null 2>&1 || ! gh auth status --hostname github.com >/dev/null 2>&1; then
+    warn "GitHub CLI is unavailable or not logged in — skipping GitHub cleanup."
+  else
+    log "Deleting GitHub repository secrets"
+    for NAME in AZURE_CLIENT_ID AZURE_TENANT_ID AZURE_SUBSCRIPTION_ID PG_ADMIN_PASSWORD AUTH_SECRET AUTH_SECRET_DEV; do
+      gh secret delete "$NAME" --repo "$GITHUB_REPO_SLUG" >/dev/null 2>&1 \
+        && echo "  Deleted secret '$NAME'" \
+        || echo "  '$NAME' not found — skipping."
+    done
+
+    log "Deleting GitHub repository variables"
+    for NAME in AZURE_RESOURCE_GROUP AZURE_LOCATION AZURE_DB_LOCATION AZURE_BASE_NAME AZURE_OPENAI_ACCOUNT_NAME ALERT_EMAIL_ADDRESS; do
+      gh variable delete "$NAME" --repo "$GITHUB_REPO_SLUG" >/dev/null 2>&1 \
+        && echo "  Deleted variable '$NAME'" \
+        || echo "  '$NAME' not found — skipping."
+    done
+
+    # Only the two environments setup.sh creates; any others in the repo are left alone.
+    log "Deleting GitHub environments 'dev' and 'prod'"
+    for NAME in dev prod; do
+      gh api --method DELETE "repos/$GITHUB_REPO_SLUG/environments/$NAME" --silent >/dev/null 2>&1 \
+        && echo "  Deleted environment '$NAME'" \
+        || echo "  '$NAME' not found — skipping."
+    done
+
+    log "Deleting the '$GITHUB_APP_NAME' app registration"
+    GITHUB_APP_ID="$(az ad app list --display-name "$GITHUB_APP_NAME" --query '[0].appId' -o tsv 2>/dev/null || true)"
+    if [[ -n "$GITHUB_APP_ID" && "$GITHUB_APP_ID" != "None" ]]; then
+      az ad app delete --id "$GITHUB_APP_ID" \
+        && echo "  Deleted app registration $GITHUB_APP_ID" \
+        || warn "Could not delete app registration $GITHUB_APP_ID — remove it manually in Entra ID."
+    else
+      echo "  Not found — skipping."
+    fi
   fi
 fi
 

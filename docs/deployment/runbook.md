@@ -40,7 +40,7 @@ The previous production build remains in the dev slot after a swap. Swap the slo
 
 ## Teardown
 
-Run `scripts/cleanup.sh`. It deletes the resource group and, when Azure DevOps details are supplied, the pipelines, variable groups, service connections, and service principal it created. Typing `delete` is required to confirm.
+Run `scripts/cleanup.sh`. By default it returns all three systems to their pre-setup state: Azure resources, the Azure DevOps objects setup created, and the GitHub Actions configuration. Every run prints exactly what it will remove and requires typing `delete` to proceed.
 
 Deleting the resource group removes the application, databases, Key Vault, and all other state. Confirm backups and the active subscription first.
 
@@ -55,6 +55,19 @@ Name availability after deletion differs by resource type:
 `PURGE_SOFT_DELETED` defaults to `true`, which waits for resource-group deletion and then purges `kv-<baseName>` and the Azure OpenAI account so the names can be reused immediately. Purging is irreversible and removes any recovery option. Set it to `false` to keep the soft-deleted copies, in which case redeploying under the same base name fails until the retention period expires.
 
 A Key Vault with purge protection enabled cannot be purged at all; redeploy under a different base name instead of waiting.
+
+### What cleanup removes
+
+| Scope        | Removed                                                                                                               | Controlled by           | Default |
+| ------------ | --------------------------------------------------------------------------------------------------------------------- | ----------------------- | ------- |
+| Azure        | Resource group and everything in it                                                                                   | `DELETE_RESOURCE_GROUP` | `true`  |
+| Azure        | Soft-deleted Key Vault and Azure OpenAI names                                                                         | `PURGE_SOFT_DELETED`    | `true`  |
+| Azure DevOps | `infra-cicd`, `app-cicd`, `load-test-cicd`, both variable groups, both service connections, and the service principal | `CLEANUP_ADO`           | `true`  |
+| GitHub       | Repository secrets, variables, the `dev` and `prod` environments, and the OIDC app registration                       | `CLEANUP_GITHUB`        | `true`  |
+
+Set any of these to `false` to keep that scope. Azure DevOps cleanup is skipped automatically when no organisation and project are configured.
+
+Two things are never removed: the Azure DevOps project itself and its `dev`/`prod` environments, which have no working CLI or REST route on Microsoft-account-backed organisations and must be deleted from Pipelines > Environments. GitHub environments other than `dev` and `prod` are also left untouched.
 
 ## Common checks
 

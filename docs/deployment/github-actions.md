@@ -11,7 +11,15 @@ The workflows call shared scripts for provider-neutral behavior. GitHub remains 
 
 ## Azure identity
 
-Create an Entra application/service principal with a federated credential trusting this repository. Grant the subscription-scoped roles in [configuration.md](configuration.md). Configure these GitHub secrets:
+Run `scripts/setup.sh` and answer yes to _Configure GitHub Actions integration?_, or run `scripts/setup-github.sh` directly with the configuration exported. It requires an authenticated `gh` session with admin permission on the repository and creates or reuses:
+
+- An Entra app registration (`cityops-github-actions` by default) and its service principal.
+- Federated credentials for `main`, pull requests, and the `dev` and `prod` environments, so no client secret is ever needed.
+- The subscription-scoped Azure roles listed in [configuration.md](configuration.md).
+- The `dev` and `prod` GitHub environments.
+- The repository secrets and variables below.
+
+To configure it by hand instead, create the same app registration and federated credentials, then set these secrets:
 
 - `AZURE_CLIENT_ID`
 - `AZURE_TENANT_ID`

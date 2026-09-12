@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Interactive CityOps Azure bootstrap. Infrastructure is deployed through scripts/infra/deploy.sh;
-# optional Azure DevOps configuration is delegated to scripts/setup-ado.sh.
+# optional CI configuration is delegated to scripts/setup-ado.sh and scripts/setup-github.sh.
 
 set -euo pipefail
 SCRIPTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -53,6 +53,7 @@ AZURE_LOCATION="${AZURE_LOCATION:-${LOCATION:-francecentral}}"
 AZURE_DB_LOCATION="${AZURE_DB_LOCATION:-${DB_LOCATION:-francecentral}}"
 ALERT_EMAIL_ADDRESS="${ALERT_EMAIL_ADDRESS:-$CURRENT_USER_EMAIL}"
 CONFIGURE_ADO="${CONFIGURE_ADO:-n}"
+CONFIGURE_GITHUB="${CONFIGURE_GITHUB:-n}"
 RUN_WHAT_IF="${RUN_WHAT_IF:-y}"
 CONFIRM_DEPLOY="${CONFIRM_DEPLOY:-}"
 RUN_INFRA_SMOKE_TEST="${RUN_INFRA_SMOKE_TEST:-y}"
@@ -67,6 +68,14 @@ prompt AZURE_LOCATION "App Service / Key Vault region" "$AZURE_LOCATION"
 prompt AZURE_DB_LOCATION "PostgreSQL region" "$AZURE_DB_LOCATION"
 prompt ALERT_EMAIL_ADDRESS "Alert email address (blank disables alerts)" "$ALERT_EMAIL_ADDRESS"
 confirm DO_ADO "Configure Azure DevOps integration?" "$CONFIGURE_ADO"
+confirm DO_GITHUB "Configure GitHub Actions integration?" "$CONFIGURE_GITHUB"
+
+if [[ "$DO_GITHUB" == "true" ]]; then
+  GITHUB_REPO_URL="${GITHUB_REPO_URL:-https://github.com/zynsys/cityops}"
+  GITHUB_APP_NAME="${GITHUB_APP_NAME:-cityops-github-actions}"
+  prompt GITHUB_REPO_URL "GitHub repository URL" "$GITHUB_REPO_URL"
+  prompt GITHUB_APP_NAME "Entra app registration name for GitHub OIDC" "$GITHUB_APP_NAME"
+fi
 
 if [[ "$DO_ADO" == "true" ]]; then
   CURRENT_ADO_ORG="$(az devops configure --list 2>/dev/null | sed -n 's/^organization *= *//p' || true)"
@@ -138,6 +147,11 @@ if [[ "$DO_ADO" == "true" ]]; then
   export ADO_ORG_URL ADO_PROJECT SERVICE_CONNECTION_NAME SP_SCOPE AUTHORIZE_FOR_ALL_PIPELINES
   export GITHUB_REPO_URL GITHUB_PAT GITHUB_SERVICE_CONNECTION_NAME
   bash "$SCRIPTS_DIR/setup-ado.sh"
+fi
+
+if [[ "$DO_GITHUB" == "true" ]]; then
+  export GITHUB_REPO_URL GITHUB_APP_NAME
+  bash "$SCRIPTS_DIR/setup-github.sh"
 fi
 
 confirm DEPLOY_APP_APPROVED "Build and deploy the application to the dev slot now?" "$DEPLOY_APP"
