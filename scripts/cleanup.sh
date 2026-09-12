@@ -42,10 +42,11 @@ CLEANUP_ADO="${CLEANUP_ADO:-true}"
 ADO_ORG_URL="${ADO_ORG_URL:-}"
 ADO_PROJECT="${ADO_PROJECT:-}"
 SERVICE_CONNECTION_NAME="${SERVICE_CONNECTION_NAME:-cityops-azure-service-connection}"
-GITHUB_SERVICE_CONNECTION_NAME="${GITHUB_SERVICE_CONNECTION_NAME:-cityops-github-service-connection}"
+# Kept separate from the derived defaults so they can follow the base name entered at the prompt.
+GITHUB_SERVICE_CONNECTION_OVERRIDE="${GITHUB_SERVICE_CONNECTION_NAME:-}"
+GITHUB_APP_NAME_OVERRIDE="${GITHUB_APP_NAME:-}"
 CLEANUP_GITHUB="${CLEANUP_GITHUB:-true}"
 GITHUB_REPO_URL="${GITHUB_REPO_URL:-https://github.com/zynsys/cityops}"
-GITHUB_APP_NAME="${GITHUB_APP_NAME:-cityops-github-actions}"
 CONFIRM="${CONFIRM:-}"
 
 log() { printf '\n\033[1;34m==>\033[0m %s\n' "$*"; }
@@ -88,12 +89,12 @@ if [[ "$CLEANUP_ADO" == "true" ]]; then
   prompt ADO_ORG_URL "Azure DevOps org URL" "${ADO_ORG_URL:-$CURRENT_ADO_ORG}"
   prompt ADO_PROJECT "Azure DevOps project name" "${ADO_PROJECT:-$CURRENT_ADO_PROJECT}"
   prompt SERVICE_CONNECTION_NAME "ARM service connection name" "$SERVICE_CONNECTION_NAME"
-  prompt GITHUB_SERVICE_CONNECTION_NAME "GitHub service connection name" "$GITHUB_SERVICE_CONNECTION_NAME"
+  prompt GITHUB_SERVICE_CONNECTION_NAME "GitHub service connection name" "${GITHUB_SERVICE_CONNECTION_OVERRIDE:-$BASE_NAME-github-service-connection}"
 fi
 prompt CLEANUP_GITHUB "Remove GitHub Actions configuration too? (true|false)" "$CLEANUP_GITHUB"
 if [[ "$CLEANUP_GITHUB" == "true" ]]; then
   prompt GITHUB_REPO_URL "GitHub repository URL" "$GITHUB_REPO_URL"
-  prompt GITHUB_APP_NAME "Entra app registration name for GitHub OIDC" "$GITHUB_APP_NAME"
+  prompt GITHUB_APP_NAME "Entra app registration name for GitHub OIDC" "${GITHUB_APP_NAME_OVERRIDE:-$BASE_NAME-github-actions}"
   GITHUB_REPO_SLUG="$(printf '%s' "$GITHUB_REPO_URL" | sed -E 's#^https://github.com/##; s#\.git$##')"
 fi
 

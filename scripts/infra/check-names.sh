@@ -49,25 +49,34 @@ log "Checking globally unique resource names for base name '$AZURE_BASE_NAME'"
 storage_name="st$AZURE_BASE_NAME"
 available="$(az storage account check-name --name "$storage_name" --query nameAvailable --output tsv 2>/dev/null || echo unknown)"
 owned=false
-az storage account show --name "$storage_name" --output none 2>/dev/null && owned=true
+# Ownership only matters for a name that is already taken, and these lookups are slow.
+if [[ "$available" == "false" ]]; then
+  az storage account show --name "$storage_name" --output none 2>/dev/null && owned=true
+fi
 report "Storage" "$storage_name" "$available" "$owned"
 
 app_name="app-$AZURE_BASE_NAME"
 available="$(check_rest 'Microsoft.Web/checknameavailability' '2023-12-01' 'Microsoft.Web/sites' "$app_name")"
 owned=false
-[[ -n "$(az webapp list --query "[?name=='$app_name'].name" --output tsv 2>/dev/null)" ]] && owned=true
+if [[ "$available" == "false" ]]; then
+  [[ -n "$(az webapp list --query "[?name=='$app_name'].name" --output tsv 2>/dev/null)" ]] && owned=true
+fi
 report "Web app" "$app_name" "$available" "$owned"
 
 kv_name="kv-$AZURE_BASE_NAME"
 available="$(check_rest 'Microsoft.KeyVault/checkNameAvailability' '2023-07-01' 'Microsoft.KeyVault/vaults' "$kv_name")"
 owned=false
-az keyvault show --name "$kv_name" --output none 2>/dev/null && owned=true
+if [[ "$available" == "false" ]]; then
+  az keyvault show --name "$kv_name" --output none 2>/dev/null && owned=true
+fi
 report "Key Vault" "$kv_name" "$available" "$owned"
 
 pg_name="pg-$AZURE_BASE_NAME"
 available="$(check_rest 'Microsoft.DBforPostgreSQL/checkNameAvailability' '2023-03-01-preview' 'Microsoft.DBforPostgreSQL/flexibleServers' "$pg_name")"
 owned=false
-[[ -n "$(az postgres flexible-server list --query "[?name=='$pg_name'].name" --output tsv 2>/dev/null)" ]] && owned=true
+if [[ "$available" == "false" ]]; then
+  [[ -n "$(az postgres flexible-server list --query "[?name=='$pg_name'].name" --output tsv 2>/dev/null)" ]] && owned=true
+fi
 report "PostgreSQL" "$pg_name" "$available" "$owned"
 
 if (( conflicts > 0 )); then

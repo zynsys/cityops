@@ -6,6 +6,9 @@ source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib/common.sh"
 
 ADO_ORG_URL="${ADO_ORG_URL:-}"
 ADO_PROJECT="${ADO_PROJECT:-}"
+AZURE_BASE_NAME="${AZURE_BASE_NAME:-cityops}"
+# Must match the literal in .ado/*.yml: Azure DevOps resolves 'azureSubscription:' before runtime
+# variables exist, so this name cannot be derived from the base name.
 SERVICE_CONNECTION_NAME="${SERVICE_CONNECTION_NAME:-cityops-azure-service-connection}"
 SP_SCOPE="${SP_SCOPE:-subscription}"
 # Pipelines are registered after this connection exists, so they cannot be authorized individually
@@ -13,11 +16,10 @@ SP_SCOPE="${SP_SCOPE:-subscription}"
 AUTHORIZE_FOR_ALL_PIPELINES="${AUTHORIZE_FOR_ALL_PIPELINES:-true}"
 GITHUB_REPO_URL="${GITHUB_REPO_URL:-https://github.com/zynsys/cityops}"
 GITHUB_PAT="${GITHUB_PAT:-}"
-GITHUB_SERVICE_CONNECTION_NAME="${GITHUB_SERVICE_CONNECTION_NAME:-cityops-github-service-connection}"
-AZURE_RESOURCE_GROUP="${AZURE_RESOURCE_GROUP:-rg-cityops}"
+GITHUB_SERVICE_CONNECTION_NAME="${GITHUB_SERVICE_CONNECTION_NAME:-$AZURE_BASE_NAME-github-service-connection}"
+AZURE_RESOURCE_GROUP="${AZURE_RESOURCE_GROUP:-rg-$AZURE_BASE_NAME}"
 AZURE_LOCATION="${AZURE_LOCATION:-francecentral}"
 AZURE_DB_LOCATION="${AZURE_DB_LOCATION:-francecentral}"
-AZURE_BASE_NAME="${AZURE_BASE_NAME:-cityops}"
 AZURE_OPENAI_ACCOUNT_NAME="${AZURE_OPENAI_ACCOUNT_NAME:-azopenai-$AZURE_BASE_NAME}"
 ALERT_EMAIL_ADDRESS="${ALERT_EMAIL_ADDRESS:-}"
 
@@ -42,6 +44,9 @@ set_group_variable() {
 log "Configuring Azure DevOps defaults"
 az extension show --name azure-devops >/dev/null 2>&1 || az extension add --name azure-devops --yes
 az devops configure --defaults organization="$ADO_ORG_URL" project="$ADO_PROJECT"
+# The azure-devops extension keeps its own session, which expires independently of 'az login'.
+az pipelines list --top 1 --output none 2>/dev/null \
+  || die "Azure DevOps authentication failed for '$ADO_ORG_URL/$ADO_PROJECT'. Run 'az devops login --organization $ADO_ORG_URL' with a PAT, then retry."
 SUBSCRIPTION_ID="$(az account show --query id --output tsv)"
 
 log "Creating or reusing deployment service principal"
@@ -168,4 +173,9 @@ for pipeline_name in "${!PIPELINES[@]}"; do
 done
 
 log "Azure DevOps bootstrap complete"
-warn "Manually configure the prod approval, branch control, exclusive lock, retention, and explicit pipeline authorization documented in docs/deployment/azure-devops.md."
+if [[ "${DEPLOYMENT_PROVIDER:-ado}" != "ado" ]]; then
+  warn "Azure DevOps is configured but is not the selected auto-deploying provider."
+  warn "Pause these pipelines so pushes to main do not race the other provider:"
+  warn "  Pipelines > each pipeline > ... > Settings > Paused."
+fi
+warn "Manually configure the prod approval, branch control, exclusive lock, and retention documented in docs/deployment/azure-devops.md."

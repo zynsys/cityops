@@ -54,6 +54,8 @@ AZURE_DB_LOCATION="${AZURE_DB_LOCATION:-${DB_LOCATION:-francecentral}}"
 ALERT_EMAIL_ADDRESS="${ALERT_EMAIL_ADDRESS:-$CURRENT_USER_EMAIL}"
 CONFIGURE_ADO="${CONFIGURE_ADO:-y}"
 CONFIGURE_GITHUB="${CONFIGURE_GITHUB:-y}"
+# Both providers watch the same branch, so only one may deploy automatically.
+DEPLOYMENT_PROVIDER="${DEPLOYMENT_PROVIDER:-github}"
 RUN_WHAT_IF="${RUN_WHAT_IF:-y}"
 CONFIRM_DEPLOY="${CONFIRM_DEPLOY:-}"
 RUN_INFRA_SMOKE_TEST="${RUN_INFRA_SMOKE_TEST:-y}"
@@ -62,6 +64,13 @@ DEPLOY_APP="${DEPLOY_APP:-n}"
 log "Configuration (press Enter to accept each default)"
 prompt AZURE_SUBSCRIPTION_ID "Azure subscription ID" "$AZURE_SUBSCRIPTION_ID"
 prompt AZURE_BASE_NAME "Base name for Azure resources (globally unique, lowercase letters and digits)" "$AZURE_BASE_NAME"
+# Validated here rather than at deploy time so a bad name is caught before the remaining prompts.
+while [[ ! "$AZURE_BASE_NAME" =~ ^[a-z0-9]+$ ]] || (( ${#AZURE_BASE_NAME} > 22 )); do
+  warn "'$AZURE_BASE_NAME' is not usable: the storage account is named st<baseName>, which allows only lowercase letters and digits (22 characters or fewer, no hyphens)."
+  [[ -t 0 ]] || die "Set AZURE_BASE_NAME to a valid value."
+  SUGGESTED_BASE_NAME="$(printf '%s' "$AZURE_BASE_NAME" | tr '[:upper:]' '[:lower:]' | tr -cd 'a-z0-9' | cut -c1-22)"
+  prompt AZURE_BASE_NAME "Base name for Azure resources" "${SUGGESTED_BASE_NAME:-cityops}"
+done
 prompt AZURE_RESOURCE_GROUP "Resource group name" "${RESOURCE_GROUP_OVERRIDE:-rg-$AZURE_BASE_NAME}"
 prompt AZURE_OPENAI_ACCOUNT_NAME "Azure OpenAI account name" "${OPENAI_ACCOUNT_OVERRIDE:-azopenai-$AZURE_BASE_NAME}"
 prompt AZURE_LOCATION "App Service / Key Vault region" "$AZURE_LOCATION"
@@ -70,9 +79,23 @@ prompt ALERT_EMAIL_ADDRESS "Alert email address (blank disables alerts)" "$ALERT
 confirm DO_ADO "Configure Azure DevOps integration?" "$CONFIGURE_ADO"
 confirm DO_GITHUB "Configure GitHub Actions integration?" "$CONFIGURE_GITHUB"
 
+if [[ "$DO_ADO" == "true" && "$DO_GITHUB" == "true" ]]; then
+  prompt DEPLOYMENT_PROVIDER "Which provider deploys automatically on push? (github|ado)" "$DEPLOYMENT_PROVIDER"
+  while [[ "$DEPLOYMENT_PROVIDER" != "github" && "$DEPLOYMENT_PROVIDER" != "ado" ]]; do
+    warn "Enter 'github' or 'ado'."
+    [[ -t 0 ]] || die "Set DEPLOYMENT_PROVIDER to github or ado."
+    prompt DEPLOYMENT_PROVIDER "Which provider deploys automatically on push? (github|ado)" "github"
+  done
+elif [[ "$DO_ADO" == "true" ]]; then
+  DEPLOYMENT_PROVIDER=ado
+else
+  DEPLOYMENT_PROVIDER=github
+fi
+export DEPLOYMENT_PROVIDER
+
 if [[ "$DO_GITHUB" == "true" ]]; then
   GITHUB_REPO_URL="${GITHUB_REPO_URL:-https://github.com/zynsys/cityops}"
-  GITHUB_APP_NAME="${GITHUB_APP_NAME:-cityops-github-actions}"
+  GITHUB_APP_NAME="${GITHUB_APP_NAME:-$AZURE_BASE_NAME-github-actions}"
   prompt GITHUB_REPO_URL "GitHub repository URL" "$GITHUB_REPO_URL"
   prompt GITHUB_APP_NAME "Entra app registration name for GitHub OIDC" "$GITHUB_APP_NAME"
 fi
@@ -87,7 +110,7 @@ if [[ "$DO_ADO" == "true" ]]; then
   AUTHORIZE_FOR_ALL_PIPELINES="${AUTHORIZE_FOR_ALL_PIPELINES:-true}"
   GITHUB_REPO_URL="${GITHUB_REPO_URL:-https://github.com/zynsys/cityops}"
   GITHUB_PAT="${GITHUB_PAT:-}"
-  GITHUB_SERVICE_CONNECTION_NAME="${GITHUB_SERVICE_CONNECTION_NAME:-cityops-github-service-connection}"
+  GITHUB_SERVICE_CONNECTION_NAME="${GITHUB_SERVICE_CONNECTION_NAME:-$AZURE_BASE_NAME-github-service-connection}"
 
   prompt ADO_ORG_URL "Azure DevOps org URL" "$ADO_ORG_URL"
   prompt ADO_PROJECT "Azure DevOps project name" "$ADO_PROJECT"

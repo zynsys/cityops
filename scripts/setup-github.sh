@@ -7,13 +7,14 @@ source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib/common.sh"
 
 GITHUB_REPO_URL="${GITHUB_REPO_URL:-https://github.com/zynsys/cityops}"
 GITHUB_REPO_SLUG="${GITHUB_REPO_SLUG:-$(printf '%s' "$GITHUB_REPO_URL" | sed -E 's#^https://github.com/##; s#\.git$##')}"
-GITHUB_APP_NAME="${GITHUB_APP_NAME:-cityops-github-actions}"
-AZURE_RESOURCE_GROUP="${AZURE_RESOURCE_GROUP:-rg-cityops}"
+AZURE_BASE_NAME="${AZURE_BASE_NAME:-cityops}"
+GITHUB_APP_NAME="${GITHUB_APP_NAME:-$AZURE_BASE_NAME-github-actions}"
+AZURE_RESOURCE_GROUP="${AZURE_RESOURCE_GROUP:-rg-$AZURE_BASE_NAME}"
 AZURE_LOCATION="${AZURE_LOCATION:-francecentral}"
 AZURE_DB_LOCATION="${AZURE_DB_LOCATION:-francecentral}"
-AZURE_BASE_NAME="${AZURE_BASE_NAME:-cityops}"
 AZURE_OPENAI_ACCOUNT_NAME="${AZURE_OPENAI_ACCOUNT_NAME:-azopenai-$AZURE_BASE_NAME}"
 ALERT_EMAIL_ADDRESS="${ALERT_EMAIL_ADDRESS:-}"
+DEPLOYMENT_PROVIDER="${DEPLOYMENT_PROVIDER:-github}"
 
 for name in PG_ADMIN_PASSWORD AUTH_SECRET AUTH_SECRET_DEV; do
   require_value "$name"
@@ -97,6 +98,21 @@ set_secret PG_ADMIN_PASSWORD "$PG_ADMIN_PASSWORD"
 set_secret AUTH_SECRET "$AUTH_SECRET"
 set_secret AUTH_SECRET_DEV "$AUTH_SECRET_DEV"
 
+# A workflow disabled in the UI stays disabled even once its secrets exist, so reconcile it here.
+log "Reconciling workflow state"
+if [[ "$DEPLOYMENT_PROVIDER" == "github" ]]; then
+  for workflow in app-cicd.yml infra-cicd.yml load-test-cicd.yml; do
+    gh workflow enable "$workflow" --repo "$GITHUB_REPO_SLUG" >/dev/null 2>&1 \
+      && echo "  Enabled $workflow" \
+      || echo "  $workflow already enabled."
+  done
+else
+  for workflow in app-cicd.yml infra-cicd.yml; do
+    gh workflow disable "$workflow" --repo "$GITHUB_REPO_SLUG" >/dev/null 2>&1 \
+      && echo "  Disabled $workflow (Azure DevOps is the deploying provider)" \
+      || echo "  $workflow already disabled."
+  done
+fi
+
 log "GitHub Actions bootstrap complete"
 warn "Add required reviewers to the 'prod' environment: Settings > Environments > prod."
-warn "Enable deployment triggers in only one CI provider at a time."
