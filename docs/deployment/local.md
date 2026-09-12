@@ -19,7 +19,7 @@ Run `scripts/setup.sh` from the repository root. It:
 
 1. Checks prerequisites and Azure login.
 2. Prompts for subscription, deterministic names, regions, and alert email.
-3. Asks whether Azure DevOps should be configured. Answering no skips every ADO-specific prompt.
+3. Asks whether Azure DevOps and GitHub Actions should be configured. Both default to yes so a single run provisions everything; answering no skips that provider's prompts entirely.
 4. Generates missing provisioning secrets.
 5. Compiles Bicep and runs `what-if`.
 6. Requires explicit confirmation before applying.
@@ -35,13 +35,16 @@ Choose a distinctive base name. It must be lowercase letters and digits only, 22
 
 Non-interactive apply is deliberately blocked unless `CONFIRM_DEPLOY=true` is set. Supply all stable secrets explicitly and reuse them on later runs. Optional controls include:
 
-| Variable               | Default | Purpose                                             |
-| ---------------------- | ------- | --------------------------------------------------- |
-| `CONFIGURE_ADO`        | `n`     | Configure ADO after infrastructure deployment       |
-| `RUN_WHAT_IF`          | `y`     | Preview changes before apply                        |
-| `CONFIRM_DEPLOY`       | unset   | Must be `true` for non-interactive apply            |
-| `RUN_INFRA_SMOKE_TEST` | `y`     | Run Pester integration tests when PowerShell exists |
-| `DEPLOY_APP`           | `n`     | Deploy the application to the dev slot after setup  |
+| Variable               | Default | Purpose                                                  |
+| ---------------------- | ------- | -------------------------------------------------------- |
+| `CONFIGURE_ADO`        | `y`     | Configure Azure DevOps after infrastructure deployment   |
+| `CONFIGURE_GITHUB`     | `y`     | Configure GitHub Actions after infrastructure deployment |
+| `RUN_WHAT_IF`          | `y`     | Preview changes before apply                             |
+| `CONFIRM_DEPLOY`       | unset   | Must be `true` for non-interactive apply                 |
+| `RUN_INFRA_SMOKE_TEST` | `y`     | Run Pester integration tests when PowerShell exists      |
+| `DEPLOY_APP`           | `n`     | Deploy the application to the dev slot after setup       |
+
+Azure DevOps configuration is skipped automatically, before deployment, when no organisation and project are available.
 
 ## Application deployment
 

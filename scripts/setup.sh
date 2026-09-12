@@ -52,8 +52,8 @@ OPENAI_ACCOUNT_OVERRIDE="${AZURE_OPENAI_ACCOUNT_NAME:-${OPENAI_ACCOUNT_NAME:-}}"
 AZURE_LOCATION="${AZURE_LOCATION:-${LOCATION:-francecentral}}"
 AZURE_DB_LOCATION="${AZURE_DB_LOCATION:-${DB_LOCATION:-francecentral}}"
 ALERT_EMAIL_ADDRESS="${ALERT_EMAIL_ADDRESS:-$CURRENT_USER_EMAIL}"
-CONFIGURE_ADO="${CONFIGURE_ADO:-n}"
-CONFIGURE_GITHUB="${CONFIGURE_GITHUB:-n}"
+CONFIGURE_ADO="${CONFIGURE_ADO:-y}"
+CONFIGURE_GITHUB="${CONFIGURE_GITHUB:-y}"
 RUN_WHAT_IF="${RUN_WHAT_IF:-y}"
 CONFIRM_DEPLOY="${CONFIRM_DEPLOY:-}"
 RUN_INFRA_SMOKE_TEST="${RUN_INFRA_SMOKE_TEST:-y}"
@@ -84,13 +84,21 @@ if [[ "$DO_ADO" == "true" ]]; then
   ADO_PROJECT="${ADO_PROJECT:-$CURRENT_ADO_PROJECT}"
   SERVICE_CONNECTION_NAME="${SERVICE_CONNECTION_NAME:-cityops-azure-service-connection}"
   SP_SCOPE="${SP_SCOPE:-subscription}"
-  AUTHORIZE_FOR_ALL_PIPELINES="${AUTHORIZE_FOR_ALL_PIPELINES:-false}"
+  AUTHORIZE_FOR_ALL_PIPELINES="${AUTHORIZE_FOR_ALL_PIPELINES:-true}"
   GITHUB_REPO_URL="${GITHUB_REPO_URL:-https://github.com/zynsys/cityops}"
   GITHUB_PAT="${GITHUB_PAT:-}"
   GITHUB_SERVICE_CONNECTION_NAME="${GITHUB_SERVICE_CONNECTION_NAME:-cityops-github-service-connection}"
 
   prompt ADO_ORG_URL "Azure DevOps org URL" "$ADO_ORG_URL"
   prompt ADO_PROJECT "Azure DevOps project name" "$ADO_PROJECT"
+  if [[ -z "$ADO_ORG_URL" || -z "$ADO_PROJECT" ]]; then
+    # Caught here rather than in setup-ado.sh so the Azure deployment is not wasted.
+    warn "No Azure DevOps organization/project supplied — skipping Azure DevOps configuration."
+    DO_ADO=false
+  fi
+fi
+
+if [[ "$DO_ADO" == "true" ]]; then
   prompt SERVICE_CONNECTION_NAME "ARM service connection name" "$SERVICE_CONNECTION_NAME"
   prompt SP_SCOPE "Service principal scope (subscription|resource-group)" "$SP_SCOPE"
   prompt AUTHORIZE_FOR_ALL_PIPELINES "Authorize service connection for all pipelines? (true|false)" "$AUTHORIZE_FOR_ALL_PIPELINES"

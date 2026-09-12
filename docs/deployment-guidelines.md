@@ -248,11 +248,15 @@ az pipelines create --name load-test-cicd --yml-path .ado/load-test-cicd.yml \
   --service-connection "$GITHUB_SC_ID" --skip-first-run true
 ```
 
-By default the `cityops-azure-service-connection` service connection is **not** authorized for all pipelines
-(least privilege — see §11.2). Authorize `infra-cicd` and `app-cicd` explicitly: Project Settings →
-Service connections → `cityops-azure-service-connection` → Security → add both pipelines. (Or set **"Grant access
-permission to all pipelines"** on the connection if you'd rather skip this per-pipeline step.)
-`load-test-cicd` doesn't need this — it never logs into Azure (§11.9).
+`scripts/setup-ado.sh` authorizes the `cityops-azure-service-connection` service connection for all
+pipelines (`AUTHORIZE_FOR_ALL_PIPELINES=true`), because the connection must exist before the
+pipelines are registered and Azure DevOps cannot grant per-pipeline access to a pipeline that does
+not exist yet. That keeps setup a single working pass, at the cost of letting any pipeline in the
+project use the connection.
+
+For least privilege instead, set `AUTHORIZE_FOR_ALL_PIPELINES=false` and authorize `infra-cicd` and
+`app-cicd` explicitly: Project Settings → Service connections → `cityops-azure-service-connection` →
+Security → add both pipelines. `load-test-cicd` doesn't need this — it never logs into Azure (§11.9).
 
 ---
 
@@ -596,7 +600,7 @@ in this document need setting up:
 - **Requester cannot approve their own run** — already enabled in §3.3 (separation of duties).
 - **Branch control check** — restricts `prod` deploys to `main` only: Environments → `prod` → Approvals and checks → **Branch control** → `refs/heads/main`.
 - **Exclusive lock check** — serializes concurrent `prod` deploys: Approvals and checks → **Exclusive lock**. YAML side already set: `Deploy_Prod`/`Deploy` set `lockBehavior: sequential`.
-- **Least-privilege service connection** — leave `cityops-azure-service-connection` NOT authorized for all pipelines by default; explicitly authorize `app-cicd`/`infra-cicd` under Service connections → `cityops-azure-service-connection` → Security (§3.4).
+- **Least-privilege service connection** — setup authorizes `cityops-azure-service-connection` for all pipelines so a single run leaves a working project (§3.4). For a long-lived or shared project, re-run with `AUTHORIZE_FOR_ALL_PIPELINES=false` and authorize `app-cicd`/`infra-cicd` individually under Service connections → `cityops-azure-service-connection` → Security.
 
 ### 11.3 Pipeline hygiene
 

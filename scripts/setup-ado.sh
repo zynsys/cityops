@@ -8,7 +8,9 @@ ADO_ORG_URL="${ADO_ORG_URL:-}"
 ADO_PROJECT="${ADO_PROJECT:-}"
 SERVICE_CONNECTION_NAME="${SERVICE_CONNECTION_NAME:-cityops-azure-service-connection}"
 SP_SCOPE="${SP_SCOPE:-subscription}"
-AUTHORIZE_FOR_ALL_PIPELINES="${AUTHORIZE_FOR_ALL_PIPELINES:-false}"
+# Pipelines are registered after this connection exists, so they cannot be authorized individually
+# here; blanket authorization keeps setup a single working pass. Set false to authorize by hand.
+AUTHORIZE_FOR_ALL_PIPELINES="${AUTHORIZE_FOR_ALL_PIPELINES:-true}"
 GITHUB_REPO_URL="${GITHUB_REPO_URL:-https://github.com/zynsys/cityops}"
 GITHUB_PAT="${GITHUB_PAT:-}"
 GITHUB_SERVICE_CONNECTION_NAME="${GITHUB_SERVICE_CONNECTION_NAME:-cityops-github-service-connection}"

@@ -37,8 +37,9 @@ After bootstrap:
 1. Configure `prod` approvals and prevent requester self-approval.
 2. Add branch control for `refs/heads/main`.
 3. Add an exclusive lock.
-4. Authorize only the required pipelines for the ARM service connection, unless broad authorization was explicitly selected.
-5. Configure pipeline retention.
+4. Configure pipeline retention.
+
+Setup authorizes the ARM service connection for all pipelines, because the connection is created before the pipelines exist. For a shared or long-lived project, set `AUTHORIZE_FOR_ALL_PIPELINES=false` and grant `infra-cicd` and `app-cicd` access individually under Service connections > Security.
 
 ## Reference-architecture switching
 
