@@ -13,9 +13,7 @@
 # and the pipeline YAML in git is untouched — only the ADO pipeline definitions are removed.
 #
 # What this script does NOT do:
-#   - Delete the 'dev'/'prod' Environments. The azure-devops CLI extension has no working
-#     list/delete command or `az devops invoke` route for Pipelines Environments — delete them
-#     manually: Pipelines → Environments → select each → ⋮ → Delete (under a minute).
+#   - Delete the Azure DevOps project itself, or anything in it that setup did not create.
 #   - Touch unrelated service connections (e.g. a pre-existing 'Docker Hub' connection) or
 #     unrelated resource groups.
 #
@@ -123,7 +121,8 @@ if [[ "$DO_ADO" == "true" ]]; then
   echo "    Pipelines:          infra-cicd, app-cicd, load-test-cicd (definitions only, not the YAML in git)"
   echo "    Variable groups:    cityops-env, cityops-infra"
   echo "    Service connections: $SERVICE_CONNECTION_NAME, $GITHUB_SERVICE_CONNECTION_NAME (+ SP/app registration)"
-  echo "    Untouched:          repos, boards, work items, artifacts, and the dev/prod Environments"
+  echo "    Environments:       dev, prod"
+  echo "    Untouched:          repos, boards, work items, and artifacts"
 fi
 if [[ "$CLEANUP_GITHUB" == "true" ]]; then
   echo "  GitHub repo:          $GITHUB_REPO_SLUG"
@@ -186,8 +185,21 @@ if [[ "$DO_ADO" == "true" ]]; then
     echo "  Not found — skipping."
   fi
 
-  warn "Reminder: 'dev'/'prod' Environments were NOT deleted (no reliable CLI/REST route)."
-  warn "Delete manually: Pipelines → Environments → select each → ⋮ → Delete."
+  log "Deleting Azure DevOps environments 'dev' and 'prod'"
+  ADO_ORG_NAME="$(basename "$ADO_ORG_URL")"
+  ADO_RESOURCE_ID="499b84ac-1321-427f-aa17-267ca6975798"
+  ENVIRONMENTS_URI="https://dev.azure.com/$ADO_ORG_NAME/$ADO_PROJECT/_apis/pipelines/environments"
+  for NAME in dev prod; do
+    ENV_ID="$(az rest --method get --resource "$ADO_RESOURCE_ID" --url "$ENVIRONMENTS_URI?api-version=7.1" \
+      --query "value[?name=='$NAME'].id | [0]" -o tsv 2>/dev/null || true)"
+    if [[ -n "$ENV_ID" && "$ENV_ID" != "None" ]]; then
+      az rest --method delete --resource "$ADO_RESOURCE_ID" --url "$ENVIRONMENTS_URI/$ENV_ID?api-version=7.1" -o none 2>/dev/null \
+        && echo "  Deleted environment '$NAME' (id=$ENV_ID)" \
+        || warn "Could not delete environment '$NAME'. Remove it under Pipelines > Environments."
+    else
+      echo "  '$NAME' not found — skipping."
+    fi
+  done
 fi
 
 # ---------------------------------------------------------------------------

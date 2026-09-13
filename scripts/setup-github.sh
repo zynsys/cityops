@@ -14,6 +14,7 @@ AZURE_LOCATION="${AZURE_LOCATION:-francecentral}"
 AZURE_DB_LOCATION="${AZURE_DB_LOCATION:-francecentral}"
 AZURE_OPENAI_ACCOUNT_NAME="${AZURE_OPENAI_ACCOUNT_NAME:-azopenai-$AZURE_BASE_NAME}"
 ALERT_EMAIL_ADDRESS="${ALERT_EMAIL_ADDRESS:-}"
+ENABLE_GITHUB_WORKFLOWS="${ENABLE_GITHUB_WORKFLOWS:-true}"
 
 for name in PG_ADMIN_PASSWORD AUTH_SECRET AUTH_SECRET_DEV; do
   require_value "$name"
@@ -98,12 +99,16 @@ set_secret AUTH_SECRET "$AUTH_SECRET"
 set_secret AUTH_SECRET_DEV "$AUTH_SECRET_DEV"
 
 # A workflow disabled in the UI stays disabled even once its secrets exist, so reconcile it here.
-log "Enabling CityOps workflows"
-for workflow in app-cicd.yml infra-cicd.yml load-test-cicd.yml; do
-  gh workflow enable "$workflow" --repo "$GITHUB_REPO_SLUG" >/dev/null 2>&1 \
-    && echo "  Enabled $workflow" \
-    || echo "  $workflow already enabled."
-done
+if is_true "$ENABLE_GITHUB_WORKFLOWS"; then
+  log "Enabling CityOps workflows"
+  for workflow in app-cicd.yml infra-cicd.yml load-test-cicd.yml; do
+    gh workflow enable "$workflow" --repo "$GITHUB_REPO_SLUG" >/dev/null 2>&1 \
+      && echo "  Enabled $workflow" \
+      || echo "  $workflow already enabled."
+  done
+else
+  warn "Leaving workflow enabled/disabled state untouched (ENABLE_GITHUB_WORKFLOWS=false)."
+fi
 
 log "GitHub Actions bootstrap complete"
 warn "Add required reviewers to the 'prod' environment: Settings > Environments > prod."

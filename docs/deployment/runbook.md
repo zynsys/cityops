@@ -67,7 +67,9 @@ A Key Vault with purge protection enabled cannot be purged at all; redeploy unde
 
 Set any of these to `false` to keep that scope. Azure DevOps cleanup is skipped automatically when no organisation and project are configured.
 
-Two things are never removed: the Azure DevOps project itself and its `dev`/`prod` environments, which have no working CLI or REST route on Microsoft-account-backed organisations and must be deleted from Pipelines > Environments. GitHub environments other than `dev` and `prod` are also left untouched.
+The Azure DevOps project itself is never removed, only the objects setup created inside it. GitHub environments other than `dev` and `prod` are also left untouched.
+
+Azure DevOps environments are deleted through the REST API, which requires the organisation to be backed by the same Microsoft Entra directory as your `az login`. On a Microsoft-account-backed organisation that call returns `Unauthorized`, and the environments must be removed from Pipelines > Environments instead.
 
 ## Common checks
 

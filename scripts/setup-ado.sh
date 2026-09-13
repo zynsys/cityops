@@ -45,8 +45,11 @@ log "Configuring Azure DevOps defaults"
 az extension show --name azure-devops >/dev/null 2>&1 || az extension add --name azure-devops --yes
 az devops configure --defaults organization="$ADO_ORG_URL" project="$ADO_PROJECT"
 # The azure-devops extension keeps its own session, which expires independently of 'az login'.
+# An organization backed by a different directory than the signed-in Azure account cannot use the
+# 'az login' token at all, so a PAT from an account with access is the only route there. A stored
+# 'az devops login' session takes precedence over AZURE_DEVOPS_EXT_PAT once 'az login' has run.
 az pipelines list --top 1 --output none 2>/dev/null \
-  || die "Azure DevOps authentication failed for '$ADO_ORG_URL/$ADO_PROJECT'. Run 'az devops login --organization $ADO_ORG_URL' with a PAT, then retry."
+  || die "Azure DevOps authentication failed for '$ADO_ORG_URL/$ADO_PROJECT'. Sign in with a personal access token from an account that can access the organization: printf '%s' \"\$ADO_PAT\" | az devops login --organization $ADO_ORG_URL"
 SUBSCRIPTION_ID="$(az account show --query id --output tsv)"
 
 log "Creating or reusing deployment service principal"
