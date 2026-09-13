@@ -54,8 +54,6 @@ AZURE_DB_LOCATION="${AZURE_DB_LOCATION:-${DB_LOCATION:-francecentral}}"
 ALERT_EMAIL_ADDRESS="${ALERT_EMAIL_ADDRESS:-$CURRENT_USER_EMAIL}"
 CONFIGURE_ADO="${CONFIGURE_ADO:-y}"
 CONFIGURE_GITHUB="${CONFIGURE_GITHUB:-y}"
-# Both providers watch the same branch, so only one may deploy automatically.
-DEPLOYMENT_PROVIDER="${DEPLOYMENT_PROVIDER:-github}"
 RUN_WHAT_IF="${RUN_WHAT_IF:-y}"
 CONFIRM_DEPLOY="${CONFIRM_DEPLOY:-}"
 RUN_INFRA_SMOKE_TEST="${RUN_INFRA_SMOKE_TEST:-y}"
@@ -78,20 +76,6 @@ prompt AZURE_DB_LOCATION "PostgreSQL region" "$AZURE_DB_LOCATION"
 prompt ALERT_EMAIL_ADDRESS "Alert email address (blank disables alerts)" "$ALERT_EMAIL_ADDRESS"
 confirm DO_ADO "Configure Azure DevOps integration?" "$CONFIGURE_ADO"
 confirm DO_GITHUB "Configure GitHub Actions integration?" "$CONFIGURE_GITHUB"
-
-if [[ "$DO_ADO" == "true" && "$DO_GITHUB" == "true" ]]; then
-  prompt DEPLOYMENT_PROVIDER "Which provider deploys automatically on push? (github|ado)" "$DEPLOYMENT_PROVIDER"
-  while [[ "$DEPLOYMENT_PROVIDER" != "github" && "$DEPLOYMENT_PROVIDER" != "ado" ]]; do
-    warn "Enter 'github' or 'ado'."
-    [[ -t 0 ]] || die "Set DEPLOYMENT_PROVIDER to github or ado."
-    prompt DEPLOYMENT_PROVIDER "Which provider deploys automatically on push? (github|ado)" "github"
-  done
-elif [[ "$DO_ADO" == "true" ]]; then
-  DEPLOYMENT_PROVIDER=ado
-else
-  DEPLOYMENT_PROVIDER=github
-fi
-export DEPLOYMENT_PROVIDER
 
 if [[ "$DO_GITHUB" == "true" ]]; then
   GITHUB_REPO_URL="${GITHUB_REPO_URL:-https://github.com/zynsys/cityops}"

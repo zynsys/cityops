@@ -173,9 +173,6 @@ for pipeline_name in "${!PIPELINES[@]}"; do
 done
 
 log "Azure DevOps bootstrap complete"
-if [[ "${DEPLOYMENT_PROVIDER:-ado}" != "ado" ]]; then
-  warn "Azure DevOps is configured but is not the selected auto-deploying provider."
-  warn "Pause these pipelines so pushes to main do not race the other provider:"
-  warn "  Pipelines > each pipeline > ... > Settings > Paused."
-fi
+warn "If GitHub Actions is also configured, both providers deploy on a push to main; pause one"
+warn "provider's pipelines while demonstrating the other so they do not deploy concurrently."
 warn "Manually configure the prod approval, branch control, exclusive lock, and retention documented in docs/deployment/azure-devops.md."
