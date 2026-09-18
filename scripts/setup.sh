@@ -114,10 +114,25 @@ if [[ "$DO_ADO" == "true" ]]; then
     GH_ACTIVE_USER="$(gh api user --jq .login 2>/dev/null || true)"
     if [[ -n "$GH_ACTIVE_USER" ]]; then
       confirm USE_GH_TOKEN "Use active gh account '$GH_ACTIVE_USER' for the ADO GitHub connection?" "y"
-      [[ "$USE_GH_TOKEN" == "true" ]] && GITHUB_PAT="$(gh auth token --hostname github.com 2>/dev/null || true)"
+      if [[ "$USE_GH_TOKEN" == "true" ]]; then
+        # Azure DevOps needs admin:repo_hook to install the push/PR webhook; without it the
+        # pipelines register but never trigger. GitHub has no API to mint a token, so re-consent.
+        if ! gh auth status --hostname github.com 2>&1 | grep -q 'admin:repo_hook'; then
+          warn "The active gh token lacks the 'admin:repo_hook' scope, so Azure DevOps could not install"
+          warn "the webhook and pushes would never trigger the pipelines."
+          confirm REFRESH_GH_SCOPES "Grant it now via 'gh auth refresh' (opens a browser)?" "y"
+          if [[ "$REFRESH_GH_SCOPES" == "true" ]]; then
+            gh auth refresh --hostname github.com --scopes admin:repo_hook \
+              || warn "Scope refresh failed; register the pipelines manually or supply a PAT below."
+          fi
+        fi
+        GITHUB_PAT="$(gh auth token --hostname github.com 2>/dev/null || true)"
+      fi
     fi
   fi
-  prompt GITHUB_PAT "GitHub PAT for ADO pipeline registration (optional)" "$GITHUB_PAT" secret
+  if [[ -z "$GITHUB_PAT" ]]; then
+    prompt GITHUB_PAT "GitHub PAT with repo + admin:repo_hook (blank = register ADO pipelines manually)" "" secret
+  fi
 fi
 
 if [[ -n "$AZURE_SUBSCRIPTION_ID" ]]; then
