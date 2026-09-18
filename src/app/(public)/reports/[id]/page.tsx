@@ -7,6 +7,7 @@ import ReportAttachmentGallery from "@/components/reports/ReportAttachmentGaller
 import ReportActivityTracker from "@/components/reports/ReportActivityTracker";
 import ReportSidebar from "@/components/reports/ReportSidebar";
 import ReportComments from "@/components/reports/ReportComments";
+import Breadcrumbs from "@/components/reports/Breadcrumbs";
 
 const EDITABLE_STATUSES = new Set(["created", "under_validation"]);
 
@@ -34,40 +35,43 @@ export default async function ReportDetailPage({ params }: PageProps) {
   const hasAttachments = report.attachments.some((a) => a.type === "image");
 
   return (
-    <div className="flex-1">
-      {/* Report info — dark section */}
-      <section className="bg-[#161F2F] py-8 sm:py-10">
-        <div className="container mx-auto px-4 sm:px-6 lg:px-8 space-y-6">
-          <ReportHeader report={report} editHref={editHref} />
-          <ReportDescription description={report.description} />
+    <div className="page-shell">
+      <Breadcrumbs reportTitle={report.title} />
+
+      <div className="surface-card mt-5 p-5 sm:p-8">
+        <ReportHeader report={report} editHref={editHref} />
+      </div>
+
+      <div className="mt-6 grid items-start gap-6 lg:grid-cols-[minmax(0,1fr)_20rem] xl:grid-cols-[minmax(0,1fr)_22rem]">
+        <div className="min-w-0 space-y-6">
+          <div className="surface-card p-5 sm:p-6">
+            <ReportDescription description={report.description} />
+          </div>
           {hasAttachments && (
-            <ReportAttachmentGallery attachments={report.attachments} />
+            <div className="surface-card p-5 sm:p-6">
+              <ReportAttachmentGallery attachments={report.attachments} />
+            </div>
           )}
-        </div>
-      </section>
 
-      {/* Activity Tracker — alt section */}
-      <section className="bg-section-alt py-8 sm:py-10">
-        <div className="container mx-auto px-4 sm:px-6 lg:px-8">
-          <ReportActivityTracker status={report.status} activities={report.activities} />
-        </div>
-      </section>
+          <div className="surface-card p-5 sm:p-6">
+            <ReportActivityTracker status={report.status} activities={report.activities} />
+          </div>
 
-      {/* Map — primary section */}
-      <section className="bg-section-primary py-8 sm:py-10">
-        <div className="container mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="h-[350px] overflow-hidden rounded-lg border border-border sm:h-[450px]">
-            <ReportSidebar report={report} />
+          <div className="surface-card p-5 sm:p-6">
+            <ReportComments comments={report.comments} />
           </div>
         </div>
-      </section>
 
-      {/* Public comments */}
-      <section className="bg-section-alt py-8 sm:py-10">
-        <div className="container mx-auto px-4 sm:px-6 lg:px-8">
-          <ReportComments comments={report.comments} />
-        </div>
-      </section>
+        <aside className="surface-card min-w-0 overflow-hidden lg:sticky lg:top-24">
+          <div className="border-b border-border p-5">
+            <h2 className="text-lg font-semibold tracking-tight text-foreground">Location</h2>
+            <p className="mt-1 text-sm leading-6 text-muted-foreground">Where this issue was reported.</p>
+          </div>
+          <div className="h-80 sm:h-96">
+            <ReportSidebar report={report} />
+          </div>
+        </aside>
+      </div>
     </div>
   );
 }

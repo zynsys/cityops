@@ -1,8 +1,8 @@
-"use client";
+'use client';
 
-import { useReportsPageContext } from "./ReportsPageContext";
-import ReportCard from "./ReportCard";
-import type { PublicReport } from "@/db/queries/reports";
+import { useReportsPageContext } from './ReportsPageContext';
+import ReportCard from './ReportCard';
+import type { PublicReport } from '@/db/queries/reports';
 
 interface ReportListItemProps {
   report: PublicReport;
@@ -12,7 +12,7 @@ export default function ReportListItem({ report }: ReportListItemProps) {
   const { setHoveredId } = useReportsPageContext();
 
   return (
-    <div className="border-b border-border last:border-b-0">
+    <div className="min-w-0">
       <ReportCard
         report={{
           id: report.id,

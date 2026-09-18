@@ -1,12 +1,12 @@
-import { redirect, notFound } from "next/navigation";
-import Link from "next/link";
-import { ArrowLeft, Lock } from "lucide-react";
-import { auth } from "@auth";
-import { getReportForEdit } from "@/db/queries/reports";
-import { getActiveCategories } from "@/db/queries/categories";
-import EditReportForm from "@/components/reports/submit/EditReportForm";
+import { redirect, notFound } from 'next/navigation';
+import Link from 'next/link';
+import { ArrowLeft, Lock } from 'lucide-react';
+import { auth } from '@auth';
+import { getReportForEdit } from '@/db/queries/reports';
+import { getActiveCategories } from '@/db/queries/categories';
+import EditReportForm from '@/components/reports/submit/EditReportForm';
 
-const EDITABLE_STATUSES = new Set(["created", "under_validation"]);
+const EDITABLE_STATUSES = new Set(['created', 'under_validation']);
 
 interface PageProps {
   params: Promise<{ id: string }>;
@@ -28,64 +28,62 @@ export default async function EditReportPage({ params }: PageProps) {
   const reportId = parseInt(idStr, 10);
   if (isNaN(reportId) || reportId < 1) notFound();
 
-  const [report, categories] = await Promise.all([
-    getReportForEdit(reportId),
-    getActiveCategories(),
-  ]);
+  const [report, categories] = await Promise.all([getReportForEdit(reportId), getActiveCategories()]);
 
   if (!report) notFound();
 
   // Ownership check — redirect to /403 if not the reporter
   if (report.reporterUserId !== session.user.userId) {
-    redirect("/403");
+    redirect('/403');
   }
 
   const isEditable = EDITABLE_STATUSES.has(report.status);
 
   return (
     <div className="min-h-screen bg-background">
-      <div className="container mx-auto max-w-2xl px-4 py-8 sm:px-6 lg:px-8">
+      <div className="page-shell max-w-4xl">
         {/* Back link */}
         <Link
           href={`/reports/${reportId}`}
-          className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors mb-6 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent rounded"
+          className="mb-4 inline-flex min-h-11 items-center gap-2 rounded-lg px-1 text-sm font-medium text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
         >
           <ArrowLeft className="w-4 h-4" aria-hidden="true" />
           Back to report
         </Link>
 
-        <h1 className="text-2xl font-bold text-foreground mb-6">Edit report</h1>
+        <header className="page-header">
+          <div>
+            <p className="eyebrow mb-2">Report #{reportId}</p>
+            <h1 className="page-title">Edit report</h1>
+            <p className="page-description">Keep the details accurate so your council can respond.</p>
+          </div>
+        </header>
 
         {!isEditable ? (
           /* ── Locked state ── */
-          <div className="flex flex-col items-center gap-4 rounded-xl border border-border bg-surface px-6 py-12 text-center">
-            <div className="flex h-12 w-12 items-center justify-center rounded-full bg-muted">
+          <div className="surface-card flex flex-col items-center gap-5 px-5 py-10 text-center sm:px-8 sm:py-12">
+            <div className="flex h-14 w-14 items-center justify-center rounded-2xl border border-border bg-muted">
               <Lock className="h-6 w-6 text-muted-foreground" aria-hidden="true" />
             </div>
             <div className="flex flex-col gap-2">
-              <h2 className="text-base font-semibold text-foreground">
-                Report can no longer be edited
-              </h2>
-              <p className="max-w-sm text-sm text-muted-foreground">
+              <h2 className="text-lg font-semibold tracking-tight text-foreground">Report can no longer be edited</h2>
+              <p className="max-w-md text-sm leading-relaxed text-muted-foreground">
                 This report can no longer be edited because it is already being processed by your council.
               </p>
             </div>
-            <Link
-              href={`/reports/${reportId}`}
-              className="inline-flex items-center justify-center rounded-lg border border-border bg-background px-4 py-2 text-sm font-medium text-foreground hover:bg-muted transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
-            >
+            <Link href={`/reports/${reportId}`} className="btn-secondary">
               Back to report
             </Link>
           </div>
         ) : (
           /* ── Edit form ── */
-          <div className="rounded-xl border border-border bg-surface px-6 py-6">
+          <div className="surface-card p-5 sm:p-8">
             <EditReportForm
               reportId={reportId}
               initialTitle={report.title}
               initialDescription={report.description}
               initialCategoryId={report.categoryId}
-              initialLocationText={report.locationText ?? ""}
+              initialLocationText={report.locationText ?? ''}
               initialLat={report.lat ?? 54.5}
               initialLng={report.lng ?? -3.5}
               existingAttachments={report.attachments}

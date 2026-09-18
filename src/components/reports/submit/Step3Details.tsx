@@ -14,17 +14,15 @@ import { step3Schema, type Step3Input } from '@/lib/validations/reports';
 function FieldError({ id, message }: { id: string; message?: string }) {
   if (!message) return null;
   return (
-    <p id={id} className="mt-1.5 flex items-center gap-1 text-xs text-red-400">
-      <AlertCircle className="h-3 w-3 shrink-0" />
+    <p id={id} className="mt-2 flex items-start gap-2 text-sm text-danger" role="alert">
+      <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
       {message}
     </p>
   );
 }
 
 const inputClass = (hasError: boolean) =>
-  `w-full rounded-lg border px-3 py-2.5 text-sm bg-background text-foreground placeholder:text-muted-foreground outline-none transition-colors focus:border-accent focus:ring-2 focus:ring-accent/20 ${
-    hasError ? 'border-red-500' : 'border-border'
-  }`;
+  `input-field ${hasError ? 'border-danger focus:border-danger focus:ring-danger/15' : 'border-border'}`;
 
 function CharCounter({
   id,
@@ -39,7 +37,7 @@ function CharCounter({
   warnAt: number;
   dangerAt: number;
 }) {
-  const color = current > dangerAt ? 'text-red-400' : current > warnAt ? 'text-amber-400' : 'text-muted-foreground';
+  const color = current > dangerAt ? 'text-danger' : current > warnAt ? 'text-warning' : 'text-muted-foreground';
   return (
     <span id={id} aria-live="polite" aria-atomic="true" className={`text-xs tabular-nums ${color}`}>
       {current} / {max}
@@ -109,19 +107,26 @@ export default function Step3Details({ onBack, onNext, onGoToStep }: Step3Detail
   }
 
   return (
-    <div className="flex flex-col h-full">
+    <div className="flex h-full min-h-0 flex-col">
       {/* Scrollable form area */}
-      <div className="flex-1 overflow-y-auto px-4 py-6">
-        <div className="max-w-2xl mx-auto w-full">
+      <div className="min-h-0 flex-1 overflow-y-auto px-4 py-5 sm:px-6 sm:py-7">
+        <div className="surface-card mx-auto w-full max-w-2xl p-5 sm:p-6">
+          <header className="mb-6">
+            <p className="eyebrow mb-2">Step 3 · Details</p>
+            <h2 className="text-xl font-semibold tracking-tight text-foreground sm:text-2xl">Describe the problem</h2>
+            <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
+              A clear title and description help council staff understand what needs attention.
+            </p>
+          </header>
           {/* Contextual summary chip */}
           <div className="mb-6 flex flex-wrap gap-2 text-xs">
             {state.tenantName && (
-              <span className="flex items-center gap-1.5 rounded-full border border-border bg-muted px-3 py-1 text-muted-foreground">
+              <span className="flex w-full flex-wrap items-center gap-x-2 rounded-xl border border-border bg-background px-3 py-1 text-muted-foreground">
                 Council: <span className="font-medium text-foreground">{state.tenantName}</span>
                 <button
                   type="button"
                   onClick={() => onGoToStep(2)}
-                  className="ml-1 text-accent underline hover:no-underline"
+                  className="ml-auto inline-flex min-h-11 shrink-0 items-center rounded-lg px-2 font-medium text-accent underline-offset-4 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
                 >
                   Change
                 </button>
@@ -129,12 +134,15 @@ export default function Step3Details({ onBack, onNext, onGoToStep }: Step3Detail
             )}
           </div>
 
-          <form id="step3-form" onSubmit={handleSubmit(onSubmit)} noValidate className="flex flex-col gap-5">
+          <form id="step3-form" onSubmit={handleSubmit(onSubmit)} noValidate className="flex flex-col gap-6">
             {/* Title */}
             <div>
               <div className="mb-1.5 flex items-center justify-between">
-                <label htmlFor="title" className="text-sm font-medium text-foreground">
-                  Title <span className="text-red-400">*</span>
+                <label htmlFor="title" className="field-label mb-0">
+                  Title{' '}
+                  <span className="text-danger" aria-hidden="true">
+                    *
+                  </span>
                 </label>
                 <CharCounter id="title-counter" current={titleValue.length} max={255} warnAt={200} dangerAt={240} />
               </div>
@@ -142,6 +150,7 @@ export default function Step3Details({ onBack, onNext, onGoToStep }: Step3Detail
                 id="title"
                 type="text"
                 placeholder="e.g. Large pothole on the corner of…"
+                aria-required="true"
                 aria-invalid={errors.title ? 'true' : 'false'}
                 aria-describedby={errors.title ? 'title-error title-counter' : 'title-counter'}
                 {...register('title')}
@@ -153,8 +162,11 @@ export default function Step3Details({ onBack, onNext, onGoToStep }: Step3Detail
             {/* Description */}
             <div>
               <div className="mb-1.5 flex items-center justify-between">
-                <label htmlFor="description" className="text-sm font-medium text-foreground">
-                  Description <span className="text-red-400">*</span>
+                <label htmlFor="description" className="field-label mb-0">
+                  Description{' '}
+                  <span className="text-danger" aria-hidden="true">
+                    *
+                  </span>
                 </label>
                 <CharCounter
                   id="description-counter"
@@ -167,6 +179,7 @@ export default function Step3Details({ onBack, onNext, onGoToStep }: Step3Detail
               <textarea
                 id="description"
                 placeholder="Describe the problem in detail. Include anything that might help the council respond — how long it has been there, any safety concerns, etc."
+                aria-required="true"
                 aria-invalid={errors.description ? 'true' : 'false'}
                 aria-describedby={errors.description ? 'description-error description-counter' : 'description-counter'}
                 rows={4}
@@ -184,7 +197,7 @@ export default function Step3Details({ onBack, onNext, onGoToStep }: Step3Detail
             {/* Location label (optional) */}
             <div>
               <div className="mb-1.5 flex items-center justify-between">
-                <label htmlFor="locationText" className="text-sm font-medium text-foreground">
+                <label htmlFor="locationText" className="field-label mb-0">
                   Location label <span className="text-xs font-normal text-muted-foreground">(optional)</span>
                 </label>
                 {locValue.length > 0 && (
@@ -200,7 +213,9 @@ export default function Step3Details({ onBack, onNext, onGoToStep }: Step3Detail
                 {...register('locationText')}
                 className={inputClass(!!errors.locationText)}
               />
-              <p className="mt-1 text-xs text-muted-foreground">Optional — helps staff find the exact spot.</p>
+              <p className="mt-2 text-xs leading-relaxed text-muted-foreground">
+                Optional — helps staff find the exact spot.
+              </p>
               <FieldError id="location-error" message={errors.locationText?.message} />
             </div>
           </form>
@@ -208,13 +223,9 @@ export default function Step3Details({ onBack, onNext, onGoToStep }: Step3Detail
       </div>
 
       {/* Bottom navigation */}
-      <div className="shrink-0 border-t border-border bg-surface px-4 py-3 flex items-center justify-between gap-3">
-        <button
-          type="button"
-          onClick={onBack}
-          className="flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold border border-border text-foreground hover:bg-muted transition-colors"
-        >
-          <ArrowLeft size={16} />
+      <div className="flex shrink-0 items-center justify-between gap-3 border-t border-border bg-surface px-4 py-3 sm:px-6 sm:py-4">
+        <button type="button" onClick={onBack} className="btn-secondary">
+          <ArrowLeft size={16} aria-hidden="true" />
           Back
         </button>
 
@@ -224,14 +235,12 @@ export default function Step3Details({ onBack, onNext, onGoToStep }: Step3Detail
           disabled={!isValid}
           aria-disabled={!isValid}
           className={[
-            'flex items-center gap-2 rounded-lg px-5 py-2 text-sm font-semibold transition-colors shrink-0',
-            isValid
-              ? 'bg-accent text-accent-foreground hover:opacity-90 cursor-pointer'
-              : 'bg-muted text-muted-foreground cursor-not-allowed opacity-50',
+            'btn-primary min-w-24 shrink-0',
+            isValid ? 'bg-accent text-accent-foreground' : 'bg-muted text-muted-foreground shadow-none',
           ].join(' ')}
         >
           Next
-          <ArrowRight size={16} />
+          <ArrowRight size={16} aria-hidden="true" />
         </button>
       </div>
     </div>

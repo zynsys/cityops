@@ -1,0 +1,88 @@
+.cityops-map.leaflet-container {
+  background: var(--color-muted);
+  color: var(--color-foreground);
+  font-family: var(--font-source-sans), 'Segoe UI', sans-serif;
+}
+
+/* Outrank Leaflet's unlayered defaults, including after client navigation.
+   Pair the wrapper and tip with the semantic text colours inside the popup. */
+.cityops-map.leaflet-container .leaflet-popup-content-wrapper,
+.cityops-map.leaflet-container .leaflet-popup-tip {
+  background: var(--color-surface);
+  color: var(--color-foreground);
+}
+
+.cityops-map.leaflet-container .leaflet-popup-content-wrapper {
+  border: 1px solid var(--color-border);
+  border-radius: 14px;
+  box-shadow: var(--shadow-raised);
+}
+
+.cityops-map.leaflet-container .leaflet-bar {
+  overflow: hidden;
+  border: 1px solid var(--color-border);
+  border-radius: 0.75rem;
+  box-shadow: var(--shadow-soft);
+}
+
+.cityops-map.leaflet-container .leaflet-bar a {
+  display: flex;
+  width: 44px;
+  height: 44px;
+  align-items: center;
+  justify-content: center;
+  border-bottom: 1px solid var(--color-border);
+  border-radius: 0;
+  background: var(--color-surface);
+  color: var(--color-foreground);
+  font-size: 22px;
+  line-height: 1;
+}
+
+.cityops-map.leaflet-container .leaflet-bar a:last-child {
+  border-bottom: 0;
+}
+
+.cityops-map.leaflet-container .leaflet-bar a:hover {
+  background: var(--color-muted);
+}
+
+.cityops-map.leaflet-container .leaflet-bar a.leaflet-disabled {
+  cursor: not-allowed;
+  background: var(--color-muted);
+  color: var(--color-muted-foreground);
+}
+
+.cityops-map.leaflet-container .leaflet-popup-close-button {
+  display: flex;
+  width: 44px;
+  height: 44px;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border-radius: 0.75rem;
+  color: var(--color-muted-foreground);
+  font-size: 24px;
+}
+
+.cityops-map.leaflet-container .leaflet-popup-close-button:hover,
+.cityops-map.leaflet-container .leaflet-popup-close-button:focus {
+  color: var(--color-accent);
+}
+
+.cityops-map.leaflet-container .leaflet-bar a:focus-visible,
+.cityops-map.leaflet-container .leaflet-popup-close-button:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: -3px;
+}
+
+.cityops-map.leaflet-container .leaflet-control-attribution {
+  padding: 0.125rem 0.5rem;
+  background: color-mix(in srgb, var(--color-surface) 94%, transparent);
+  color: var(--color-muted-foreground);
+  font-size: 0.75rem;
+}
+
+.cityops-map.leaflet-container .leaflet-control-attribution a {
+  color: var(--color-accent);
+}

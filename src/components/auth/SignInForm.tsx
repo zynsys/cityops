@@ -1,41 +1,36 @@
-"use client";
+'use client';
 
-import { useState } from "react";
-import { signIn, getSession } from "next-auth/react";
-import { useSearchParams } from "next/navigation";
-import { AlertCircle, Loader2, X } from "lucide-react";
-import Link from "next/link";
+import { useState } from 'react';
+import { signIn, getSession } from 'next-auth/react';
+import { useSearchParams } from 'next/navigation';
+import { AlertCircle, Loader2, X } from 'lucide-react';
+import Link from 'next/link';
 
 // Roles whose post-login landing page is the staff console. platform_admin is
 // intentionally excluded — it cannot access /staff/* (see middleware.ts and
 // src/app/staff/layout.tsx), so routing it there would bounce it to /403.
-const STAFF_ROLES = new Set(["authority_user", "tenant_admin"]);
+const STAFF_ROLES = new Set(['authority_user', 'tenant_admin']);
 
 function isRelativePath(url: string): boolean {
-  return (
-    !url.startsWith("http://") &&
-    !url.startsWith("https://") &&
-    !url.startsWith("//")
-  );
+  return !url.startsWith('http://') && !url.startsWith('https://') && !url.startsWith('//');
 }
 
 function getRoleDestination(role: string | undefined): string {
-  if (role && STAFF_ROLES.has(role)) return "/staff/reports";
-  return "/";
+  if (role && STAFF_ROLES.has(role)) return '/staff/reports';
+  return '/';
 }
 
 export default function SignInForm() {
   const searchParams = useSearchParams();
-  const rawCallbackUrl = searchParams.get("callbackUrl") ?? "";
+  const rawCallbackUrl = searchParams.get('callbackUrl') ?? '';
   // Only honour callbackUrl if it's a relative path; otherwise role-based redirect applies
-  const explicitCallbackUrl =
-    rawCallbackUrl && isRelativePath(rawCallbackUrl) ? rawCallbackUrl : null;
+  const explicitCallbackUrl = rawCallbackUrl && isRelativePath(rawCallbackUrl) ? rawCallbackUrl : null;
 
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
-  const [emailError, setEmailError] = useState("");
-  const [passwordError, setPasswordError] = useState("");
-  const [error, setError] = useState("");
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [emailError, setEmailError] = useState('');
+  const [passwordError, setPasswordError] = useState('');
+  const [error, setError] = useState('');
   const [dismissed, setDismissed] = useState(false);
   const [loading, setLoading] = useState(false);
 
@@ -43,20 +38,20 @@ export default function SignInForm() {
     let valid = true;
 
     if (!email) {
-      setEmailError("Email is required.");
+      setEmailError('Email is required.');
       valid = false;
     } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-      setEmailError("Please enter a valid email address.");
+      setEmailError('Please enter a valid email address.');
       valid = false;
     } else {
-      setEmailError("");
+      setEmailError('');
     }
 
     if (!password) {
-      setPasswordError("Password is required.");
+      setPasswordError('Password is required.');
       valid = false;
     } else {
-      setPasswordError("");
+      setPasswordError('');
     }
 
     return valid;
@@ -64,23 +59,23 @@ export default function SignInForm() {
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    setError("");
+    setError('');
     setDismissed(false);
 
     if (!validate()) return;
 
     setLoading(true);
     try {
-      const result = await signIn("credentials", {
+      const result = await signIn('credentials', {
         email,
         password,
         redirect: false,
       });
 
-      if (result?.error === "CredentialsSignin") {
-        setError("Invalid email or password. Please try again.");
+      if (result?.error === 'CredentialsSignin') {
+        setError('Invalid email or password. Please try again.');
       } else if (result?.error) {
-        setError("Something went wrong. Please try again.");
+        setError('Something went wrong. Please try again.');
       } else {
         // Resolve destination: explicit callbackUrl wins; otherwise role-based default
         if (explicitCallbackUrl) {
@@ -92,34 +87,38 @@ export default function SignInForm() {
         }
       }
     } catch {
-      setError("Something went wrong. Please try again.");
+      setError('Something went wrong. Please try again.');
     } finally {
       setLoading(false);
     }
   }
 
   return (
-    <div className="w-full max-w-md rounded-2xl border border-border bg-surface p-8 shadow-2xl">
-      <h1 className="mb-6 text-2xl font-bold text-foreground">Sign In</h1>
+    <div className="w-full">
+      <header className="mb-8">
+        <p className="eyebrow">Welcome back</p>
+        <h1 className="page-title mt-3">Sign In</h1>
+        <p className="page-description">Access your CityOps account to pick up where you left off.</p>
+      </header>
 
       {/* Error Alert */}
       {error && !dismissed && (
         <div
           role="alert"
           aria-live="assertive"
-          className="mb-5 flex items-start justify-between gap-3 rounded-lg border border-red-500/40 bg-red-500/10 px-4 py-3 text-sm text-red-400"
+          className="mb-6 flex items-start justify-between gap-3 rounded-xl border border-danger/25 bg-danger/5 px-4 py-3 text-sm leading-relaxed text-danger"
         >
           <div className="flex items-start gap-2">
-            <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+            <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
             <span>{error}</span>
           </div>
           <button
             type="button"
             aria-label="Dismiss error"
             onClick={() => setDismissed(true)}
-            className="shrink-0 text-red-400/70 hover:text-red-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-400/50 rounded"
+            className="-my-2 -mr-2 inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-lg text-danger transition-colors hover:bg-danger/10"
           >
-            <X className="h-4 w-4" />
+            <X className="h-4 w-4" aria-hidden="true" />
           </button>
         </div>
       )}
@@ -127,10 +126,7 @@ export default function SignInForm() {
       <form onSubmit={handleSubmit} noValidate className="space-y-5">
         {/* Email */}
         <div>
-          <label
-            htmlFor="email"
-            className="mb-1.5 block text-sm font-medium text-foreground"
-          >
+          <label htmlFor="email" className="field-label">
             Email address
           </label>
           <input
@@ -140,16 +136,14 @@ export default function SignInForm() {
             placeholder="you@example.com"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
-            aria-invalid={emailError ? "true" : "false"}
-            aria-describedby={emailError ? "email-error" : undefined}
+            aria-invalid={emailError ? 'true' : 'false'}
+            aria-describedby={emailError ? 'email-error' : undefined}
             disabled={loading}
-            className={`w-full rounded-lg border px-3 py-2.5 text-sm bg-background text-foreground placeholder:text-muted-foreground outline-none transition-colors focus:border-accent focus:ring-2 focus:ring-accent/20 disabled:opacity-60 ${
-              emailError ? "border-red-500" : "border-border"
-            }`}
+            className={`input-field ${emailError ? 'border-danger' : 'border-border'}`}
           />
           {emailError && (
-            <p id="email-error" className="mt-1.5 flex items-center gap-1 text-xs text-red-400">
-              <AlertCircle className="h-3 w-3 shrink-0" />
+            <p id="email-error" className="mt-2 flex items-start gap-1.5 text-xs leading-5 text-danger">
+              <AlertCircle className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden="true" />
               {emailError}
             </p>
           )}
@@ -157,16 +151,13 @@ export default function SignInForm() {
 
         {/* Password */}
         <div>
-          <div className="mb-1.5 flex items-center justify-between">
-            <label
-              htmlFor="password"
-              className="text-sm font-medium text-foreground"
-            >
+          <div className="mb-2 flex items-center justify-between gap-3">
+            <label htmlFor="password" className="field-label mb-0">
               Password
             </label>
             <Link
               href="/forgot-password"
-              className="text-xs text-accent hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/50 rounded"
+              className="rounded-sm text-xs font-medium text-accent underline-offset-4 hover:underline"
             >
               Forgot password?
             </Link>
@@ -178,38 +169,29 @@ export default function SignInForm() {
             placeholder="••••••••"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
-            aria-invalid={passwordError ? "true" : "false"}
-            aria-describedby={passwordError ? "password-error" : undefined}
+            aria-invalid={passwordError ? 'true' : 'false'}
+            aria-describedby={passwordError ? 'password-error' : undefined}
             disabled={loading}
-            className={`w-full rounded-lg border px-3 py-2.5 text-sm bg-background text-foreground placeholder:text-muted-foreground outline-none transition-colors focus:border-accent focus:ring-2 focus:ring-accent/20 disabled:opacity-60 ${
-              passwordError ? "border-red-500" : "border-border"
-            }`}
+            className={`input-field ${passwordError ? 'border-danger' : 'border-border'}`}
           />
           {passwordError && (
-            <p id="password-error" className="mt-1.5 flex items-center gap-1 text-xs text-red-400">
-              <AlertCircle className="h-3 w-3 shrink-0" />
+            <p id="password-error" className="mt-2 flex items-start gap-1.5 text-xs leading-5 text-danger">
+              <AlertCircle className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden="true" />
               {passwordError}
             </p>
           )}
         </div>
 
         {/* Submit */}
-        <button
-          type="submit"
-          disabled={loading}
-          className="flex w-full items-center justify-center gap-2 rounded-lg bg-accent px-4 py-2.5 text-sm font-semibold text-accent-foreground transition hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/50 disabled:cursor-not-allowed disabled:opacity-60"
-        >
-          {loading && <Loader2 className="h-4 w-4 animate-spin" />}
-          {loading ? "Signing in…" : "Sign In"}
+        <button type="submit" disabled={loading} className="btn-primary w-full">
+          {loading && <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />}
+          {loading ? 'Signing in…' : 'Sign In'}
         </button>
       </form>
 
-      <div className="mt-6 border-t border-border pt-5 text-center text-sm text-muted-foreground">
-        Don&apos;t have an account?{" "}
-        <Link
-          href="/register"
-          className="font-semibold text-accent hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/50 rounded"
-        >
+      <div className="mt-8 border-t border-border pt-6 text-center text-sm leading-relaxed text-muted-foreground">
+        Don&apos;t have an account?{' '}
+        <Link href="/register" className="rounded-sm font-semibold text-accent underline-offset-4 hover:underline">
           Create an account
         </Link>
       </div>

@@ -1,26 +1,23 @@
-"use client";
+'use client';
 
-import { useState } from "react";
-import { useForm } from "react-hook-form";
-import { zodResolver } from "@hookform/resolvers/zod";
-import { AlertCircle, CheckCircle2, Loader2 } from "lucide-react";
-import Link from "next/link";
-import { registerFormSchema, type RegisterFormInput } from "@/lib/validations/auth";
+import { useState } from 'react';
+import { useForm } from 'react-hook-form';
+import { zodResolver } from '@hookform/resolvers/zod';
+import { AlertCircle, CheckCircle2, Loader2 } from 'lucide-react';
+import Link from 'next/link';
+import { registerFormSchema, type RegisterFormInput } from '@/lib/validations/auth';
 
 function FieldError({ id, message }: { id: string; message?: string }) {
   if (!message) return null;
   return (
-    <p id={id} className="mt-1.5 flex items-center gap-1 text-xs text-red-400">
-      <AlertCircle className="h-3 w-3 shrink-0" />
+    <p id={id} className="mt-2 flex items-start gap-1.5 text-xs leading-5 text-danger">
+      <AlertCircle className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden="true" />
       {message}
     </p>
   );
 }
 
-const inputClass = (hasError: boolean) =>
-  `w-full rounded-lg border px-3 py-2.5 text-sm bg-background text-foreground placeholder:text-muted-foreground outline-none transition-colors focus:border-accent focus:ring-2 focus:ring-accent/20 disabled:opacity-60 ${
-    hasError ? "border-red-500" : "border-border"
-  }`;
+const inputClass = (hasError: boolean) => `input-field ${hasError ? 'border-danger' : 'border-border'}`;
 
 export default function RegisterForm() {
   const [success, setSuccess] = useState<string | null>(null);
@@ -38,9 +35,9 @@ export default function RegisterForm() {
   async function onSubmit(data: RegisterFormInput) {
     setTopError(null);
     try {
-      const res = await fetch("/api/auth/register", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
+      const res = await fetch('/api/auth/register', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           displayName: data.displayName,
           email: data.email,
@@ -54,37 +51,32 @@ export default function RegisterForm() {
       }
 
       if (res.status === 409) {
-        setError("email", {
-          message: "An account with this email address already exists.",
+        setError('email', {
+          message: 'An account with this email address already exists.',
         });
         return;
       }
 
-      setTopError("Registration failed. Please try again.");
+      setTopError('Registration failed. Please try again.');
     } catch {
-      setTopError("Registration failed. Please try again.");
+      setTopError('Registration failed. Please try again.');
     }
   }
 
   // Success state
   if (success) {
     return (
-      <div className="w-full max-w-md rounded-2xl border border-border bg-surface p-8 shadow-2xl text-center">
-        <div className="mb-4 flex justify-center">
-          <CheckCircle2 className="h-12 w-12 text-green-500" />
+      <div className="w-full">
+        <div className="mb-6 flex h-12 w-12 items-center justify-center rounded-2xl bg-success/10 text-success">
+          <CheckCircle2 className="h-6 w-6" aria-hidden="true" />
         </div>
-        <h1 className="mb-3 text-2xl font-bold text-foreground">
-          Check your email
-        </h1>
-        <p className="mb-6 text-sm text-muted-foreground">
-          We&apos;ve sent a verification link to{" "}
-          <span className="font-medium text-foreground">{success}</span>. Please
-          click the link to activate your account.
+        <h1 className="page-title">Check your email</h1>
+        <p role="status" className="page-description mb-8">
+          We&apos;ve sent a verification link to{' '}
+          <span className="break-all font-medium text-foreground">{success}</span>. Please click the link to activate
+          your account.
         </p>
-        <Link
-          href="/sign-in"
-          className="inline-block rounded-lg bg-accent px-5 py-2.5 text-sm font-semibold text-accent-foreground hover:opacity-90 transition-opacity focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/50"
-        >
+        <Link href="/sign-in" className="btn-primary w-full">
           Back to Sign In
         </Link>
       </div>
@@ -92,17 +84,21 @@ export default function RegisterForm() {
   }
 
   return (
-    <div className="w-full max-w-md rounded-2xl border border-border bg-surface p-8 shadow-2xl">
-      <h1 className="mb-6 text-2xl font-bold text-foreground">Create Account</h1>
+    <div className="w-full">
+      <header className="mb-8">
+        <p className="eyebrow">Welcome to CityOps</p>
+        <h1 className="page-title mt-3">Create Account</h1>
+        <p className="page-description">Report local issues and follow their progress with your CityOps account.</p>
+      </header>
 
       {/* Top-level error alert */}
       {topError && (
         <div
           role="alert"
           aria-live="assertive"
-          className="mb-5 flex items-start gap-2 rounded-lg border border-red-500/40 bg-red-500/10 px-4 py-3 text-sm text-red-400"
+          className="mb-6 flex items-start gap-2 rounded-xl border border-danger/25 bg-danger/5 px-4 py-3 text-sm leading-relaxed text-danger"
         >
-          <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+          <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
           <span>{topError}</span>
         </div>
       )}
@@ -110,10 +106,7 @@ export default function RegisterForm() {
       <form onSubmit={handleSubmit(onSubmit)} noValidate className="space-y-5">
         {/* Display Name */}
         <div>
-          <label
-            htmlFor="displayName"
-            className="mb-1.5 block text-sm font-medium text-foreground"
-          >
+          <label htmlFor="displayName" className="field-label">
             Display name
           </label>
           <input
@@ -121,10 +114,10 @@ export default function RegisterForm() {
             type="text"
             autoComplete="name"
             placeholder="Jane Smith"
-            aria-invalid={errors.displayName ? "true" : "false"}
-            aria-describedby={errors.displayName ? "displayName-error" : undefined}
+            aria-invalid={errors.displayName ? 'true' : 'false'}
+            aria-describedby={errors.displayName ? 'displayName-error' : undefined}
             disabled={isSubmitting}
-            {...register("displayName")}
+            {...register('displayName')}
             className={inputClass(!!errors.displayName)}
           />
           <FieldError id="displayName-error" message={errors.displayName?.message} />
@@ -132,10 +125,7 @@ export default function RegisterForm() {
 
         {/* Email */}
         <div>
-          <label
-            htmlFor="email"
-            className="mb-1.5 block text-sm font-medium text-foreground"
-          >
+          <label htmlFor="email" className="field-label">
             Email address
           </label>
           <input
@@ -143,10 +133,10 @@ export default function RegisterForm() {
             type="email"
             autoComplete="email"
             placeholder="you@example.com"
-            aria-invalid={errors.email ? "true" : "false"}
-            aria-describedby={errors.email ? "email-error" : undefined}
+            aria-invalid={errors.email ? 'true' : 'false'}
+            aria-describedby={errors.email ? 'email-error' : undefined}
             disabled={isSubmitting}
-            {...register("email")}
+            {...register('email')}
             className={inputClass(!!errors.email)}
           />
           <FieldError id="email-error" message={errors.email?.message} />
@@ -154,10 +144,7 @@ export default function RegisterForm() {
 
         {/* Password */}
         <div>
-          <label
-            htmlFor="password"
-            className="mb-1.5 block text-sm font-medium text-foreground"
-          >
+          <label htmlFor="password" className="field-label">
             Password
           </label>
           <input
@@ -165,10 +152,10 @@ export default function RegisterForm() {
             type="password"
             autoComplete="new-password"
             placeholder="••••••••"
-            aria-invalid={errors.password ? "true" : "false"}
-            aria-describedby={errors.password ? "password-error" : undefined}
+            aria-invalid={errors.password ? 'true' : 'false'}
+            aria-describedby={errors.password ? 'password-error' : undefined}
             disabled={isSubmitting}
-            {...register("password")}
+            {...register('password')}
             className={inputClass(!!errors.password)}
           />
           <FieldError id="password-error" message={errors.password?.message} />
@@ -176,10 +163,7 @@ export default function RegisterForm() {
 
         {/* Confirm Password */}
         <div>
-          <label
-            htmlFor="confirmPassword"
-            className="mb-1.5 block text-sm font-medium text-foreground"
-          >
+          <label htmlFor="confirmPassword" className="field-label">
             Confirm password
           </label>
           <input
@@ -187,32 +171,25 @@ export default function RegisterForm() {
             type="password"
             autoComplete="new-password"
             placeholder="••••••••"
-            aria-invalid={errors.confirmPassword ? "true" : "false"}
-            aria-describedby={errors.confirmPassword ? "confirmPassword-error" : undefined}
+            aria-invalid={errors.confirmPassword ? 'true' : 'false'}
+            aria-describedby={errors.confirmPassword ? 'confirmPassword-error' : undefined}
             disabled={isSubmitting}
-            {...register("confirmPassword")}
+            {...register('confirmPassword')}
             className={inputClass(!!errors.confirmPassword)}
           />
           <FieldError id="confirmPassword-error" message={errors.confirmPassword?.message} />
         </div>
 
         {/* Submit */}
-        <button
-          type="submit"
-          disabled={isSubmitting}
-          className="flex w-full items-center justify-center gap-2 rounded-lg bg-accent px-4 py-2.5 text-sm font-semibold text-accent-foreground transition hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/50 disabled:cursor-not-allowed disabled:opacity-60"
-        >
-          {isSubmitting && <Loader2 className="h-4 w-4 animate-spin" />}
-          {isSubmitting ? "Creating account…" : "Create Account"}
+        <button type="submit" disabled={isSubmitting} className="btn-primary w-full">
+          {isSubmitting && <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />}
+          {isSubmitting ? 'Creating account…' : 'Create Account'}
         </button>
       </form>
 
-      <div className="mt-6 border-t border-border pt-5 text-center text-sm text-muted-foreground">
-        Already have an account?{" "}
-        <Link
-          href="/sign-in"
-          className="font-semibold text-accent hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/50 rounded"
-        >
+      <div className="mt-8 border-t border-border pt-6 text-center text-sm leading-relaxed text-muted-foreground">
+        Already have an account?{' '}
+        <Link href="/sign-in" className="rounded-sm font-semibold text-accent underline-offset-4 hover:underline">
           Sign In
         </Link>
       </div>

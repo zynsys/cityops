@@ -1,118 +1,70 @@
-import {
-  MapPin,
-  Bell,
-  CircleCheckBig,
-  Award,
-  Gift,
-} from "lucide-react";
-
 interface Step {
   number: string;
-  icon: React.ReactNode;
   title: string;
   description: string;
 }
 
 const STEPS: Step[] = [
   {
-    number: "01",
-    icon: <MapPin className="h-8 w-8" />,
-    title: "Spot & Report",
-    description:
-      "See a problem in your neighborhood? Take a photo and submit a report with your location.",
+    number: '01',
+    title: 'Spot & Report',
+    description: 'See a problem nearby? Take a photo and submit a report with its location.',
   },
   {
-    number: "02",
-    icon: <Bell className="h-8 w-8" />,
-    title: "Council Notified",
-    description:
-      "Your report is instantly sent to the local council. Track progress with real-time updates.",
+    number: '02',
+    title: 'Council Notified',
+    description: 'Your report is sent to the local council. Follow its progress and receive updates.',
   },
   {
-    number: "03",
-    icon: <CircleCheckBig className="h-8 w-8" />,
-    title: "Report Verified & Fixed",
+    number: '03',
+    title: 'Report Verified & Fixed',
     description:
-      "The council reviews and verifies your report, then works to resolve it. You receive updates throughout the process.",
+      'The council reviews and verifies your report, then works to resolve it. You receive updates throughout the process.',
   },
   {
-    number: "04",
-    icon: <Award className="h-8 w-8" />,
-    title: "Earn Badges & Points",
+    number: '04',
+    title: 'Earn Badges & Points',
     description:
-      "Once verified as valid, you earn points and badges. Build your community reputation with every contribution!",
+      'Once your report is verified as valid, earn points and badges for your contribution to the community.',
   },
   {
-    number: "05",
-    icon: <Gift className="h-8 w-8" />,
-    title: "Redeem Rewards",
-    description:
-      "Exchange your points for vouchers from local businesses. Get rewarded for making a difference!",
+    number: '05',
+    title: 'Redeem Rewards',
+    description: 'Exchange your points for vouchers from local businesses. Get rewarded for making a difference.',
   },
 ];
 
 export default function HowItWorks() {
   return (
-    <section className="bg-section-alt py-20 sm:py-28">
-      <div className="container mx-auto px-4 sm:px-6 lg:px-8">
-        {/* Heading */}
-        <div className="text-center">
-          <h2 className="text-2xl font-bold text-foreground sm:text-3xl">
-            How It Works
-          </h2>
-          <p className="mx-auto mt-3 mb-14 max-w-2xl text-sm text-muted-foreground sm:text-base">
-            Reporting local problems is quick and easy. Here&apos;s how you can
-            make a difference in just 5 simple steps.
+    <section aria-labelledby="how-it-works-title" className="border-y border-border bg-section-alt py-14 sm:py-20">
+      <div className="section-shell">
+        <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between md:gap-10">
+          <div>
+            <p className="eyebrow">From report to resolution</p>
+            <h2
+              id="how-it-works-title"
+              className="mt-3 text-2xl font-semibold tracking-tight text-foreground sm:text-3xl"
+            >
+              How It Works
+            </h2>
+          </div>
+          <p className="max-w-lg text-sm leading-relaxed text-muted-foreground sm:text-base">
+            Five straightforward steps to report a local issue, follow its progress, and make a difference in your
+            community.
           </p>
         </div>
 
-        {/* Steps — desktop */}
-        <div className="mt-12 hidden gap-10 lg:grid lg:grid-cols-5">
+        <ol className="mt-10 grid gap-7 sm:grid-cols-2 lg:grid-cols-5 lg:gap-6">
           {STEPS.map((step) => (
-            <div key={step.number} className="flex flex-col items-start text-left">
-              <div className="flex items-center gap-3">
-                <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-amber-400 to-orange-500 text-black">
-                  {step.icon}
-                </div>
-                <span className="text-5xl font-bold text-foreground">
-                  {step.number}
-                </span>
-              </div>
-
-              <h3 className="mt-4 text-base font-bold text-foreground">
-                {step.title}
-              </h3>
-
-              <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
-                {step.description}
-              </p>
-            </div>
+            <li key={step.number} className="border-t border-border pt-5">
+              <span className="text-sm font-semibold text-accent tabular-nums" aria-hidden="true">
+                {step.number}
+              </span>
+              <h3 className="mt-3 text-base font-semibold text-foreground">{step.title}</h3>
+              <p className="mt-2 text-sm leading-relaxed text-muted-foreground">{step.description}</p>
+            </li>
           ))}
-        </div>
-
-        {/* Mobile layout */}
-        <div className="mt-12 grid grid-cols-1 gap-10 sm:grid-cols-2 md:grid-cols-3 lg:hidden">
-          {STEPS.map((step) => (
-            <div key={step.number} className="flex flex-col items-start text-left">
-              <div className="flex items-center gap-3">
-                <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-amber-400 to-orange-500 text-black">
-                  {step.icon}
-                </div>
-                <span className="text-5xl font-bold text-foreground">
-                  {step.number}
-                </span>
-              </div>
-
-              <h3 className="mt-4 text-base font-bold text-foreground">
-                {step.title}
-              </h3>
-
-              <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
-                {step.description}
-              </p>
-            </div>
-          ))}
-        </div>
+        </ol>
       </div>
     </section>
   );

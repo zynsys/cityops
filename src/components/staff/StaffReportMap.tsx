@@ -1,16 +1,15 @@
-"use client";
+'use client';
 
-import dynamic from "next/dynamic";
+import dynamic from 'next/dynamic';
 
-const ReportLocationMap = dynamic(
-  () => import("@/components/reports/ReportLocationMap"),
-  {
-    ssr: false,
-    loading: () => (
-      <div className="h-full w-full animate-pulse rounded-lg bg-muted" />
-    ),
-  }
-);
+const ReportLocationMap = dynamic(() => import('@/components/reports/ReportLocationMap'), {
+  ssr: false,
+  loading: () => (
+    <div className="flex h-full w-full animate-pulse items-center justify-center bg-muted/40" role="status">
+      <span className="text-sm text-muted-foreground">Loading report location…</span>
+    </div>
+  ),
+});
 
 interface StaffReportMapProps {
   lat: number;

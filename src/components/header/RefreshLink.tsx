@@ -1,11 +1,13 @@
-"use client";
+'use client';
 
-import { useRouter, usePathname } from "next/navigation";
+import { useRouter, usePathname } from 'next/navigation';
 
 interface RefreshLinkProps {
   href: string;
   className?: string;
   children: React.ReactNode;
+  onNavigate?: () => void;
+  'aria-current'?: 'page';
 }
 
 /**
@@ -14,11 +16,18 @@ interface RefreshLinkProps {
  * where state lives in the page component and a same-URL click would
  * otherwise do nothing.
  */
-export default function RefreshLink({ href, className, children }: RefreshLinkProps) {
+export default function RefreshLink({
+  href,
+  className,
+  children,
+  onNavigate,
+  'aria-current': ariaCurrent,
+}: RefreshLinkProps) {
   const router = useRouter();
   const pathname = usePathname();
 
   function handleClick(e: React.MouseEvent<HTMLAnchorElement>) {
+    onNavigate?.();
     if (pathname === href) {
       e.preventDefault();
       router.push(href);
@@ -27,7 +36,7 @@ export default function RefreshLink({ href, className, children }: RefreshLinkPr
   }
 
   return (
-    <a href={href} className={className} onClick={handleClick}>
+    <a href={href} className={className} onClick={handleClick} aria-current={ariaCurrent}>
       {children}
     </a>
   );

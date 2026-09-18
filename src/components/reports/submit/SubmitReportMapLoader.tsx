@@ -1,13 +1,19 @@
-"use client";
+'use client';
 
-import dynamic from "next/dynamic";
-import type { SubmitReportMapProps } from "./SubmitReportMap";
+import dynamic from 'next/dynamic';
+import { Loader2 } from 'lucide-react';
+import type { SubmitReportMapProps } from './SubmitReportMap';
 
-const SubmitReportMap = dynamic(() => import("./SubmitReportMap"), {
+const SubmitReportMap = dynamic(() => import('./SubmitReportMap'), {
   ssr: false,
   loading: () => (
-    <div className="h-full w-full flex items-center justify-center bg-background">
-      <p className="text-muted-foreground text-sm">Loading map…</p>
+    <div
+      className="flex h-full w-full items-center justify-center gap-3 bg-muted text-muted-foreground"
+      role="status"
+      aria-live="polite"
+    >
+      <Loader2 size={18} className="animate-spin" aria-hidden="true" />
+      <p className="text-sm">Loading map…</p>
     </div>
   ),
 });
@@ -15,4 +21,3 @@ const SubmitReportMap = dynamic(() => import("./SubmitReportMap"), {
 export default function SubmitReportMapLoader(props: SubmitReportMapProps) {
   return <SubmitReportMap {...props} />;
 }
-

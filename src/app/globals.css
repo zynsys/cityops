@@ -2,54 +2,163 @@
 
 @custom-variant dark (&:where(.dark, .dark *));
 
+@theme inline {
+  --font-sans: var(--font-source-sans), "Segoe UI", sans-serif;
+  --font-heading: var(--font-manrope), "Segoe UI", sans-serif;
+}
+
 @theme {
-  --font-sans: "Poppins", sans-serif;
-
-  /* Dark theme (default) */
-  --color-background: oklch(15.7% 0.023 254.1);
-  --color-foreground: oklch(96.8% 0.007 247.9);
-  --color-muted: oklch(27.8% 0.033 256.8);
-  --color-muted-foreground: oklch(71.1% 0.019 261.3);
-  --color-border: oklch(30.6% 0.035 258.2);
-  --color-accent: oklch(74.5% 0.183 62.8);
-  --color-accent-foreground: oklch(15.7% 0.023 254.1);
-  --color-surface: oklch(20.5% 0.031 255.5);
-  --color-section-primary: #101828;
-  --color-section-alt: #1E2939;
+  --color-background: #faf9f6;
+  --color-foreground: #242424;
+  --color-muted: #f0eee7;
+  --color-muted-foreground: #66635b;
+  --color-border: #e1ddd2;
+  --color-brand: #f4ca45;
+  --color-brand-hover: #e6b932;
+  --color-brand-foreground: #24221a;
+  /* Use charcoal for small text and focus rings on light surfaces, not yellow. */
+  --color-accent: #35342f;
+  --color-accent-foreground: #ffffff;
+  --color-surface: #ffffff;
+  --color-section-primary: #ffffff;
+  --color-section-alt: #f3f1e9;
+  --color-hero-background: #f5cc4a;
+  --color-hero-glow: #ffe899;
+  --color-hero-end: #fff1bd;
+  --color-hero-foreground: #26251f;
+  --color-hero-muted: #514b37;
+  --color-hero-accent: #292720;
+  --color-success: #176b4d;
+  --color-info: #285f97;
+  --color-warning: #8a5b16;
+  --color-danger: #b33b48;
+  --radius-lg: 0.625rem;
+  --radius-xl: 0.875rem;
+  --radius-2xl: 1.25rem;
+  --radius-3xl: 1.75rem;
+  --shadow-soft: 0 4px 24px -8px rgb(36 32 23 / 0.1);
+  --shadow-raised: 0 12px 36px -12px rgb(36 32 23 / 0.17);
 }
 
-/* Dark theme (default and explicit) */
 html,
-html.dark {
-  --color-background: oklch(15.7% 0.023 254.1);
-  --color-foreground: oklch(96.8% 0.007 247.9);
-  --color-muted: oklch(27.8% 0.033 256.8);
-  --color-muted-foreground: oklch(71.1% 0.019 261.3);
-  --color-border: oklch(30.6% 0.035 258.2);
-  --color-accent: oklch(74.5% 0.183 62.8);
-  --color-accent-foreground: oklch(15.7% 0.023 254.1);
-  --color-surface: oklch(20.5% 0.031 255.5);
-  --color-section-primary: #101828;
-  --color-section-alt: #1E2939;
-}
-
-/* Light theme */
 html.light {
-  --color-background: oklch(98.5% 0.002 247.9);
-  --color-foreground: oklch(15.7% 0.023 254.1);
-  --color-muted: oklch(93.2% 0.006 264.5);
-  --color-muted-foreground: oklch(44.6% 0.024 256.8);
-  --color-border: oklch(87.5% 0.01 258.3);
-  --color-accent: oklch(74.5% 0.183 62.8);
-  --color-accent-foreground: oklch(98.5% 0.002 247.9);
-  --color-surface: oklch(100% 0 0);
-  --color-section-primary: #FFFFFF;
-  --color-section-alt: #F9FAFB;
+  color-scheme: light;
 }
 
-body {
-  background-color: var(--color-background);
-  color: var(--color-foreground);
+html.dark {
+  color-scheme: dark;
+  --color-background: #191919;
+  --color-foreground: #f6f4ee;
+  --color-muted: #30302d;
+  --color-muted-foreground: #c3c0b7;
+  --color-border: #41413b;
+  --color-brand: #f4cf59;
+  --color-brand-hover: #f8db7d;
+  --color-brand-foreground: #24221a;
+  --color-accent: #f4cf59;
+  --color-accent-foreground: #24221a;
+  --color-surface: #252524;
+  --color-section-primary: #212120;
+  --color-section-alt: #1d1d1c;
+  --color-hero-background: #292720;
+  --color-hero-glow: #443b24;
+  --color-hero-end: #1f1f1d;
+  --color-hero-foreground: #faf8f0;
+  --color-hero-muted: #ccc6b3;
+  --color-hero-accent: #f4cf59;
+  --color-success: #85d6b3;
+  --color-info: #9bc8f0;
+  --color-warning: #e8c47a;
+  --color-danger: #f4a4ae;
+  --shadow-soft: 0 4px 24px -8px rgb(0 0 0 / 0.22);
+  --shadow-raised: 0 12px 36px -12px rgb(0 0 0 / 0.4);
+}
+
+@layer base {
+  body {
+    background-color: var(--color-background);
+    color: var(--color-foreground);
+    text-rendering: optimizeLegibility;
+  }
+
+  h1, h2, h3, h4, h5, h6 {
+    @apply font-heading;
+  }
+
+  ::selection {
+    background: color-mix(in srgb, var(--color-brand) 25%, transparent);
+  }
+
+  :where(a, button, input, textarea, select, [tabindex]):focus-visible {
+    outline: 2px solid var(--color-accent);
+    outline-offset: 3px;
+  }
+
+  button:not(:disabled),
+  [role="button"]:not([aria-disabled="true"]) {
+    cursor: pointer;
+  }
+}
+
+/* Shared presentation primitives; utilities can override them per layout. */
+@layer components {
+  .section-shell {
+    @apply mx-auto w-full max-w-7xl px-4 sm:px-6 lg:px-8;
+  }
+
+  .page-shell {
+    @apply mx-auto w-full max-w-7xl px-4 py-8 sm:px-6 sm:py-10 lg:px-8;
+  }
+
+  .page-header {
+    @apply mb-8 flex flex-wrap items-end justify-between gap-4;
+  }
+
+  .eyebrow {
+    @apply text-xs font-semibold tracking-[0.12em] text-accent uppercase;
+  }
+
+  .page-title {
+    @apply font-heading text-3xl font-bold tracking-tight text-foreground sm:text-4xl;
+  }
+
+  .page-description {
+    @apply mt-3 max-w-2xl text-sm leading-relaxed text-muted-foreground sm:text-base;
+  }
+
+  .surface-card {
+    @apply rounded-2xl border border-border bg-surface shadow-soft;
+  }
+
+  .hero-surface {
+    background:
+      radial-gradient(ellipse at 30% 0%, var(--color-hero-glow), transparent 65%),
+      linear-gradient(140deg, var(--color-hero-background), var(--color-hero-end));
+  }
+
+  .btn-primary {
+    @apply inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-transparent bg-brand px-5 py-2.5 text-sm font-semibold text-brand-foreground shadow-xs transition-colors duration-200 hover:bg-brand-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:cursor-not-allowed disabled:opacity-50;
+  }
+
+  .btn-secondary {
+    @apply inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-border bg-surface px-5 py-2.5 text-sm font-medium text-foreground shadow-xs transition-colors hover:border-accent/40 hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:cursor-not-allowed disabled:opacity-50;
+  }
+
+  .input-field {
+    @apply block min-h-11 w-full rounded-xl border border-border bg-background px-3.5 py-2.5 text-sm text-foreground shadow-xs transition-colors placeholder:text-muted-foreground focus:border-accent focus:outline-none focus:ring-3 focus:ring-accent/15 disabled:cursor-not-allowed disabled:opacity-60;
+  }
+
+  .field-label {
+    @apply mb-2 block text-sm font-medium text-foreground;
+  }
+
+  .status-badge {
+    @apply inline-flex shrink-0 items-center gap-1.5 rounded-full px-2.5 py-1 text-xs leading-none font-medium whitespace-nowrap;
+  }
+
+  .empty-state {
+    @apply flex flex-col items-center justify-center rounded-2xl border border-dashed border-border bg-surface px-6 py-16 text-center;
+  }
 }
 
 @utility link-hover {
@@ -68,16 +177,17 @@ body {
   }
 }
 
-/* Marker cluster icons */
+/* Count and size still communicate marker density without traffic-light fills. */
 .cluster-icon {
   display: flex;
   align-items: center;
   justify-content: center;
   border-radius: 9999px;
-  font-weight: 700;
-  color: #fff;
+  font-weight: 600;
+  color: var(--color-brand-foreground);
   line-height: 1;
-  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);
+  border: 3px solid rgb(255 255 255 / 0.92);
+  box-shadow: 0 3px 12px rgb(36 32 23 / 0.17);
 }
 
 .cluster-icon span {
@@ -88,22 +198,30 @@ body {
   width: 36px;
   height: 36px;
   font-size: 12px;
-  background-color: rgba(34, 197, 94, 0.85);
-  border: 2px solid rgba(34, 197, 94, 1);
+  background-color: #f8d96a;
 }
 
 .cluster-icon--medium {
   width: 44px;
   height: 44px;
   font-size: 13px;
-  background-color: rgba(234, 179, 8, 0.85);
-  border: 2px solid rgba(234, 179, 8, 1);
+  background-color: #f2c642;
 }
 
 .cluster-icon--large {
   width: 52px;
   height: 52px;
   font-size: 14px;
-  background-color: rgba(239, 68, 68, 0.85);
-  border: 2px solid rgba(239, 68, 68, 1);
+  background-color: #dcb02f;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
 }

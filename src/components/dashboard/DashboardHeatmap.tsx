@@ -3,8 +3,10 @@
 import { MapContainer, TileLayer, useMap, GeoJSON, Circle } from 'react-leaflet';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
+import '@/components/map/map-chrome.css';
 import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { ArrowUpRight, MapPin } from 'lucide-react';
 import type { HeatmapPoint } from '@/db/queries/analytics';
 
 const UK_CENTER: [number, number] = [54.5, -3.5];
@@ -37,6 +39,7 @@ function HeatLayer({ points }: { points: HeatmapPoint[] }) {
         radius: 20,
         blur: 15,
         maxZoom: 12,
+        gradient: { 0.25: '#678CA4', 0.5: '#4D8F87', 0.75: '#A99562', 1: '#AA7259' },
       });
       heat!.addTo(map);
     });
@@ -102,10 +105,10 @@ function CouncilBoundaryLayer({ geoJson }: { geoJson: GeoJsonGeometry }) {
       key={JSON.stringify(geoJson).slice(0, 60)}
       data={geoJson as Parameters<typeof GeoJSON>[0]['data']}
       style={{
-        color: '#3B82F6',
+        color: '#587C99',
         weight: 2,
         opacity: 0.8,
-        fillColor: '#3B82F6',
+        fillColor: '#587C99',
         fillOpacity: 0.07,
       }}
     />
@@ -177,10 +180,29 @@ export default function DashboardHeatmap({ points, councilSlug, postcode }: Dash
   };
 
   return (
-    <div className="rounded-xl border border-border bg-surface overflow-hidden">
+    <div className="surface-card overflow-hidden">
       {/* Section Header */}
-      <div className="px-4 py-3 border-b border-border">
-        <h3 className="text-sm font-semibold text-foreground">Report Density</h3>
+      <div className="flex flex-col gap-4 border-b border-border p-5 sm:flex-row sm:items-center sm:justify-between sm:px-6">
+        <div className="flex items-start gap-3">
+          <MapPin className="mt-0.5 h-5 w-5 shrink-0 text-accent" aria-hidden="true" />
+          <div>
+            <h2 className="text-base font-semibold text-foreground">Report density</h2>
+            <p className="mt-1 text-sm text-muted-foreground">Geographic concentration of reported issues</p>
+          </div>
+        </div>
+        <div
+          className="flex items-center gap-2 text-xs text-muted-foreground"
+          role="img"
+          aria-label="Heatmap density scale: low to high"
+        >
+          <span>Low</span>
+          <span
+            className="h-2 w-24 rounded-full"
+            style={{ background: 'linear-gradient(to right, #678CA4, #4D8F87, #A99562, #AA7259)' }}
+            aria-hidden="true"
+          />
+          <span>High density</span>
+        </div>
       </div>
 
       {/* Map Container */}
@@ -189,7 +211,7 @@ export default function DashboardHeatmap({ points, councilSlug, postcode }: Dash
           center={UK_CENTER}
           zoom={UK_ZOOM}
           scrollWheelZoom={false}
-          className="h-full w-full z-0"
+          className="cityops-map h-full w-full z-0"
           zoomControl={true}
         >
           <TileLayer
@@ -206,10 +228,10 @@ export default function DashboardHeatmap({ points, councilSlug, postcode }: Dash
               center={postcodeCenter}
               radius={2000}
               pathOptions={{
-                color: '#F59E0B',
+                color: '#AA925D',
                 weight: 2,
                 opacity: 0.8,
-                fillColor: '#F59E0B',
+                fillColor: '#AA925D',
                 fillOpacity: 0.1,
               }}
             />
@@ -223,19 +245,17 @@ export default function DashboardHeatmap({ points, councilSlug, postcode }: Dash
         {/* Empty state overlay */}
         {!hasPoints && (
           <div className="absolute inset-0 flex items-center justify-center z-[500] pointer-events-none">
-            <div className="bg-background/80 backdrop-blur-sm rounded-lg px-4 py-2">
-              <p className="text-sm text-muted-foreground">No location data for the selected period.</p>
+            <div className="mx-4 rounded-xl border border-border bg-surface/95 px-5 py-4 text-center shadow-soft backdrop-blur-sm">
+              <p className="text-sm text-foreground">No location data for the selected period.</p>
             </div>
           </div>
         )}
 
         {/* View full map button */}
         <div className="absolute bottom-3 right-3 z-[500]">
-          <button
-            onClick={handleViewFullMap}
-            className="bg-background/80 backdrop-blur-sm text-foreground text-sm font-medium px-3 py-1.5 rounded-lg border border-border hover:bg-background/95 transition-colors cursor-pointer"
-          >
-            View full map &rarr;
+          <button onClick={handleViewFullMap} className="btn-secondary shadow-soft">
+            View full map
+            <ArrowUpRight className="h-4.5 w-4.5" aria-hidden="true" />
           </button>
         </div>
       </div>

@@ -1,12 +1,12 @@
-"use client";
+'use client';
 
-import { useState } from "react";
-import { Map as MapIcon, X } from "lucide-react";
-import { ReportsPageContextProvider } from "./ReportsPageContext";
-import MyReportListPanel from "./MyReportListPanel";
-import ReportsMapLoader from "./ReportsMapLoader";
-import type { MyReportSummary, CategoryOption, TenantOption } from "@/db/queries/reports";
-import type { PublicReport } from "@/db/queries/reports";
+import { useState } from 'react';
+import { Map as MapIcon, X } from 'lucide-react';
+import { ReportsPageContextProvider } from './ReportsPageContext';
+import MyReportListPanel from './MyReportListPanel';
+import ReportsMapLoader from './ReportsMapLoader';
+import type { MyReportSummary, CategoryOption, TenantOption } from '@/db/queries/reports';
+import type { PublicReport } from '@/db/queries/reports';
 
 interface MyReportsLayoutProps {
   reports: MyReportSummary[];
@@ -54,16 +54,16 @@ export default function MyReportsLayout({
     category_slug: r.categorySlug,
     category_color: r.categoryColor,
     tenant_name: r.tenantName,
-    tenant_slug: "",
+    tenant_slug: '',
     thumbnailUrl: r.thumbnailUrl,
   }));
 
   return (
     <ReportsPageContextProvider>
-      <div className="container mx-auto px-4 sm:px-6 lg:px-8 h-[calc(100dvh-65px)] overflow-hidden">
-        <div className="relative flex h-full overflow-hidden">
+      <div className="section-shell pt-6 pb-24 sm:pt-8 lg:pb-8">
+        <div className="relative grid items-start gap-6 lg:grid-cols-[minmax(0,1.1fr)_minmax(0,1fr)]">
           {/* Left panel: list */}
-          <div className="w-full lg:w-[520px] xl:w-[560px] flex-shrink-0 flex flex-col overflow-hidden lg:border-r border-border lg:pr-4">
+          <div className="surface-card flex min-w-0 flex-col overflow-hidden">
             <MyReportListPanel
               reports={reports}
               total={total}
@@ -81,8 +81,19 @@ export default function MyReportsLayout({
           </div>
 
           {/* Right panel: map (desktop only) */}
-          <div className="hidden lg:block flex-1">
-            <ReportsMapLoader reports={mapReports} fitBounds={false} />
+          <div className="surface-card sticky top-24 hidden h-[calc(100dvh-8rem)] min-h-[28rem] min-w-0 flex-col overflow-hidden lg:flex">
+            <div className="flex shrink-0 items-center gap-3 border-b border-border p-4">
+              <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-muted text-accent">
+                <MapIcon className="h-5 w-5" aria-hidden="true" />
+              </span>
+              <div>
+                <h2 className="text-sm font-semibold text-foreground">Your report locations</h2>
+                <p className="mt-0.5 text-xs leading-5 text-muted-foreground">Select a pin to view a report.</p>
+              </div>
+            </div>
+            <div className="min-h-0 flex-1">
+              <ReportsMapLoader reports={mapReports} fitBounds={false} />
+            </div>
           </div>
 
           {/* Mobile: floating "Show map" button */}
@@ -90,7 +101,7 @@ export default function MyReportsLayout({
             <button
               type="button"
               onClick={() => setShowMobileMap(true)}
-              className="lg:hidden fixed bottom-5 right-4 z-40 flex items-center gap-2 rounded-full bg-accent text-accent-foreground px-4 py-2.5 text-sm font-semibold shadow-lg"
+              className="btn-primary fixed right-4 bottom-5 z-40 rounded-full shadow-raised lg:hidden"
             >
               <MapIcon className="h-4 w-4" aria-hidden="true" />
               Show map
@@ -99,16 +110,24 @@ export default function MyReportsLayout({
 
           {/* Mobile: full-screen map overlay */}
           {showMobileMap && (
-            <div className="lg:hidden fixed inset-0 z-50 bg-background">
-              <button
-                type="button"
-                onClick={() => setShowMobileMap(false)}
-                className="absolute top-3 right-3 z-10 rounded-full bg-surface/90 backdrop-blur-sm p-2 shadow-md"
-                aria-label="Close map"
-              >
-                <X className="h-5 w-5 text-foreground" />
-              </button>
-              <ReportsMapLoader reports={mapReports} fitBounds={false} />
+            <div className="fixed inset-0 z-50 flex flex-col bg-background lg:hidden">
+              <div className="flex shrink-0 items-center justify-between gap-4 border-b border-border bg-surface p-4">
+                <h2 className="flex items-center gap-2 text-base font-semibold text-foreground">
+                  <MapIcon className="h-5 w-5 text-accent" aria-hidden="true" />
+                  Your report locations
+                </h2>
+                <button
+                  type="button"
+                  onClick={() => setShowMobileMap(false)}
+                  className="btn-secondary h-11 w-11 shrink-0 p-0"
+                  aria-label="Close map"
+                >
+                  <X className="h-5 w-5" aria-hidden="true" />
+                </button>
+              </div>
+              <div className="min-h-0 flex-1">
+                <ReportsMapLoader reports={mapReports} fitBounds={false} />
+              </div>
             </div>
           )}
         </div>

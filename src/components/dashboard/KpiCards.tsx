@@ -1,17 +1,9 @@
-"use client";
+'use client';
 
-import { useEffect, useRef, useState } from "react";
-import {
-  FileText,
-  CheckCircle2,
-  Clock,
-  AlertCircle,
-  TrendingUp,
-  TrendingDown,
-  Minus,
-} from "lucide-react";
-import type { DashboardKPIs } from "@/db/queries/analytics";
-import type { TimeRange } from "@/db/queries/analytics";
+import { useEffect, useRef, useState } from 'react';
+import { FileText, CheckCircle2, Clock, AlertCircle, TrendingUp, TrendingDown, Minus } from 'lucide-react';
+import type { DashboardKPIs } from '@/db/queries/analytics';
+import type { TimeRange } from '@/db/queries/analytics';
 
 interface KpiCardsProps {
   data: DashboardKPIs;
@@ -44,7 +36,7 @@ function useCountUp(target: number, duration = 600): number {
 }
 
 function formatDuration(days: number | null): string {
-  if (days === null) return "—";
+  if (days === null) return '—';
   if (days < 1) return `${Math.round(days * 24)} hrs`;
   return `${days} days`;
 }
@@ -58,7 +50,7 @@ function TrendBadge({ value, invertColor = false }: TrendBadgeProps) {
   if (value === null) {
     return (
       <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
-        <Minus className="h-3 w-3" />
+        <Minus className="h-4 w-4" aria-hidden="true" />
       </span>
     );
   }
@@ -67,20 +59,20 @@ function TrendBadge({ value, invertColor = false }: TrendBadgeProps) {
   const isNegative = value < 0;
   const isNeutral = value === 0;
 
-  let colorClass = "text-muted-foreground";
+  let colorClass = 'text-muted-foreground';
   if (!isNeutral) {
     const isGood = invertColor ? isNegative : isPositive;
-    colorClass = isGood ? "text-green-500" : "text-red-500";
+    colorClass = isGood ? 'text-success' : 'text-danger';
   }
 
   return (
-    <span className={`inline-flex items-center gap-0.5 text-xs font-medium ${colorClass}`}>
+    <span className={`inline-flex items-center gap-1 text-xs font-medium tabular-nums ${colorClass}`}>
       {isNeutral ? (
-        <Minus className="h-3 w-3" />
+        <Minus className="h-4 w-4" aria-hidden="true" />
       ) : isPositive ? (
-        <TrendingUp className="h-3 w-3" />
+        <TrendingUp className="h-4 w-4" aria-hidden="true" />
       ) : (
-        <TrendingDown className="h-3 w-3" />
+        <TrendingDown className="h-4 w-4" aria-hidden="true" />
       )}
       {Math.abs(value)}%
     </span>
@@ -90,7 +82,7 @@ function TrendBadge({ value, invertColor = false }: TrendBadgeProps) {
 interface KpiCardConfig {
   label: string;
   value: number;
-  format?: "number" | "duration";
+  format?: 'number' | 'duration';
   rawValue?: number | null;
   icon: React.ElementType;
   iconBg: string;
@@ -101,52 +93,52 @@ interface KpiCardConfig {
 }
 
 export default function KpiCards({ data, range }: KpiCardsProps) {
-  const showTrends = range !== "all";
+  const showTrends = range !== 'all';
 
   const cards: KpiCardConfig[] = [
     {
-      label: "Reports Submitted",
+      label: 'Reports Submitted',
       value: data.reportsSubmitted,
       icon: FileText,
-      iconBg: "bg-blue-500/10",
-      iconColor: "text-blue-500",
+      iconBg: 'bg-info/10',
+      iconColor: 'text-info',
       trend: data.trends.reportsSubmitted,
       showTrend: showTrends,
     },
     {
-      label: "Reports Resolved",
+      label: 'Reports Resolved',
       value: data.reportsResolved,
       icon: CheckCircle2,
-      iconBg: "bg-green-500/10",
-      iconColor: "text-green-500",
+      iconBg: 'bg-success/10',
+      iconColor: 'text-success',
       trend: data.trends.reportsResolved,
       showTrend: showTrends,
     },
     {
-      label: "Avg. Resolution Time",
+      label: 'Avg. Resolution Time',
       value: data.avgResolutionDays ?? 0,
-      format: "duration",
+      format: 'duration',
       rawValue: data.avgResolutionDays,
       icon: Clock,
-      iconBg: "bg-amber-500/10",
-      iconColor: "text-amber-500",
+      iconBg: 'bg-muted',
+      iconColor: 'text-muted-foreground',
       trend: data.trends.avgResolutionDays,
       invertTrend: true,
       showTrend: showTrends,
     },
     {
-      label: "Active Reports",
+      label: 'Active Reports',
       value: data.activeReports,
       icon: AlertCircle,
-      iconBg: "bg-purple-500/10",
-      iconColor: "text-purple-500",
+      iconBg: 'bg-accent/10',
+      iconColor: 'text-accent',
       trend: null,
       showTrend: false,
     },
   ];
 
   return (
-    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
       {cards.map((card) => (
         <KpiCard key={card.label} {...card} />
       ))}
@@ -157,7 +149,7 @@ export default function KpiCards({ data, range }: KpiCardsProps) {
 function KpiCard({
   label,
   value,
-  format = "number",
+  format = 'number',
   rawValue,
   icon: Icon,
   iconBg,
@@ -168,30 +160,23 @@ function KpiCard({
 }: KpiCardConfig) {
   const animatedValue = useCountUp(value);
 
-  const displayValue =
-    format === "duration"
-      ? formatDuration(rawValue ?? null)
-      : animatedValue.toLocaleString();
+  const displayValue = format === 'duration' ? formatDuration(rawValue ?? null) : animatedValue.toLocaleString();
 
   return (
-    <div className="relative rounded-xl border border-border bg-surface p-5 hover:shadow-md transition-shadow">
-      <div className={`absolute top-4 right-4 rounded-full p-2 ${iconBg}`}>
-        <Icon className={`h-5 w-5 ${iconColor}`} />
+    <div className="surface-card flex h-full flex-col p-5 sm:p-6">
+      <div className="flex items-center justify-between gap-3">
+        <p className="text-sm font-medium text-muted-foreground">{label}</p>
+        <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${iconBg}`}>
+          <Icon className={`h-5 w-5 ${iconColor}`} aria-hidden="true" />
+        </div>
       </div>
 
-      <div className="pr-12">
-        <p className="text-3xl font-bold text-foreground">{displayValue}</p>
-        <p className="mt-1 text-sm text-muted-foreground">{label}</p>
-      </div>
+      <p className="mt-4 text-4xl font-semibold tracking-tight text-foreground tabular-nums">{displayValue}</p>
 
       {showTrend && (
-        <div className="mt-3">
+        <div className="mt-4 flex flex-wrap items-center gap-x-1.5 gap-y-1">
           <TrendBadge value={trend} invertColor={invertTrend} />
-          {trend !== null && (
-            <span className="ml-1.5 text-xs text-muted-foreground">
-              vs prior period
-            </span>
-          )}
+          {trend !== null && <span className="text-xs text-muted-foreground">vs prior period</span>}
         </div>
       )}
     </div>

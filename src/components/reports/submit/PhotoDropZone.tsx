@@ -1,15 +1,10 @@
-"use client";
+'use client';
 
-import { useRef, useState } from "react";
-import { ImagePlus } from "lucide-react";
+import { useRef, useState } from 'react';
+import { ImagePlus } from 'lucide-react';
 
 const MAX_FILES = 5;
-const ACCEPTED_TYPES = new Set([
-  "image/jpeg",
-  "image/png",
-  "image/webp",
-  "image/heic",
-]);
+const ACCEPTED_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp', 'image/heic']);
 const MAX_BYTES = 10 * 1024 * 1024; // 10 MB
 
 interface PhotoDropZoneProps {
@@ -18,11 +13,7 @@ interface PhotoDropZoneProps {
   onValidationError: (messages: string[]) => void;
 }
 
-export default function PhotoDropZone({
-  currentCount,
-  onFilesAccepted,
-  onValidationError,
-}: PhotoDropZoneProps) {
+export default function PhotoDropZone({ currentCount, onFilesAccepted, onValidationError }: PhotoDropZoneProps) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [isDragging, setIsDragging] = useState(false);
   const atLimit = currentCount >= MAX_FILES;
@@ -48,14 +39,14 @@ export default function PhotoDropZone({
     // Respect remaining capacity (truncate silently — limit message shown separately)
     const toAdd = accepted.slice(0, remaining);
     if (accepted.length > remaining) {
-      errors.push(`Only ${remaining} more photo${remaining === 1 ? "" : "s"} can be added (maximum ${MAX_FILES}).`);
+      errors.push(`Only ${remaining} more photo${remaining === 1 ? '' : 's'} can be added (maximum ${MAX_FILES}).`);
     }
 
     if (errors.length > 0) onValidationError(errors);
     if (toAdd.length > 0) onFilesAccepted(toAdd);
 
     // Reset input so the same file can be re-selected after removal
-    if (inputRef.current) inputRef.current.value = "";
+    if (inputRef.current) inputRef.current.value = '';
   }
 
   function handleDragOver(e: React.DragEvent) {
@@ -79,7 +70,7 @@ export default function PhotoDropZone({
   }
 
   function handleKeyDown(e: React.KeyboardEvent) {
-    if (e.key === "Enter" || e.key === " ") {
+    if (e.key === 'Enter' || e.key === ' ') {
       e.preventDefault();
       if (!atLimit) inputRef.current?.click();
     }
@@ -97,29 +88,31 @@ export default function PhotoDropZone({
       onDragLeave={handleDragLeave}
       onDrop={handleDrop}
       className={[
-        "flex flex-col items-center justify-center gap-3 rounded-xl border-2 border-dashed px-6 py-5 text-center transition-colors cursor-pointer select-none",
-        "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent",
+        'flex min-h-48 flex-col items-center justify-center gap-4 rounded-2xl border-2 border-dashed px-5 py-8 text-center transition-colors cursor-pointer select-none sm:px-8',
+        'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-surface',
         atLimit
-          ? "border-border bg-muted text-muted-foreground opacity-60 cursor-not-allowed"
+          ? 'border-border bg-muted text-muted-foreground cursor-not-allowed'
           : isDragging
-            ? "border-accent bg-accent/10 text-foreground"
-            : "border-border bg-surface hover:border-accent/60 hover:bg-accent/5 text-muted-foreground",
-      ].join(" ")}
+            ? 'border-accent bg-muted text-foreground'
+            : 'border-border bg-background hover:border-accent/60 hover:bg-muted/50 text-muted-foreground',
+      ].join(' ')}
     >
-      <ImagePlus
-        size={32}
-        className={atLimit ? "text-muted-foreground" : "text-accent"}
-      />
+      <span
+        className="flex h-12 w-12 items-center justify-center rounded-xl border border-border bg-surface shadow-xs"
+        aria-hidden="true"
+      >
+        <ImagePlus size={24} className={atLimit ? 'text-muted-foreground' : 'text-accent'} />
+      </span>
 
       {atLimit ? (
         <p className="text-sm font-medium">Maximum of 5 photos reached</p>
       ) : (
         <>
           <p className="text-sm font-medium text-foreground">
-            Drag &amp; drop photos here, or{" "}
-            <span className="text-accent underline">click to browse</span>
+            Drag &amp; drop photos here, or{' '}
+            <span className="text-accent underline underline-offset-4">click to browse</span>
           </p>
-          <p className="text-xs text-muted-foreground">
+          <p className="max-w-sm text-xs leading-relaxed text-muted-foreground">
             JPEG, PNG, WebP or HEIC · Max 10 MB per photo · Up to 5 photos
           </p>
         </>
@@ -132,7 +125,7 @@ export default function PhotoDropZone({
         accept="image/jpeg,image/png,image/webp,image/heic,image/*"
         tabIndex={-1}
         aria-hidden="true"
-        className="sr-only"
+        className="hidden"
         onChange={handleInputChange}
       />
     </div>

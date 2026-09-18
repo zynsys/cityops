@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import { ArrowRight, AlertCircle } from 'lucide-react';
+import { ArrowRight, AlertCircle, Camera } from 'lucide-react';
 import Link from 'next/link';
 import { useReportSubmission } from './ReportSubmissionContext';
 import PhotoDropZone from './PhotoDropZone';
@@ -79,16 +79,20 @@ export default function Step1Photos({ onNext }: Step1PhotosProps) {
   }
 
   return (
-    <div className="flex flex-col h-full">
+    <div className="flex h-full min-h-0 flex-col">
       {/* Scrollable content */}
-      <div className="flex-1 overflow-y-auto px-4 py-6">
-        <div className="max-w-2xl mx-auto w-full flex flex-col gap-5">
+      <div className="min-h-0 flex-1 overflow-y-auto px-4 py-5 sm:px-6 sm:py-7">
+        <div className="surface-card mx-auto flex w-full max-w-2xl flex-col gap-6 p-5 sm:p-6">
           {/* Intro copy */}
           <div>
-            <p className="text-sm text-muted-foreground">
+            <p className="eyebrow mb-2">Step 1 · Photos</p>
+            <h2 className="text-xl font-semibold tracking-tight text-foreground sm:text-2xl">
+              Add photos of the issue
+            </h2>
+            <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
               Start by adding a photo of the issue. This gives council staff immediate visual context.
             </p>
-            <p className="text-xs text-muted-foreground mt-1">
+            <p className="mt-2 text-xs leading-relaxed text-muted-foreground">
               No photo? That&apos;s fine — you can still submit a report.
             </p>
           </div>
@@ -100,10 +104,10 @@ export default function Step1Photos({ onNext }: Step1PhotosProps) {
           />
 
           {errors.length > 0 && (
-            <ul className="flex flex-col gap-1">
+            <ul className="flex flex-col gap-2 rounded-xl border border-danger/25 bg-danger/5 p-4" role="alert">
               {errors.map((msg, i) => (
-                <li key={i} className="flex items-start gap-1.5 text-xs text-red-400">
-                  <AlertCircle className="h-3.5 w-3.5 mt-0.5 shrink-0" />
+                <li key={i} className="flex items-start gap-2 text-sm text-danger">
+                  <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
                   {msg}
                 </li>
               ))}
@@ -111,9 +115,14 @@ export default function Step1Photos({ onNext }: Step1PhotosProps) {
           )}
 
           {files.length > 0 && (
-            <div className="flex flex-col gap-2">
-              {quickPhotoLabel && <p className="text-xs font-medium text-accent">📷 Photo added from Quick Report</p>}
-              <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 gap-2">
+            <div className="flex flex-col gap-3">
+              {quickPhotoLabel && (
+                <p className="flex items-center gap-2 text-sm font-medium text-success">
+                  <Camera size={16} aria-hidden="true" />
+                  Photo added from Quick Report
+                </p>
+              )}
+              <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-4">
                 {files.map((file, i) => {
                   const url = getUrl(file);
                   if (!url) return null;
@@ -130,27 +139,20 @@ export default function Step1Photos({ onNext }: Step1PhotosProps) {
             </div>
           )}
 
-          <p className="text-xs text-muted-foreground text-center">
+          <p className="text-center text-xs leading-relaxed text-muted-foreground">
             Photos are optional — you can still submit without them.
           </p>
         </div>
       </div>
 
       {/* Bottom navigation */}
-      <div className="shrink-0 border-t border-border bg-surface px-4 py-3 flex items-center justify-between gap-3">
-        <Link
-          href="/"
-          className="flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold border border-border text-foreground hover:bg-muted transition-colors"
-        >
+      <div className="flex shrink-0 items-center justify-between gap-3 border-t border-border bg-surface px-4 py-3 sm:px-6 sm:py-4">
+        <Link href="/" className="btn-secondary">
           Cancel
         </Link>
-        <button
-          type="button"
-          onClick={handleNext}
-          className="flex items-center gap-2 rounded-lg px-5 py-2 text-sm font-semibold bg-accent text-accent-foreground hover:opacity-90 transition-colors"
-        >
+        <button type="button" onClick={handleNext} className="btn-primary min-w-24">
           Next
-          <ArrowRight size={16} />
+          <ArrowRight size={16} aria-hidden="true" />
         </button>
       </div>
     </div>

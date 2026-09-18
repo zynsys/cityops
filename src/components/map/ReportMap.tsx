@@ -1,31 +1,33 @@
-"use client";
+'use client';
 
-import { MapContainer, TileLayer, Marker, Popup, useMap } from "react-leaflet";
-import MarkerClusterGroup from "react-leaflet-markercluster";
-import L from "leaflet";
-import "leaflet/dist/leaflet.css";
-import "react-leaflet-markercluster/styles";
-import type { MapReport } from "@/db/queries/reports";
-import { getStatusConfig } from "@/lib/reportStatusConfig";
-import Link from "next/link";
+import { MapContainer, TileLayer, Marker, Popup, useMap } from 'react-leaflet';
+import MarkerClusterGroup from 'react-leaflet-markercluster';
+import L from 'leaflet';
+import 'leaflet/dist/leaflet.css';
+import 'react-leaflet-markercluster/styles';
+import './map-chrome.css';
+import type { MapReport } from '@/db/queries/reports';
+import { StatusBadge } from '@/components/ui/StatusBadge';
+import { ArrowUpRight, GripHorizontal, MapPin } from 'lucide-react';
+import Link from 'next/link';
 
-import { useMemo, useRef, useCallback, useState, useEffect } from "react";
+import { useMemo, useRef, useCallback, useState, useEffect } from 'react';
 
 const UK_CENTER: [number, number] = [54.5, -3.5];
 const UK_ZOOM = 6;
-const DEFAULT_PIN_COLOR = "#6B7280";
+const DEFAULT_PIN_COLOR = '#6B7280';
 
 function createCategoryIcon(categoryColor: string | null): L.DivIcon {
   const color = categoryColor || DEFAULT_PIN_COLOR;
   return L.divIcon({
-    className: "",
+    className: '',
     iconSize: [32, 32],
     iconAnchor: [16, 32],
     popupAnchor: [0, -32],
     html: `<svg width="32" height="32" viewBox="0 0 32 32" xmlns="http://www.w3.org/2000/svg">
       <defs>
         <filter id="pin-shadow" x="-30%" y="-20%" width="160%" height="160%">
-          <feDropShadow dx="0" dy="1.5" stdDeviation="1.5" flood-color="#000" flood-opacity="0.45"/>
+          <feDropShadow dx="0" dy="1.5" stdDeviation="1.5" flood-color="#000" flood-opacity="0.22"/>
         </filter>
       </defs>
       <path d="M16 2C9.92 2 5 6.92 5 13c0 8.5 11 17 11 17s11-8.5 11-17c0-6.08-4.92-11-11-11z"
@@ -37,17 +39,17 @@ function createCategoryIcon(categoryColor: string | null): L.DivIcon {
 
 function createClusterIcon(cluster: L.MarkerCluster): L.DivIcon {
   const count = cluster.getChildCount();
-  let size: "small" | "medium" | "large";
-  if (count < 10) size = "small";
-  else if (count < 100) size = "medium";
-  else size = "large";
+  let size: 'small' | 'medium' | 'large';
+  if (count < 10) size = 'small';
+  else if (count < 100) size = 'medium';
+  else size = 'large';
 
   const sizeMap = { small: 36, medium: 44, large: 52 };
   const px = sizeMap[size];
 
   return L.divIcon({
     html: `<div class="cluster-icon cluster-icon--${size}"><span>${count}</span></div>`,
-    className: "",
+    className: '',
     iconSize: L.point(px, px),
   });
 }
@@ -82,9 +84,7 @@ export default function ReportMap({ reports, focusLocation }: ReportMapProps) {
         });
       }
     }
-    return Array.from(seen.values()).sort((a, b) =>
-      a.name.localeCompare(b.name)
-    );
+    return Array.from(seen.values()).sort((a, b) => a.name.localeCompare(b.name));
   }, [reports]);
 
   const legendRef = useRef<HTMLDivElement>(null);
@@ -120,13 +120,8 @@ export default function ReportMap({ reports, focusLocation }: ReportMapProps) {
   }, []);
 
   return (
-    <div className="relative h-full w-full">
-      <MapContainer
-        center={UK_CENTER}
-        zoom={UK_ZOOM}
-        className="h-full w-full z-0"
-        scrollWheelZoom
-      >
+    <div className="relative h-full w-full bg-muted">
+      <MapContainer center={UK_CENTER} zoom={UK_ZOOM} className="cityops-map z-0 h-full w-full" scrollWheelZoom>
         <TileLayer
           attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
           url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
@@ -142,44 +137,45 @@ export default function ReportMap({ reports, focusLocation }: ReportMapProps) {
           chunkedLoading
         >
           {reports.map((report) => {
-            const statusCfg = getStatusConfig(report.status);
             return (
               <Marker
                 key={report.id}
                 position={[report.latitude, report.longitude]}
                 icon={createCategoryIcon(report.category_color)}
+                title={report.title}
+                alt={report.title}
               >
                 <Popup>
-                  <div className="report-popup min-w-[200px] max-w-[260px]">
-                    <h3 className="font-semibold text-sm leading-snug line-clamp-2 mb-1.5">
-                      {report.title}
-                    </h3>
-                    <span
-                      className="inline-block text-xs font-medium px-2 py-0.5 rounded-full text-white mb-2"
-                      style={{ backgroundColor: statusCfg.color }}
+                  <div className="report-popup min-w-[200px] max-w-[260px] text-foreground">
+                    <div
+                      className="max-h-[min(30dvh,14rem)] overflow-y-auto overscroll-contain rounded-md pr-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent"
+                      tabIndex={0}
+                      role="region"
+                      aria-label="Report summary"
                     >
-                      {statusCfg.label}
-                    </span>
-                    <div className="text-xs space-y-1 text-gray-600">
-                      <p className="flex items-center gap-1.5">
-                        {report.category_color && (
-                          <span
-                            className="inline-block w-2.5 h-2.5 rounded-full shrink-0"
-                            style={{ backgroundColor: report.category_color }}
-                          />
-                        )}
-                        {report.category_name}
-                      </p>
-                      <p>{report.tenant_name}</p>
-                      {report.location_text && (
-                        <p className="truncate">{report.location_text}</p>
-                      )}
+                      <h2 className="mb-3 break-words pr-6 text-sm font-semibold leading-6">{report.title}</h2>
+                      <StatusBadge status={report.status} />
+                      <div className="mt-3 space-y-1.5 text-xs leading-5 text-muted-foreground">
+                        <p className="m-0! flex items-start gap-2">
+                          {report.category_color && (
+                            <span
+                              className="mt-1 inline-block h-2.5 w-2.5 shrink-0 rounded-full"
+                              style={{ backgroundColor: report.category_color }}
+                              aria-hidden="true"
+                            />
+                          )}
+                          <span className="min-w-0 break-words">{report.category_name}</span>
+                        </p>
+                        <p className="m-0! break-words">{report.tenant_name}</p>
+                        {report.location_text && <p className="m-0! break-words">{report.location_text}</p>}
+                      </div>
                     </div>
                     <Link
                       href={`/reports/${report.id}`}
-                      className="inline-block mt-2 text-xs font-medium text-blue-600 hover:text-blue-800 hover:underline"
+                      className="mt-4 flex min-h-11 items-center justify-between gap-3 rounded-lg border border-border px-3 text-sm font-medium text-accent! transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
                     >
-                      View details &rarr;
+                      View details
+                      <ArrowUpRight className="h-4 w-4 shrink-0" aria-hidden="true" />
                     </Link>
                   </div>
                 </Popup>
@@ -195,26 +191,24 @@ export default function ReportMap({ reports, focusLocation }: ReportMapProps) {
           onPointerDown={onPointerDown}
           onPointerMove={onPointerMove}
           onPointerUp={onPointerUp}
-          style={
-            pos
-              ? { left: pos.x, top: pos.y, bottom: "auto", right: "auto" }
-              : undefined
-          }
-          className={`absolute z-10 bg-white/90 dark:bg-gray-900/90 backdrop-blur-sm rounded-lg shadow-lg px-3 py-2.5 max-h-[40vh] overflow-y-auto cursor-grab active:cursor-grabbing select-none touch-none ${
-            pos ? "" : "bottom-5 right-3"
+          style={pos ? { left: pos.x, top: pos.y, bottom: 'auto', right: 'auto' } : undefined}
+          className={`absolute z-10 max-h-[40vh] max-w-[calc(100%_-_2rem)] cursor-grab touch-none select-none overflow-y-auto rounded-xl border border-border bg-surface/95 p-4 shadow-raised backdrop-blur-sm active:cursor-grabbing ${
+            pos ? '' : 'right-4 bottom-8'
           }`}
         >
-          <h4 className="text-xs font-semibold text-gray-700 dark:text-gray-200 mb-1.5 uppercase tracking-wide">
+          <h2 className="mb-3 flex items-center justify-between gap-4 text-sm font-semibold text-foreground">
             Categories
-          </h4>
-          <ul className="space-y-1">
+            <GripHorizontal className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
+          </h2>
+          <ul className="space-y-2">
             {categories.map((cat) => (
-              <li key={cat.name} className="flex items-center gap-2">
+              <li key={cat.name} className="flex items-start gap-2.5">
                 <span
-                  className="inline-block w-3 h-3 rounded-full shrink-0 border border-white"
+                  className="mt-1 inline-block h-3 w-3 shrink-0 rounded-full border border-surface ring-1 ring-border"
                   style={{ backgroundColor: cat.color }}
+                  aria-hidden="true"
                 />
-                <span className="text-xs text-gray-600 dark:text-gray-300 whitespace-nowrap">
+                <span className="min-w-0 break-words text-xs leading-5 text-muted-foreground sm:text-sm">
                   {cat.name}
                 </span>
               </li>
@@ -224,14 +218,11 @@ export default function ReportMap({ reports, focusLocation }: ReportMapProps) {
       )}
 
       {reports.length === 0 && (
-        <div className="absolute inset-0 z-10 flex items-center justify-center pointer-events-none">
-          <div className="bg-surface/90 backdrop-blur-sm rounded-lg px-6 py-4 text-center shadow-lg pointer-events-auto">
-            <p className="text-foreground font-medium">
-              No reports yet
-            </p>
-            <p className="text-muted-foreground text-sm mt-1">
-              Reports will appear as pins on the map
-            </p>
+        <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center p-4">
+          <div className="pointer-events-auto max-w-sm rounded-2xl border border-border bg-surface/95 px-6 py-8 text-center shadow-raised backdrop-blur-sm">
+            <MapPin className="mx-auto mb-4 h-7 w-7 text-accent" aria-hidden="true" />
+            <p className="font-semibold text-foreground">No reports yet</p>
+            <p className="mt-2 text-sm leading-6 text-muted-foreground">Reports will appear as pins on the map</p>
           </div>
         </div>
       )}

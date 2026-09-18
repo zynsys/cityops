@@ -1,14 +1,21 @@
 import type { Metadata } from "next";
-import { Poppins } from "next/font/google";
+import { Manrope, Source_Sans_3 } from "next/font/google";
 import { ThemeProvider } from "@/components/ThemeProvider";
 import { AuthProvider } from "@/components/AuthProvider";
 import { Header } from "@/components/header/Header";
 import { Footer } from "@/components/footer/Footer";
 import "./globals.css";
 
-const poppins = Poppins({
+const sourceSans = Source_Sans_3({
   subsets: ["latin"],
-  weight: ["300", "400", "500", "600", "700"],
+  variable: "--font-source-sans",
+  display: "swap",
+});
+
+const manrope = Manrope({
+  subsets: ["latin"],
+  variable: "--font-manrope",
+  display: "swap",
 });
 
 export const metadata: Metadata = {
@@ -23,11 +30,17 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en" className="dark" suppressHydrationWarning>
-      <body className={`${poppins.className} min-h-dvh flex flex-col`}>
+      <body className={`${sourceSans.variable} ${manrope.variable} flex min-h-dvh flex-col font-sans antialiased`}>
         <ThemeProvider>
           <AuthProvider>
+            <a
+              href="#main-content"
+              className="sr-only fixed top-3 left-4 z-[100] rounded-xl bg-accent px-5 py-3 text-sm font-semibold text-accent-foreground shadow-raised focus:not-sr-only"
+            >
+              Skip to content
+            </a>
             <Header />
-            <main className="flex-1">{children}</main>
+            <main id="main-content" tabIndex={-1} className="min-w-0 flex-1 focus:outline-none">{children}</main>
             <Footer />
           </AuthProvider>
         </ThemeProvider>

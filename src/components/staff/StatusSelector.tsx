@@ -1,24 +1,30 @@
-"use client";
+'use client';
 
-import { useState } from "react";
-import { useRouter } from "next/navigation";
-import type { ReportStatus } from "@/generated/prisma/enums";
-import { getStatusConfig } from "@/lib/reportStatusConfig";
-import { useReportStatus } from "./ReportStatusContext";
+import { useState } from 'react';
+import { useRouter } from 'next/navigation';
+import type { ReportStatus } from '@/generated/prisma/enums';
+import { getStatusConfig } from '@/lib/reportStatusConfig';
+import { StatusBadge } from '@/components/ui/StatusBadge';
+import { useReportStatus } from './ReportStatusContext';
 
 const ALLOWED_TRANSITIONS: Partial<Record<ReportStatus, ReportStatus[]>> = {
-  created: ["under_validation", "invalid"],
-  under_validation: ["validated", "invalid"],
-  validated: ["assigned", "invalid"],
-  invalid: ["under_validation"],
-  assigned: ["in_progress", "validated"],
-  in_progress: ["resolved", "assigned"],
-  resolved: ["closed", "in_progress"],
-  closed: ["resolved"],
+  created: ['under_validation', 'invalid'],
+  under_validation: ['validated', 'invalid'],
+  validated: ['assigned', 'invalid'],
+  invalid: ['under_validation'],
+  assigned: ['in_progress', 'validated'],
+  in_progress: ['resolved', 'assigned'],
+  resolved: ['closed', 'in_progress'],
+  closed: ['resolved'],
 };
 
 interface StatusSelectorProps {
   reportId: number;
+}
+
+export function StaffReportStatusBadge() {
+  const { status } = useReportStatus();
+  return <StatusBadge status={status} />;
 }
 
 export function StatusSelector({ reportId }: StatusSelectorProps) {
@@ -32,13 +38,8 @@ export function StatusSelector({ reportId }: StatusSelectorProps) {
 
   if (allowedNext.length === 0) {
     return (
-      <span
-        className="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium"
-        style={{ backgroundColor: `${currentCfg.color}20`, color: currentCfg.color }}
-        title="No transitions available"
-        aria-label={`Status: ${currentCfg.label}. No transitions available.`}
-      >
-        {currentCfg.label}
+      <span title="No transitions available" aria-label={`Status: ${currentCfg.label}. No transitions available.`}>
+        <StatusBadge status={status} />
       </span>
     );
   }
@@ -54,33 +55,33 @@ export function StatusSelector({ reportId }: StatusSelectorProps) {
 
     try {
       const res = await fetch(`/api/staff/reports/${reportId}/status`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ status: newStatus }),
       });
 
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
         setStatus(previousStatus); // revert
-        setError((data as { error?: string }).error ?? "Failed to update status");
+        setError((data as { error?: string }).error ?? 'Failed to update status');
         return;
       }
 
       router.refresh();
     } catch {
       setStatus(previousStatus); // revert
-      setError("Network error. Please try again.");
+      setError('Network error. Please try again.');
     } finally {
       setIsLoading(false);
     }
   };
 
   return (
-    <div className="flex flex-col items-end gap-1">
-      <div className="flex items-center gap-1.5">
+    <div className="flex w-full min-w-0 flex-col gap-2 sm:w-auto sm:items-end">
+      <div className="flex w-full items-center gap-2 sm:w-auto">
         {isLoading && (
           <span
-            className="h-3 w-3 animate-spin rounded-full border border-border border-t-accent"
+            className="h-4 w-4 shrink-0 animate-spin rounded-full border-2 border-border border-t-accent"
             aria-hidden="true"
           />
         )}
@@ -89,8 +90,7 @@ export function StatusSelector({ reportId }: StatusSelectorProps) {
           onChange={handleChange}
           disabled={isLoading}
           aria-label="Update report status"
-          className="w-[160px] rounded-md border border-border bg-surface px-2 py-1 text-xs font-medium text-foreground
-                     focus:outline-none focus:ring-2 focus:ring-accent disabled:opacity-50 cursor-pointer"
+          className="input-field w-full min-w-0 cursor-pointer disabled:cursor-wait disabled:opacity-60 sm:w-[180px]"
         >
           <option value={status}>{currentCfg.label}</option>
           {allowedNext.map((s) => {
@@ -104,7 +104,10 @@ export function StatusSelector({ reportId }: StatusSelectorProps) {
         </select>
       </div>
       {error && (
-        <p className="text-xs text-red-400" role="alert">
+        <p
+          className="max-w-full rounded-lg bg-danger/10 px-3 py-2 text-xs leading-relaxed text-danger sm:max-w-[200px]"
+          role="alert"
+        >
           {error}
         </p>
       )}
