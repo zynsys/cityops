@@ -1,9 +1,9 @@
-"use client";
+'use client';
 
-import { useState } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
-import { Search } from "lucide-react";
-import { locationParam } from "@/lib/utils";
+import { useState } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
+import { Search } from 'lucide-react';
+import { locationParam } from '@/lib/utils';
 
 interface TenantOption {
   slug: string;
@@ -23,7 +23,7 @@ export default function ReportLocationSearch({
   currentCouncil,
   currentPostcode,
   currentCity,
-  basePath = "/reports",
+  basePath = '/reports',
 }: ReportLocationSearchProps) {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -35,23 +35,23 @@ export default function ReportLocationSearch({
   function buildUrl(locationKey: string, locationValue: string) {
     const params = new URLSearchParams();
     // Preserve filter/sort params
-    const status = searchParams.get("status");
-    const category = searchParams.get("category");
-    const sort = searchParams.get("sort");
-    if (status) params.set("status", status);
-    if (category) params.set("category", category);
-    if (sort) params.set("sort", sort);
+    const status = searchParams.get('status');
+    const category = searchParams.get('category');
+    const sort = searchParams.get('sort');
+    if (status) params.set('status', status);
+    if (category) params.set('category', category);
+    if (sort) params.set('sort', sort);
     // Set new location
     if (locationValue) params.set(locationKey, locationValue);
-    params.set("page", "1");
+    params.set('page', '1');
     return `${basePath}?${params.toString()}`;
   }
 
   function handleCouncilChange(e: React.ChangeEvent<HTMLSelectElement>) {
     const slug = e.target.value;
     // Clear postcode input when a council is selected
-    setPostcodeInput("");
-    router.push(buildUrl("council", slug));
+    setPostcodeInput('');
+    router.push(buildUrl('council', slug));
   }
 
   function handlePostcodeSubmit(e: React.FormEvent) {
@@ -62,43 +62,48 @@ export default function ReportLocationSearch({
     router.push(buildUrl(key, value));
   }
 
-  const selectClass =
-    "h-10 w-full rounded-lg border border-border bg-surface px-3 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-accent";
+  const selectClass = 'input-field min-w-0 pr-8';
 
   return (
-    <div className="space-y-2">
+    <div className="grid gap-3 sm:grid-cols-2">
       {/* Council dropdown */}
-      <select
-        value={currentCouncil}
-        onChange={handleCouncilChange}
-        className={selectClass}
-        aria-label="Select a council"
-      >
-        <option value="">All Councils</option>
-        {tenants.map((t) => (
-          <option key={t.slug} value={t.slug}>
-            {t.name}
-          </option>
-        ))}
-      </select>
+      <label className="min-w-0">
+        <span className="field-label">Council</span>
+        <select
+          value={currentCouncil}
+          onChange={handleCouncilChange}
+          className={selectClass}
+          aria-label="Select a council"
+        >
+          <option value="">All Councils</option>
+          {tenants.map((t) => (
+            <option key={t.slug} value={t.slug}>
+              {t.name}
+            </option>
+          ))}
+        </select>
+      </label>
 
       {/* Postcode / city text search */}
-      <form onSubmit={handlePostcodeSubmit} className="relative">
-        <input
-          type="text"
-          value={postcodeInput}
-          onChange={(e) => setPostcodeInput(e.target.value)}
-          placeholder="Or enter a postcode / city…"
-          maxLength={100}
-          className="h-10 w-full rounded-lg border border-border bg-surface pl-3 pr-10 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-accent"
-          aria-label="Search by postcode or city"
-        />
+      <form onSubmit={handlePostcodeSubmit} className="relative min-w-0">
+        <label className="block">
+          <span className="field-label">Postcode or city</span>
+          <input
+            type="text"
+            value={postcodeInput}
+            onChange={(e) => setPostcodeInput(e.target.value)}
+            placeholder="Postcode or city…"
+            maxLength={100}
+            className="input-field pr-12"
+            aria-label="Search by postcode or city"
+          />
+        </label>
         <button
           type="submit"
-          className="absolute inset-y-0 right-0 flex items-center px-3 text-muted-foreground hover:text-foreground"
+          className="absolute bottom-0 right-0 flex h-11 w-11 items-center justify-center rounded-r-xl text-accent transition-colors hover:bg-accent/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent"
           aria-label="Search"
         >
-          <Search className="h-4 w-4" />
+          <Search className="h-4 w-4" aria-hidden="true" />
         </button>
       </form>
     </div>

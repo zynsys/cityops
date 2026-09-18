@@ -1,11 +1,11 @@
-"use client";
+'use client';
 
-import { useState, useEffect, useCallback } from "react";
-import { useRouter } from "next/navigation";
-import { Loader2, X, MapPin, Search, AlertCircle } from "lucide-react";
-import SubmitReportMapLoader from "./SubmitReportMapLoader";
-import PhotoDropZone from "./PhotoDropZone";
-import type { CategorySummary } from "@/db/queries/categories";
+import { useState, useEffect, useCallback } from 'react';
+import { useRouter } from 'next/navigation';
+import { Loader2, X, MapPin, Search, AlertCircle } from 'lucide-react';
+import SubmitReportMapLoader from './SubmitReportMapLoader';
+import PhotoDropZone from './PhotoDropZone';
+import type { CategorySummary } from '@/db/queries/categories';
 
 interface ExistingAttachment {
   id: string;
@@ -61,7 +61,7 @@ export default function EditReportForm({
   const [photoErrors, setPhotoErrors] = useState<string[]>([]);
 
   // Location search state
-  const [searchQuery, setSearchQuery] = useState("");
+  const [searchQuery, setSearchQuery] = useState('');
   const [searching, setSearching] = useState(false);
   const [searchError, setSearchError] = useState<string | null>(null);
   const [flyToPos, setFlyToPos] = useState<FlyToPos | null>(null);
@@ -77,9 +77,7 @@ export default function EditReportForm({
     return () => urls.forEach(URL.revokeObjectURL);
   }, [newFiles]);
 
-  const visibleExisting = existingAttachments.filter(
-    (a) => !removeAttachmentIds.includes(a.id)
-  );
+  const visibleExisting = existingAttachments.filter((a) => !removeAttachmentIds.includes(a.id));
   const totalPhotos = visibleExisting.length + newFiles.length;
 
   function handleRemoveExisting(id: string) {
@@ -98,7 +96,7 @@ export default function EditReportForm({
       });
       setPhotoErrors([]);
     },
-    [visibleExisting.length]
+    [visibleExisting.length],
   );
 
   const handlePinChange = useCallback((newLat: number, newLng: number) => {
@@ -116,12 +114,12 @@ export default function EditReportForm({
     try {
       const res = await fetch(
         `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(q)}&format=json&limit=1&countrycodes=gb`,
-        { headers: { "User-Agent": "CityOps/1.0 (cityops.app)" } }
+        { headers: { 'User-Agent': 'CityOps/1.0 (cityops.app)' } },
       );
-      if (!res.ok) throw new Error("Nominatim error");
+      if (!res.ok) throw new Error('Nominatim error');
       const data = (await res.json()) as { lat: string; lon: string; display_name?: string }[];
       if (!data.length) {
-        setSearchError("No location found — try a different address or drop the pin manually.");
+        setSearchError('No location found — try a different address or drop the pin manually.');
         return;
       }
       const newLat = parseFloat(data[0].lat);
@@ -133,7 +131,7 @@ export default function EditReportForm({
         setLocationText(data[0].display_name.slice(0, 499));
       }
     } catch {
-      setSearchError("Search failed — try again or drop the pin manually.");
+      setSearchError('Search failed — try again or drop the pin manually.');
     } finally {
       setSearching(false);
     }
@@ -143,11 +141,11 @@ export default function EditReportForm({
     e.preventDefault();
 
     if (!title.trim() || title.trim().length < 10) {
-      setError("Title must be at least 10 characters.");
+      setError('Title must be at least 10 characters.');
       return;
     }
     if (!description.trim() || description.trim().length < 20) {
-      setError("Description must be at least 20 characters.");
+      setError('Description must be at least 20 characters.');
       return;
     }
 
@@ -156,7 +154,7 @@ export default function EditReportForm({
 
     const formData = new FormData();
     formData.append(
-      "data",
+      'data',
       JSON.stringify({
         categoryId,
         title: title.trim(),
@@ -165,121 +163,140 @@ export default function EditReportForm({
         lat,
         lng,
         removeAttachmentIds,
-      })
+      }),
     );
     for (const file of newFiles) {
-      formData.append("attachments[]", file);
+      formData.append('attachments[]', file);
     }
 
     try {
       const res = await fetch(`/api/reports/${reportId}`, {
-        method: "PATCH",
+        method: 'PATCH',
         body: formData,
       });
 
       if (!res.ok) {
-        const json = await res.json().catch(() => ({})) as { error?: string };
+        const json = (await res.json().catch(() => ({}))) as { error?: string };
         if (res.status === 409) {
-          setError("This report can no longer be edited because it is already being processed.");
+          setError('This report can no longer be edited because it is already being processed.');
         } else if (res.status === 403) {
-          setError("You do not have permission to edit this report.");
+          setError('You do not have permission to edit this report.');
         } else {
-          setError(json.error ?? "Something went wrong. Please try again.");
+          setError(json.error ?? 'Something went wrong. Please try again.');
         }
         return;
       }
 
       router.push(`/reports/${reportId}`);
     } catch {
-      setError("A network error occurred. Please check your connection and try again.");
+      setError('A network error occurred. Please check your connection and try again.');
     } finally {
       setSubmitting(false);
     }
   }
 
   return (
-    <form onSubmit={handleSubmit} className="flex flex-col gap-6">
+    <form onSubmit={handleSubmit} className="flex flex-col gap-7">
       {/* Error alert */}
       {error && (
-        <div
-          role="alert"
-          className="flex items-start gap-3 rounded-lg border border-red-300 bg-red-50 dark:bg-red-950/30 dark:border-red-800 px-4 py-3"
-        >
-          <AlertCircle className="w-4 h-4 text-red-600 dark:text-red-400 shrink-0 mt-0.5" aria-hidden="true" />
-          <span className="flex-1 text-sm text-red-700 dark:text-red-400">{error}</span>
+        <div role="alert" className="flex items-start gap-3 rounded-xl border border-danger/25 bg-danger/5 p-3 sm:p-4">
+          <AlertCircle className="mt-3 h-4 w-4 shrink-0 text-danger" aria-hidden="true" />
+          <span className="min-w-0 flex-1 py-2 text-sm leading-relaxed text-danger">{error}</span>
           <button
             type="button"
             onClick={() => setError(null)}
             aria-label="Dismiss error"
-            className="text-red-500 hover:text-red-700 dark:hover:text-red-300"
+            className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg text-danger transition-colors hover:bg-danger/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-danger"
           >
-            <X className="w-4 h-4" />
+            <X className="w-4 h-4" aria-hidden="true" />
           </button>
         </div>
       )}
 
-      {/* Title */}
-      <div className="flex flex-col gap-1.5">
-        <label htmlFor="edit-title" className="text-sm font-semibold text-foreground">
-          Title <span className="text-red-500" aria-hidden="true">*</span>
-        </label>
-        <input
-          id="edit-title"
-          type="text"
-          value={title}
-          onChange={(e) => setTitle(e.target.value)}
-          maxLength={255}
-          required
-          className="rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
-          placeholder="Brief description of the problem"
-        />
-      </div>
+      <section className="flex flex-col gap-5" aria-labelledby="edit-details-heading">
+        <div>
+          <h2 id="edit-details-heading" className="text-base font-semibold text-foreground">
+            Report details
+          </h2>
+          <p className="mt-1 text-sm leading-relaxed text-muted-foreground">
+            Describe the issue clearly and choose the most relevant category.
+          </p>
+        </div>
+        {/* Title */}
+        <div className="flex flex-col gap-1.5">
+          <label htmlFor="edit-title" className="field-label mb-0">
+            Title{' '}
+            <span className="text-danger" aria-hidden="true">
+              *
+            </span>
+          </label>
+          <input
+            id="edit-title"
+            type="text"
+            value={title}
+            onChange={(e) => setTitle(e.target.value)}
+            maxLength={255}
+            required
+            className="input-field"
+            placeholder="Brief description of the problem"
+          />
+        </div>
 
-      {/* Description */}
-      <div className="flex flex-col gap-1.5">
-        <label htmlFor="edit-description" className="text-sm font-semibold text-foreground">
-          Description
-        </label>
-        <textarea
-          id="edit-description"
-          value={description}
-          onChange={(e) => setDescription(e.target.value)}
-          maxLength={MAX_DESC}
-          rows={5}
-          className="rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent resize-y"
-          placeholder="Provide more detail about the problem…"
-        />
-        <p className="text-xs text-muted-foreground self-end">
-          {description.length}/{MAX_DESC}
-        </p>
-      </div>
+        {/* Description */}
+        <div className="flex flex-col gap-1.5">
+          <label htmlFor="edit-description" className="field-label mb-0">
+            Description
+          </label>
+          <textarea
+            id="edit-description"
+            value={description}
+            onChange={(e) => setDescription(e.target.value)}
+            maxLength={MAX_DESC}
+            rows={5}
+            aria-describedby="edit-description-counter"
+            className="input-field min-h-36 resize-y leading-relaxed"
+            placeholder="Provide more detail about the problem…"
+          />
+          <p
+            id="edit-description-counter"
+            className="self-end text-xs text-muted-foreground tabular-nums"
+            aria-live="polite"
+            aria-atomic="true"
+          >
+            {description.length}/{MAX_DESC}
+          </p>
+        </div>
 
-      {/* Category */}
-      <div className="flex flex-col gap-1.5">
-        <label htmlFor="edit-category" className="text-sm font-semibold text-foreground">
-          Category <span className="text-red-500" aria-hidden="true">*</span>
-        </label>
-        <select
-          id="edit-category"
-          value={categoryId}
-          onChange={(e) => setCategoryId(e.target.value)}
-          required
-          className="rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
-        >
-          {categories.map((cat) => (
-            <option key={cat.id} value={cat.id}>
-              {cat.name}
-            </option>
-          ))}
-        </select>
-      </div>
+        {/* Category */}
+        <div className="flex flex-col gap-1.5">
+          <label htmlFor="edit-category" className="field-label mb-0">
+            Category{' '}
+            <span className="text-danger" aria-hidden="true">
+              *
+            </span>
+          </label>
+          <select
+            id="edit-category"
+            value={categoryId}
+            onChange={(e) => setCategoryId(e.target.value)}
+            required
+            className="input-field"
+          >
+            {categories.map((cat) => (
+              <option key={cat.id} value={cat.id}>
+                {cat.name}
+              </option>
+            ))}
+          </select>
+        </div>
+      </section>
 
       {/* Location */}
-      <div className="flex flex-col gap-2">
-        <p className="text-sm font-semibold text-foreground flex items-center gap-1.5">
-          <MapPin className="w-4 h-4 text-muted-foreground" aria-hidden="true" />
+      <section className="flex flex-col gap-4 border-t border-border pt-6" aria-labelledby="edit-location-heading">
+        <h2 id="edit-location-heading" className="flex items-center gap-2 text-base font-semibold text-foreground">
+          <MapPin className="h-4 w-4 text-accent" aria-hidden="true" />
           Location
-        </p>
+        </h2>
 
         {/* Nominatim search */}
         <div className="flex gap-2">
@@ -287,15 +304,21 @@ export default function EditReportForm({
             type="text"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); handleLocationSearch(); } }}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                e.preventDefault();
+                handleLocationSearch();
+              }
+            }}
             placeholder="Search address or postcode…"
-            className="flex-1 rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+            aria-label="Search address or postcode"
+            className="input-field min-w-0 flex-1"
           />
           <button
             type="button"
             onClick={handleLocationSearch}
             disabled={searching || !searchQuery.trim()}
-            className="flex items-center gap-1.5 rounded-lg border border-border px-3 py-2 text-sm font-medium text-foreground hover:bg-muted disabled:opacity-50 transition-colors"
+            className="btn-secondary shrink-0 px-3 sm:px-4"
           >
             {searching ? (
               <Loader2 className="w-3.5 h-3.5 animate-spin" aria-hidden="true" />
@@ -306,25 +329,22 @@ export default function EditReportForm({
           </button>
         </div>
         {searchError && (
-          <p className="text-xs text-red-500 dark:text-red-400">{searchError}</p>
+          <p className="text-sm leading-relaxed text-danger" role="alert">
+            {searchError}
+          </p>
         )}
 
         {/* Map */}
-        <div className="h-56 w-full rounded-lg overflow-hidden border border-border">
-          <SubmitReportMapLoader
-            onPinChange={handlePinChange}
-            pinLat={lat}
-            pinLng={lng}
-            flyToPos={flyToPos}
-          />
+        <div className="isolate h-64 w-full overflow-hidden rounded-xl border border-border bg-muted sm:h-80">
+          <SubmitReportMapLoader onPinChange={handlePinChange} pinLat={lat} pinLng={lng} flyToPos={flyToPos} />
         </div>
-        <p className="text-xs text-muted-foreground font-mono">
+        <p className="font-mono text-xs text-muted-foreground">
           {lat.toFixed(5)}, {lng.toFixed(5)}
         </p>
 
         {/* Location text label */}
-        <div className="flex flex-col gap-1">
-          <label htmlFor="edit-location-text" className="text-xs font-medium text-muted-foreground">
+        <div className="flex flex-col gap-1.5">
+          <label htmlFor="edit-location-text" className="field-label mb-0">
             Location label (optional)
           </label>
           <input
@@ -334,41 +354,37 @@ export default function EditReportForm({
             onChange={(e) => setLocationText(e.target.value)}
             maxLength={499}
             placeholder="e.g. Corner of High St and Church Lane"
-            className="rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+            className="input-field"
           />
         </div>
-      </div>
+      </section>
 
       {/* Photos */}
-      <div className="flex flex-col gap-2">
-        <p className="text-sm font-semibold text-foreground">
+      <section className="flex flex-col gap-4 border-t border-border pt-6" aria-labelledby="edit-photos-heading">
+        <h2 id="edit-photos-heading" className="text-base font-semibold text-foreground">
           Photos <span className="text-xs font-normal text-muted-foreground">({totalPhotos}/5)</span>
-        </p>
+        </h2>
 
         {/* Existing photos */}
         {visibleExisting.length > 0 && (
-          <div className="grid grid-cols-3 sm:grid-cols-5 gap-2">
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
             {visibleExisting.map((att) => (
               <div
                 key={att.id}
-                className="relative rounded-lg overflow-hidden border border-border bg-muted aspect-square"
+                className="relative aspect-square overflow-hidden rounded-xl border border-border bg-muted shadow-xs"
               >
                 {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img
-                  src={att.storagePath}
-                  alt={att.fileName}
-                  className="w-full h-full object-cover"
-                />
-                <div className="absolute bottom-0 inset-x-0 bg-black/50 px-1.5 py-1 text-white text-[10px] leading-tight truncate">
+                <img src={att.storagePath} alt={att.fileName} className="w-full h-full object-cover" />
+                <div className="absolute inset-x-0 bottom-0 truncate border-t border-border bg-surface/95 px-3 py-2 text-xs text-foreground">
                   {att.fileName}
                 </div>
                 <button
                   type="button"
                   aria-label={`Remove ${att.fileName}`}
                   onClick={() => handleRemoveExisting(att.id)}
-                  className="absolute top-1 right-1 flex h-5 w-5 items-center justify-center rounded-full bg-black/60 text-white hover:bg-black/80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white transition-colors"
+                  className="absolute top-1 right-1 flex h-11 w-11 items-center justify-center rounded-xl border border-border bg-surface/95 text-foreground shadow-soft transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-inset"
                 >
-                  <X size={10} strokeWidth={3} />
+                  <X size={16} aria-hidden="true" />
                 </button>
               </div>
             ))}
@@ -377,31 +393,27 @@ export default function EditReportForm({
 
         {/* New file previews */}
         {newFiles.length > 0 && (
-          <div className="grid grid-cols-3 sm:grid-cols-5 gap-2">
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
             {newFiles.map((file, i) => {
               const url = newFileUrls[i];
               if (!url) return null;
               return (
                 <div
                   key={`${file.name}-${file.size}`}
-                  className="relative rounded-lg overflow-hidden border border-accent/50 bg-muted aspect-square"
+                  className="relative aspect-square overflow-hidden rounded-xl border border-accent/50 bg-muted shadow-xs"
                 >
                   {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img
-                    src={url}
-                    alt={file.name}
-                    className="w-full h-full object-cover"
-                  />
-                  <div className="absolute bottom-0 inset-x-0 bg-black/50 px-1.5 py-1 text-white text-[10px] leading-tight truncate">
+                  <img src={url} alt={file.name} className="w-full h-full object-cover" />
+                  <div className="absolute inset-x-0 bottom-0 truncate border-t border-border bg-surface/95 px-3 py-2 text-xs text-foreground">
                     {file.name}
                   </div>
                   <button
                     type="button"
                     aria-label={`Remove ${file.name}`}
                     onClick={() => handleRemoveNew(i)}
-                    className="absolute top-1 right-1 flex h-5 w-5 items-center justify-center rounded-full bg-black/60 text-white hover:bg-black/80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white transition-colors"
+                    className="absolute top-1 right-1 flex h-11 w-11 items-center justify-center rounded-xl border border-border bg-surface/95 text-foreground shadow-soft transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-inset"
                   >
-                    <X size={10} strokeWidth={3} />
+                    <X size={16} aria-hidden="true" />
                   </button>
                 </div>
               );
@@ -411,7 +423,10 @@ export default function EditReportForm({
 
         {/* Photo validation errors */}
         {photoErrors.length > 0 && (
-          <ul className="text-xs text-red-500 dark:text-red-400 flex flex-col gap-0.5">
+          <ul
+            className="flex flex-col gap-2 rounded-xl border border-danger/25 bg-danger/5 p-4 text-sm leading-relaxed text-danger"
+            role="alert"
+          >
             {photoErrors.map((msg, i) => (
               <li key={i}>{msg}</li>
             ))}
@@ -426,30 +441,23 @@ export default function EditReportForm({
           />
         )}
         {totalPhotos >= 5 && (
-          <p className="text-xs text-muted-foreground">Maximum of 5 photos reached.</p>
+          <p className="text-xs leading-relaxed text-muted-foreground">Maximum of 5 photos reached.</p>
         )}
-      </div>
+      </section>
 
       {/* Actions */}
-      <div className="flex items-center gap-3 pt-2">
-        <button
-          type="submit"
-          disabled={submitting}
-          className="flex items-center gap-2 rounded-lg px-5 py-2.5 text-sm font-semibold bg-accent text-accent-foreground hover:opacity-90 disabled:opacity-60 disabled:cursor-not-allowed focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent transition-opacity"
-        >
+      <div className="flex flex-wrap items-center gap-3 border-t border-border pt-6">
+        <button type="submit" disabled={submitting} className="btn-primary">
           {submitting ? (
             <>
               <Loader2 className="w-4 h-4 animate-spin" aria-hidden="true" />
               Saving…
             </>
           ) : (
-            "Save changes"
+            'Save changes'
           )}
         </button>
-        <a
-          href={`/reports/${reportId}`}
-          className="text-sm text-muted-foreground hover:text-foreground underline underline-offset-2 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent rounded"
-        >
+        <a href={`/reports/${reportId}`} className="btn-secondary">
           Cancel
         </a>
       </div>

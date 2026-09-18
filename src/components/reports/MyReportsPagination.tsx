@@ -1,8 +1,8 @@
-"use client";
+'use client';
 
-import Link from "next/link";
-import { useSearchParams } from "next/navigation";
-import { ChevronLeft, ChevronRight } from "lucide-react";
+import Link from 'next/link';
+import { useSearchParams } from 'next/navigation';
+import { ChevronLeft, ChevronRight } from 'lucide-react';
 
 interface MyReportsPaginationProps {
   currentPage: number;
@@ -10,11 +10,7 @@ interface MyReportsPaginationProps {
   pageSize: number;
 }
 
-export default function MyReportsPagination({
-  currentPage,
-  total,
-  pageSize,
-}: MyReportsPaginationProps) {
+export default function MyReportsPagination({ currentPage, total, pageSize }: MyReportsPaginationProps) {
   const searchParams = useSearchParams();
   const totalPages = Math.ceil(total / pageSize);
 
@@ -22,45 +18,45 @@ export default function MyReportsPagination({
 
   function pageHref(p: number) {
     const params = new URLSearchParams(searchParams.toString());
-    params.set("page", String(p));
+    params.set('page', String(p));
     return `/my-reports?${params.toString()}`;
   }
 
   return (
     <nav
       aria-label="Pagination"
-      className="flex items-center justify-between gap-2 py-3 border-t border-border shrink-0"
+      className="flex shrink-0 items-center justify-between gap-3 border-t border-border bg-muted/20 px-4 py-3"
     >
       {currentPage > 1 ? (
-        <Link
-          href={pageHref(currentPage - 1)}
-          className="inline-flex items-center gap-1 rounded-lg px-3 py-1.5 text-sm text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
-        >
+        <Link href={pageHref(currentPage - 1)} className="btn-secondary gap-1 px-3">
           <ChevronLeft className="h-4 w-4" aria-hidden="true" />
-          Previous
+          <span className="sr-only sm:not-sr-only">Previous</span>
         </Link>
       ) : (
-        <span className="inline-flex items-center gap-1 rounded-lg px-3 py-1.5 text-sm text-muted-foreground/40 cursor-not-allowed select-none">
+        <span
+          aria-disabled="true"
+          className="inline-flex min-h-11 cursor-not-allowed select-none items-center gap-1 rounded-xl border border-border px-3 py-2.5 text-sm text-muted-foreground opacity-50"
+        >
           <ChevronLeft className="h-4 w-4" aria-hidden="true" />
-          Previous
+          <span className="sr-only sm:not-sr-only">Previous</span>
         </span>
       )}
 
-      <span className="text-xs text-muted-foreground">
-        Page {currentPage} of {totalPages}
+      <span className="text-center text-sm tabular-nums text-muted-foreground">
+        Page <span className="font-medium text-foreground">{currentPage}</span> of {totalPages}
       </span>
 
       {currentPage < totalPages ? (
-        <Link
-          href={pageHref(currentPage + 1)}
-          className="inline-flex items-center gap-1 rounded-lg px-3 py-1.5 text-sm text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
-        >
-          Next
+        <Link href={pageHref(currentPage + 1)} className="btn-secondary gap-1 px-3">
+          <span className="sr-only sm:not-sr-only">Next</span>
           <ChevronRight className="h-4 w-4" aria-hidden="true" />
         </Link>
       ) : (
-        <span className="inline-flex items-center gap-1 rounded-lg px-3 py-1.5 text-sm text-muted-foreground/40 cursor-not-allowed select-none">
-          Next
+        <span
+          aria-disabled="true"
+          className="inline-flex min-h-11 cursor-not-allowed select-none items-center gap-1 rounded-xl border border-border px-3 py-2.5 text-sm text-muted-foreground opacity-50"
+        >
+          <span className="sr-only sm:not-sr-only">Next</span>
           <ChevronRight className="h-4 w-4" aria-hidden="true" />
         </span>
       )}

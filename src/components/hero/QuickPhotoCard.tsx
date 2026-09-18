@@ -1,11 +1,11 @@
-"use client";
+'use client';
 
-import { useRef, useState } from "react";
-import { useRouter } from "next/navigation";
-import { Camera, Upload } from "lucide-react";
+import { useRef, useState } from 'react';
+import { useRouter } from 'next/navigation';
+import { Camera, Upload } from 'lucide-react';
 
 const MAX_SIZE_BYTES = 10 * 1024 * 1024; // 10 MB
-const ACCEPTED_TYPES = ["image/jpeg", "image/png", "image/webp", "image/heic"];
+const ACCEPTED_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'image/heic'];
 
 export default function QuickPhotoCard() {
   const router = useRouter();
@@ -14,8 +14,8 @@ export default function QuickPhotoCard() {
   const [error, setError] = useState<string | null>(null);
 
   function validate(file: File): string | null {
-    if (!ACCEPTED_TYPES.includes(file.type)) return "Please upload a JPG, PNG, WebP or HEIC image.";
-    if (file.size > MAX_SIZE_BYTES) return "Photo must be under 10 MB.";
+    if (!ACCEPTED_TYPES.includes(file.type)) return 'Please upload a JPG, PNG, WebP or HEIC image.';
+    if (file.size > MAX_SIZE_BYTES) return 'Photo must be under 10 MB.';
     return null;
   }
 
@@ -31,13 +31,13 @@ export default function QuickPhotoCard() {
     reader.onload = () => {
       try {
         sessionStorage.setItem(
-          "cityops:quickPhoto",
-          JSON.stringify({ name: file.name, type: file.type, dataUrl: reader.result as string })
+          'cityops:quickPhoto',
+          JSON.stringify({ name: file.name, type: file.type, dataUrl: reader.result as string }),
         );
       } catch {
         // sessionStorage unavailable — navigate without pre-population
       }
-      router.push("/reports/new");
+      router.push('/reports/new');
     };
     reader.readAsDataURL(file);
   }
@@ -46,7 +46,7 @@ export default function QuickPhotoCard() {
     const file = e.target.files?.[0];
     if (file) processFile(file);
     // Reset input so same file can be selected again
-    e.target.value = "";
+    e.target.value = '';
   }
 
   function handleDrop(e: React.DragEvent) {
@@ -57,18 +57,19 @@ export default function QuickPhotoCard() {
   }
 
   function handleKeyDown(e: React.KeyboardEvent) {
-    if (e.key === "Enter" || e.key === " ") {
+    if (e.key === 'Enter' || e.key === ' ') {
       e.preventDefault();
       inputRef.current?.click();
     }
   }
 
   return (
-    <div className="flex flex-col rounded-xl border border-gray-700 bg-[#293342] p-8">
-      <div className="mb-5 flex items-center gap-2.5">
-        <Camera className="h-5 w-5 text-[#F0B100]" />
-        <h2 className="text-lg font-bold text-white">Quick Photo Report</h2>
+    <div className="surface-card flex min-w-0 flex-col p-5 sm:p-6">
+      <div className="flex items-center gap-2.5">
+        <Camera className="size-5 shrink-0 text-accent" strokeWidth={1.75} aria-hidden="true" />
+        <h2 className="text-base font-semibold tracking-tight text-foreground">Quick Photo Report</h2>
       </div>
+      <p className="mt-2 text-sm text-muted-foreground">Start a report with a photo of the issue.</p>
 
       {/* Hidden file input */}
       <input
@@ -76,6 +77,7 @@ export default function QuickPhotoCard() {
         type="file"
         accept="image/*"
         className="sr-only"
+        tabIndex={-1}
         aria-label="Upload a photo to start a report"
         onChange={handleChange}
       />
@@ -85,25 +87,31 @@ export default function QuickPhotoCard() {
         role="button"
         tabIndex={0}
         aria-label="Drop a photo or click to upload"
+        aria-describedby={error ? 'quick-photo-hint quick-photo-error' : 'quick-photo-hint'}
         onClick={() => inputRef.current?.click()}
         onKeyDown={handleKeyDown}
-        onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
+        onDragOver={(e) => {
+          e.preventDefault();
+          setDragOver(true);
+        }}
         onDragLeave={() => setDragOver(false)}
         onDrop={handleDrop}
         className={[
-          "flex flex-1 flex-col items-center justify-center rounded-lg border-2 border-dashed px-4 py-8 text-center cursor-pointer transition-colors",
-          dragOver
-            ? "border-[#F0B100] bg-[#F0B100]/10"
-            : "border-gray-600 hover:border-gray-500 hover:bg-white/5",
-        ].join(" ")}
+          'mt-4 flex min-h-28 flex-col items-center justify-center gap-1.5 rounded-xl border border-dashed px-4 py-4 text-center transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/50',
+          dragOver ? 'border-accent bg-muted' : 'border-border bg-background hover:border-accent/60 hover:bg-muted',
+        ].join(' ')}
       >
-        <Upload className="mb-2 h-8 w-8 text-gray-400" />
-        <p className="text-sm text-gray-400">Drop a photo or click to upload</p>
-        <p className="mt-1 text-xs text-gray-400">JPG, PNG up to 10MB</p>
+        <Upload className="size-5 text-accent" strokeWidth={1.75} aria-hidden="true" />
+        <p className="text-sm font-medium text-foreground">Drop a photo or click to upload</p>
+        <p id="quick-photo-hint" className="text-xs leading-relaxed text-muted-foreground">
+          JPG, PNG, WebP or HEIC · Up to 10 MB
+        </p>
       </div>
 
       {error && (
-        <p className="mt-2 text-xs text-red-400" role="alert">{error}</p>
+        <p id="quick-photo-error" className="mt-2 text-sm text-danger" role="alert">
+          {error}
+        </p>
       )}
     </div>
   );

@@ -58,65 +58,68 @@ export default function Step4Photos({ onBack, onNext }: Step4PhotosProps) {
   }
 
   return (
-    <div className="flex flex-col h-full">
+    <div className="flex h-full min-h-0 flex-col">
       {/* Scrollable content */}
-      <div className="flex-1 overflow-y-auto px-4 py-6 flex flex-col gap-5">
-        <PhotoDropZone
-          currentCount={files.length}
-          onFilesAccepted={handleFilesAccepted}
-          onValidationError={(msgs) => setErrors(msgs)}
-        />
+      <div className="min-h-0 flex-1 overflow-y-auto px-4 py-5 sm:px-6 sm:py-7">
+        <div className="surface-card mx-auto flex w-full max-w-2xl flex-col gap-6 p-5 sm:p-6">
+          <header>
+            <p className="eyebrow mb-2">Step 4 · Photos</p>
+            <h2 className="text-xl font-semibold tracking-tight text-foreground sm:text-2xl">
+              Add photos of the issue
+            </h2>
+            <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
+              Photos give council staff useful visual context.
+            </p>
+          </header>
+          <PhotoDropZone
+            currentCount={files.length}
+            onFilesAccepted={handleFilesAccepted}
+            onValidationError={(msgs) => setErrors(msgs)}
+          />
 
-        {/* Inline validation errors */}
-        {errors.length > 0 && (
-          <ul className="flex flex-col gap-1">
-            {errors.map((msg, i) => (
-              <li key={i} className="flex items-start gap-1.5 text-xs text-red-400">
-                <AlertCircle className="h-3.5 w-3.5 mt-0.5 shrink-0" />
-                {msg}
-              </li>
-            ))}
-          </ul>
-        )}
+          {/* Inline validation errors */}
+          {errors.length > 0 && (
+            <ul className="flex flex-col gap-2 rounded-xl border border-danger/25 bg-danger/5 p-4" role="alert">
+              {errors.map((msg, i) => (
+                <li key={i} className="flex items-start gap-2 text-sm text-danger">
+                  <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
+                  {msg}
+                </li>
+              ))}
+            </ul>
+          )}
 
-        {/* Thumbnail grid */}
-        {files.length > 0 && (
-          <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 gap-2">
-            {files.map((file, i) => (
-              <PhotoThumbnail
-                key={`${file.name}-${file.size}`}
-                file={file}
-                objectUrl={getUrl(file)}
-                onRemove={() => handleRemove(i)}
-              />
-            ))}
-          </div>
-        )}
+          {/* Thumbnail grid */}
+          {files.length > 0 && (
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-4">
+              {files.map((file, i) => (
+                <PhotoThumbnail
+                  key={`${file.name}-${file.size}`}
+                  file={file}
+                  objectUrl={getUrl(file)}
+                  onRemove={() => handleRemove(i)}
+                />
+              ))}
+            </div>
+          )}
 
-        {/* Optional hint */}
-        <p className="text-xs text-muted-foreground text-center">
-          Photos are optional — you can still submit without them.
-        </p>
+          {/* Optional hint */}
+          <p className="text-center text-xs leading-relaxed text-muted-foreground">
+            Photos are optional — you can still submit without them.
+          </p>
+        </div>
       </div>
 
       {/* Bottom navigation */}
-      <div className="shrink-0 border-t border-border bg-surface px-4 py-3 flex items-center justify-between gap-3">
-        <button
-          type="button"
-          onClick={onBack}
-          className="flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold border border-border text-foreground hover:bg-muted transition-colors"
-        >
-          <ArrowLeft size={16} />
+      <div className="flex shrink-0 items-center justify-between gap-3 border-t border-border bg-surface px-4 py-3 sm:px-6 sm:py-4">
+        <button type="button" onClick={onBack} className="btn-secondary">
+          <ArrowLeft size={16} aria-hidden="true" />
           Back
         </button>
 
-        <button
-          type="button"
-          onClick={handleNext}
-          className="flex items-center gap-2 rounded-lg px-5 py-2 text-sm font-semibold bg-accent text-accent-foreground hover:opacity-90 transition-colors"
-        >
+        <button type="button" onClick={handleNext} className="btn-primary min-w-24">
           Next
-          <ArrowRight size={16} />
+          <ArrowRight size={16} aria-hidden="true" />
         </button>
       </div>
     </div>

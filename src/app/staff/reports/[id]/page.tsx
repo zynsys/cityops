@@ -2,13 +2,13 @@ import { notFound } from 'next/navigation';
 import Link from 'next/link';
 import { auth } from '@auth';
 import { redirect } from 'next/navigation';
-import { MapPin, Calendar, User } from 'lucide-react';
+import { MapPin, Calendar, User, ClipboardList, MessageSquare } from 'lucide-react';
 import { getStaffReportDetail } from '@/db/queries/staff/reports';
 import { StaffReportMap } from '@/components/staff/StaffReportMap';
-import { ReportStatusProvider, ReportStatusBadge } from '@/components/staff/ReportStatusContext';
-import { StatusSelector } from '@/components/staff/StatusSelector';
-import { ReportPriorityProvider, ReportPriorityBadge } from '@/components/staff/ReportPriorityContext';
-import { PrioritySelector } from '@/components/staff/PrioritySelector';
+import { ReportStatusProvider } from '@/components/staff/ReportStatusContext';
+import { StaffReportStatusBadge, StatusSelector } from '@/components/staff/StatusSelector';
+import { ReportPriorityProvider } from '@/components/staff/ReportPriorityContext';
+import { StaffReportPriorityBadge, PrioritySelector } from '@/components/staff/PrioritySelector';
 import { ReportAssigneeProvider } from '@/components/staff/ReportAssigneeContext';
 import { AssigneeSelector } from '@/components/staff/AssigneeSelector';
 import { getStaffUsersForTenant } from '@/db/queries/staff/users';
@@ -77,204 +77,178 @@ export default async function StaffReportDetailPage({ params }: PageProps) {
     <ReportStatusProvider initialStatus={report.status}>
       <ReportPriorityProvider initialPriority={report.priority ?? null}>
         <ReportAssigneeProvider initialAssignedTo={initialAssignedTo}>
-          <div className="flex-1">
-            {/* ── Header — dark navy ── */}
-            <section className="bg-[#161F2F] py-8 sm:py-10">
-              <div className="container mx-auto px-4 sm:px-6 lg:px-8 space-y-6">
-                {/* Title, badges, reporter/date */}
-                <div>
-                  <h1 className="text-2xl font-bold text-white sm:text-3xl leading-snug">{report.title}</h1>
+          <div className="page-shell space-y-6">
+            {/* Report overview */}
+            <section className="surface-card space-y-6 p-5 sm:p-8">
+              <div>
+                <p className="eyebrow">Council report · #{reportId}</p>
+                <h1 className="page-title mt-2 break-words">{report.title}</h1>
 
-                  <div className="mt-3 flex flex-wrap items-center gap-2">
-                    <ReportStatusBadge />
-                    <ReportPriorityBadge />
-                    <span className="inline-flex items-center gap-1.5 text-xs text-gray-300">
-                      {report.category.color && (
-                        <span
-                          className="inline-block h-2.5 w-2.5 rounded-full"
-                          style={{ backgroundColor: report.category.color }}
-                          aria-hidden="true"
-                        />
-                      )}
-                      {report.category.name}
-                    </span>
-                  </div>
-
-                  <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-gray-300">
-                    <span className="flex items-center gap-1.5">
-                      <User className="h-3.5 w-3.5" aria-hidden="true" />
-                      Reported by {report.reporter.displayName}
-                    </span>
-                    <span className="flex items-center gap-1.5">
-                      <Calendar className="h-3.5 w-3.5" aria-hidden="true" />
-                      {formatDate(report.createdAt)}
-                    </span>
-                    <span className="text-xs">Updated {formatRelativeTime(new Date(report.updatedAt))}</span>
-                  </div>
+                <div className="mt-4 flex flex-wrap items-center gap-2">
+                  <StaffReportStatusBadge />
+                  <StaffReportPriorityBadge />
+                  <span className="status-badge bg-muted text-muted-foreground">
+                    {report.category.color && (
+                      <span
+                        className="h-1.5 w-1.5 shrink-0 rounded-full"
+                        style={{ backgroundColor: report.category.color, filter: 'saturate(0.55)' }}
+                        aria-hidden="true"
+                      />
+                    )}
+                    {report.category.name}
+                  </span>
                 </div>
 
-                {/* Description */}
-                <ReportDescription description={report.description} />
+                <div className="mt-5 flex flex-wrap items-center gap-x-5 gap-y-3 text-sm text-muted-foreground">
+                  <span className="flex items-center gap-2">
+                    <User className="h-4.5 w-4.5 shrink-0" aria-hidden="true" />
+                    Reported by {report.reporter.displayName}
+                  </span>
+                  <span className="flex items-center gap-2">
+                    <Calendar className="h-4.5 w-4.5 shrink-0" aria-hidden="true" />
+                    {formatDate(report.createdAt)}
+                  </span>
+                  <span className="text-xs">Updated {formatRelativeTime(new Date(report.updatedAt))}</span>
+                </div>
+              </div>
 
-                {/* Attachments */}
+              <div className="space-y-6 border-t border-border pt-6">
+                <ReportDescription description={report.description} />
                 {hasAttachments && <ReportAttachmentGallery attachments={report.attachments} />}
               </div>
             </section>
 
-            {/* ── Progress tracker ── */}
-            <section className="bg-section-alt py-8 sm:py-10">
-              <div className="container mx-auto px-4 sm:px-6 lg:px-8">
-                <ReportActivityTracker status={report.status} activities={report.activities} />
-              </div>
+            {/* Progress tracker */}
+            <section className="surface-card p-5 sm:p-6">
+              <ReportActivityTracker status={report.status} activities={report.activities} />
             </section>
 
-            {/* ── Map + Action panel ── */}
-            <section className="bg-section-primary py-8 sm:py-10">
-              <div className="container mx-auto px-4 sm:px-6 lg:px-8">
-                <div className="flex flex-col gap-8 md:flex-row">
-                  {/* Map */}
-                  <div className="flex-1 min-w-0 space-y-3">
-                    {report.coordinates ? (
-                      <div className="h-[350px] overflow-hidden rounded-xl border border-border sm:h-[450px]">
-                        <StaffReportMap lat={report.coordinates.latitude} lng={report.coordinates.longitude} />
-                      </div>
-                    ) : (
-                      <div className="flex h-[350px] items-center justify-center rounded-xl border border-border bg-muted sm:h-[450px]">
-                        <p className="text-sm text-muted-foreground">No location data</p>
-                      </div>
-                    )}
-                    {report.locationText && (
-                      <p className="flex items-center gap-2 text-sm text-muted-foreground">
-                        <MapPin className="h-4 w-4 shrink-0 text-accent" aria-hidden="true" />
-                        {report.locationText}
-                      </p>
-                    )}
+            {/* Location and report management */}
+            <section className="grid items-start gap-6 lg:grid-cols-[minmax(0,1fr)_24rem]">
+              <div className="surface-card min-w-0 overflow-hidden">
+                <div className="flex items-center gap-3 border-b border-border px-5 py-5">
+                  <MapPin className="h-5 w-5 text-accent" aria-hidden="true" />
+                  <h2 className="text-base font-semibold text-foreground">Location</h2>
+                </div>
+                {report.coordinates ? (
+                  <div className="h-[350px] sm:h-[450px]">
+                    <StaffReportMap lat={report.coordinates.latitude} lng={report.coordinates.longitude} />
+                  </div>
+                ) : (
+                  <div className="empty-state flex h-[350px] flex-col items-center justify-center gap-3 bg-muted/20 sm:h-[450px]">
+                    <MapPin className="h-5 w-5 text-muted-foreground" aria-hidden="true" />
+                    <p className="text-sm text-muted-foreground">No location data</p>
+                  </div>
+                )}
+                {report.locationText && (
+                  <p className="flex items-start gap-2 border-t border-border px-5 py-4 text-sm text-muted-foreground">
+                    <MapPin className="h-4.5 w-4.5 shrink-0 text-accent" aria-hidden="true" />
+                    {report.locationText}
+                  </p>
+                )}
+              </div>
+
+              <aside className="min-w-0 space-y-5">
+                {latestAi && <AiValidationPanel aiResult={latestAi} />}
+
+                <div className="surface-card overflow-hidden">
+                  <div className="flex items-start gap-3 border-b border-border px-5 py-5">
+                    <ClipboardList className="mt-0.5 h-5 w-5 shrink-0 text-accent" aria-hidden="true" />
+                    <div>
+                      <h2 className="text-base font-semibold text-foreground">Details</h2>
+                      <p className="mt-1 text-xs text-muted-foreground">Status, priority and ownership</p>
+                    </div>
                   </div>
 
-                  {/* Action panel */}
-                  <aside className="w-full md:w-80 lg:w-96 shrink-0 space-y-4">
-                    {/* AI Validation card */}
-                    {latestAi && <AiValidationPanel aiResult={latestAi} />}
-
-                    {/* Details card */}
-                    <div className="h-[350px] sm:h-[450px] rounded-xl border border-border bg-surface overflow-hidden flex flex-col">
-                      {/* Card header */}
-                      <div className="border-b border-border bg-muted/50 px-5 py-3">
-                        <h2 className="text-sm font-semibold text-foreground uppercase tracking-wider">Details</h2>
-                      </div>
-
-                      {/* Card body */}
-                      <div className="flex-1 flex flex-col justify-evenly px-5">
-                        {/* Reporter */}
-                        <div className="flex items-center justify-between gap-2">
-                          <span className="text-sm text-muted-foreground">Reporter</span>
-                          <span className="text-sm text-foreground">{report.reporter.displayName}</span>
-                        </div>
-
-                        {/* Reported */}
-                        <div className="flex items-center justify-between gap-2">
-                          <span className="text-sm text-muted-foreground">Reported</span>
-                          <span className="text-sm text-foreground">{formatDate(report.createdAt)}</span>
-                        </div>
-
-                        {/* Category */}
-                        <div className="flex items-center justify-between gap-2">
-                          <span className="text-sm text-muted-foreground">Category</span>
-                          <span className="inline-flex items-center gap-1.5 text-sm text-foreground">
-                            {report.category.color && (
-                              <span
-                                className="inline-block h-2 w-2 rounded-full"
-                                style={{ backgroundColor: report.category.color }}
-                                aria-hidden="true"
-                              />
-                            )}
-                            {report.category.name}
-                          </span>
-                        </div>
-
-                        <div className="border-t border-border" />
-
-                        {/* Status */}
-                        <div className="flex items-center justify-between gap-2">
-                          <span className="text-sm text-muted-foreground">Status</span>
-                          <StatusSelector reportId={reportId} />
-                        </div>
-
-                        {/* Priority */}
-                        <div className="flex items-center justify-between gap-2">
-                          <span className="text-sm text-muted-foreground">Priority</span>
-                          <PrioritySelector reportId={reportId} />
-                        </div>
-
-                        {/* Assigned to */}
-                        <div className="flex items-center justify-between gap-2">
-                          <span className="text-sm text-muted-foreground">Assigned to</span>
-                          <AssigneeSelector
-                            reportId={reportId}
-                            staffUsers={staffUsers}
-                            sessionUserDisplayName={sessionUserDisplayName}
-                          />
-                        </div>
-                      </div>
-
-                      {/* Card footer */}
-                      <div className="border-t border-border px-5 py-3 flex justify-end">
-                        <Link
-                          href="/staff/reports"
-                          className="inline-flex items-center rounded-md bg-accent px-4 py-1.5 text-xs font-medium text-white hover:bg-accent/90 transition-colors"
-                        >
-                          Save
-                        </Link>
-                      </div>
+                  <dl className="space-y-4 px-5 py-5 text-sm">
+                    <div className="flex items-start justify-between gap-4">
+                      <dt className="text-muted-foreground">Reporter</dt>
+                      <dd className="text-right font-medium text-foreground">{report.reporter.displayName}</dd>
                     </div>
-                  </aside>
+                    <div className="flex items-start justify-between gap-4">
+                      <dt className="text-muted-foreground">Reported</dt>
+                      <dd className="text-right text-foreground">{formatDate(report.createdAt)}</dd>
+                    </div>
+                    <div className="flex items-start justify-between gap-4">
+                      <dt className="text-muted-foreground">Category</dt>
+                      <dd className="inline-flex items-center gap-2 text-right text-foreground">
+                        {report.category.color && (
+                          <span
+                            className="h-2 w-2 shrink-0 rounded-full"
+                            style={{ backgroundColor: report.category.color, filter: 'saturate(0.55)' }}
+                            aria-hidden="true"
+                          />
+                        )}
+                        {report.category.name}
+                      </dd>
+                    </div>
+                  </dl>
+
+                  <div className="space-y-4 border-t border-border px-5 py-5">
+                    <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                      <span className="text-sm text-muted-foreground sm:pt-3">Status</span>
+                      <StatusSelector reportId={reportId} />
+                    </div>
+                    <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                      <span className="text-sm text-muted-foreground sm:pt-3">Priority</span>
+                      <PrioritySelector reportId={reportId} />
+                    </div>
+                    <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                      <span className="text-sm text-muted-foreground sm:pt-3">Assigned to</span>
+                      <AssigneeSelector
+                        reportId={reportId}
+                        staffUsers={staffUsers}
+                        sessionUserDisplayName={sessionUserDisplayName}
+                      />
+                    </div>
+                  </div>
+
+                  <div className="flex justify-end border-t border-border bg-muted/20 px-5 py-4">
+                    <Link href="/staff/reports" className="btn-primary">
+                      Save
+                    </Link>
+                  </div>
                 </div>
-              </div>
+              </aside>
             </section>
 
-            {/* ── Comments ── */}
-            <section className="py-8 sm:py-10">
-              <div className="container mx-auto px-4 sm:px-6 lg:px-8">
-                {/* Comments */}
-                <div>
-                  <h2 className="mb-4 text-base font-semibold text-foreground">Comments ({report.comments.length})</h2>
-                  {report.comments.length === 0 ? (
-                    <p className="text-sm text-muted-foreground">No comments yet.</p>
-                  ) : (
-                    <div className="space-y-3">
-                      {report.comments.map((comment) => (
-                        <div
-                          key={comment.id}
-                          className={
-                            comment.isInternal
-                              ? 'rounded-lg bg-muted border-l-4 border-accent/40 p-4'
-                              : 'rounded-lg border border-border bg-surface p-4'
-                          }
-                        >
-                          <div className="flex items-center gap-2 mb-2">
-                            <div className="flex h-6 w-6 items-center justify-center rounded-full bg-muted border border-border">
-                              <User className="h-3 w-3 text-muted-foreground" aria-hidden="true" />
-                            </div>
-                            <span className="text-sm font-medium text-foreground">{comment.user.displayName}</span>
-                            {comment.isInternal && (
-                              <span className="rounded-full bg-accent/15 px-2 py-0.5 text-xs font-medium text-accent">
-                                Internal
-                              </span>
-                            )}
-                            <span className="ml-auto text-xs text-muted-foreground">
-                              {formatRelativeTime(new Date(comment.createdAt))}
-                            </span>
-                          </div>
-                          <p className="text-sm text-foreground/90 whitespace-pre-wrap leading-relaxed">
-                            {comment.body}
-                          </p>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                  <CommentForm reportId={reportId} currentUserDisplayName={sessionUserDisplayName} />
+            {/* Comments */}
+            <section className="surface-card p-5 sm:p-6">
+              <h2 className="mb-5 flex items-center gap-3 text-base font-semibold text-foreground">
+                <MessageSquare className="h-5 w-5 text-accent" aria-hidden="true" />
+                Comments ({report.comments.length})
+              </h2>
+              {report.comments.length === 0 ? (
+                <div className="empty-state bg-muted/20 py-8">
+                  <p className="text-sm text-muted-foreground">No comments yet.</p>
                 </div>
-              </div>
+              ) : (
+                <div className="space-y-3">
+                  {report.comments.map((comment) => (
+                    <div
+                      key={comment.id}
+                      className={
+                        comment.isInternal
+                          ? 'rounded-xl border border-border border-l-2 border-l-accent/50 bg-muted/30 p-4'
+                          : 'rounded-xl border border-border bg-background/50 p-4'
+                      }
+                    >
+                      <div className="mb-3 flex flex-wrap items-center gap-2.5">
+                        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-border bg-surface">
+                          <User className="h-4.5 w-4.5 text-muted-foreground" aria-hidden="true" />
+                        </div>
+                        <span className="text-sm font-semibold text-foreground">{comment.user.displayName}</span>
+                        {comment.isInternal && <span className="status-badge bg-accent/10 text-accent">Internal</span>}
+                        <span className="ml-auto text-xs text-muted-foreground">
+                          {formatRelativeTime(new Date(comment.createdAt))}
+                        </span>
+                      </div>
+                      <p className="whitespace-pre-wrap text-sm leading-relaxed text-foreground">{comment.body}</p>
+                    </div>
+                  ))}
+                </div>
+              )}
+              <CommentForm reportId={reportId} currentUserDisplayName={sessionUserDisplayName} />
             </section>
           </div>
         </ReportAssigneeProvider>

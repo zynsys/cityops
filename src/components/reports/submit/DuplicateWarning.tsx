@@ -1,10 +1,11 @@
-"use client";
+'use client';
 
-import { AlertTriangle, ExternalLink } from "lucide-react";
-import { useRouter } from "next/navigation";
-import { getStatusConfig } from "@/lib/reportStatusConfig";
+import { AlertTriangle, ExternalLink } from 'lucide-react';
+import { useRouter } from 'next/navigation';
+import { CategoryIcon } from '@/components/ui/CategoryIcon';
+import { StatusBadge } from '@/components/ui/StatusBadge';
 
-const DRAFT_KEY = "cityops:wizard:draft";
+const DRAFT_KEY = 'cityops:wizard:draft';
 
 export interface SimilarReportCandidate {
   id: number;
@@ -31,19 +32,16 @@ function formatDistance(metres: number): string {
 function formatRelativeDate(isoString: string): string {
   const diffMs = Date.now() - new Date(isoString).getTime();
   const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
-  if (diffDays === 0) return "today";
-  if (diffDays === 1) return "yesterday";
+  if (diffDays === 0) return 'today';
+  if (diffDays === 1) return 'yesterday';
   if (diffDays < 30) return `${diffDays} days ago`;
   const diffMonths = Math.floor(diffDays / 30);
-  if (diffMonths < 12) return `${diffMonths} month${diffMonths === 1 ? "" : "s"} ago`;
+  if (diffMonths < 12) return `${diffMonths} month${diffMonths === 1 ? '' : 's'} ago`;
   const diffYears = Math.floor(diffDays / 365);
-  return `${diffYears} year${diffYears === 1 ? "" : "s"} ago`;
+  return `${diffYears} year${diffYears === 1 ? '' : 's'} ago`;
 }
 
-export default function DuplicateWarning({
-  candidates,
-  onDismiss,
-}: DuplicateWarningProps) {
+export default function DuplicateWarning({ candidates, onDismiss }: DuplicateWarningProps) {
   const router = useRouter();
 
   function handleSupport(reportId: number) {
@@ -56,21 +54,19 @@ export default function DuplicateWarning({
   }
 
   return (
-    <div className="rounded-xl border border-amber-300 bg-amber-50 dark:bg-amber-950/30 dark:border-amber-700 px-4 py-4 flex flex-col gap-4">
+    <div
+      className="flex flex-col gap-4 rounded-2xl border border-warning/30 bg-warning/5 p-5 sm:p-6"
+      role="region"
+      aria-label="Similar reports"
+    >
       {/* Header */}
       <div className="flex items-start gap-3">
-        <AlertTriangle
-          className="w-5 h-5 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5"
-          aria-hidden="true"
-        />
+        <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-warning" aria-hidden="true" />
         <div>
-          <h3 className="text-sm font-semibold text-amber-900 dark:text-amber-200">
-            Similar reports found nearby
-          </h3>
-          <p className="text-xs text-amber-800 dark:text-amber-300 mt-0.5">
-            Before submitting, check if any of these existing reports match what
-            you&apos;re seeing. Supporting an existing report helps authorities
-            prioritise it faster.
+          <h3 className="text-sm font-semibold text-foreground">Similar reports found nearby</h3>
+          <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
+            Before submitting, check if any of these existing reports match what you&apos;re seeing. Supporting an
+            existing report helps authorities prioritise it faster.
           </p>
         </div>
       </div>
@@ -78,43 +74,27 @@ export default function DuplicateWarning({
       {/* Candidate list */}
       <ul className="flex flex-col gap-3" role="list">
         {candidates.map((report) => {
-          const statusCfg = getStatusConfig(report.status);
-          const truncatedTitle =
-            report.title.length > 80
-              ? report.title.slice(0, 80) + "…"
-              : report.title;
+          const truncatedTitle = report.title.length > 80 ? report.title.slice(0, 80) + '…' : report.title;
 
           return (
             <li
               key={report.id}
-              className="rounded-lg border border-amber-200 dark:border-amber-800 bg-white dark:bg-surface p-3 flex flex-col gap-2"
+              className="flex flex-col gap-3 rounded-xl border border-border bg-surface p-4 shadow-xs"
             >
-              <div className="flex flex-col gap-1">
-                <p className="text-sm font-medium text-foreground leading-snug">
+              <div className="flex flex-col gap-2">
+                <p className="text-sm leading-relaxed font-semibold wrap-break-word text-foreground">
                   {truncatedTitle}
                 </p>
                 <div className="flex items-center gap-2 flex-wrap">
-                  {/* Category colour dot + name */}
-                  <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
-                    <span
-                      className="w-2 h-2 rounded-full shrink-0"
-                      style={{ backgroundColor: report.categoryColor }}
-                      aria-hidden="true"
-                    />
+                  {/* The candidate provides a name, so use the shared generic icon. */}
+                  <span className="inline-flex items-center gap-1.5 text-xs text-muted-foreground">
+                    <CategoryIcon size={14} className="shrink-0" />
                     {report.categoryName}
                   </span>
                   {/* Status badge */}
-                  <span
-                    className="inline-flex items-center rounded-full px-1.5 py-0.5 text-[10px] font-semibold"
-                    style={{
-                      backgroundColor: statusCfg.color + "22",
-                      color: statusCfg.color,
-                    }}
-                  >
-                    {statusCfg.label}
-                  </span>
+                  <StatusBadge status={report.status} />
                 </div>
-                <div className="flex items-center gap-3 text-xs text-muted-foreground">
+                <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
                   <span>{formatDistance(report.distanceMetres)}</span>
                   <span>{formatRelativeDate(report.createdAt)}</span>
                 </div>
@@ -125,16 +105,12 @@ export default function DuplicateWarning({
                   href={`/reports/${report.id}`}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="inline-flex items-center gap-1 text-xs font-medium text-accent hover:opacity-80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent rounded transition-opacity"
+                  className="btn-secondary px-3"
                 >
                   View report
-                  <ExternalLink className="w-3 h-3" aria-hidden="true" />
+                  <ExternalLink className="h-3.5 w-3.5" aria-hidden="true" />
                 </a>
-                <button
-                  type="button"
-                  onClick={() => handleSupport(report.id)}
-                  className="inline-flex items-center gap-1 text-xs font-semibold bg-accent text-accent-foreground rounded-md px-2.5 py-1 hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent transition-opacity"
-                >
+                <button type="button" onClick={() => handleSupport(report.id)} className="btn-primary px-3">
                   Support this report
                 </button>
               </div>
@@ -147,7 +123,7 @@ export default function DuplicateWarning({
       <button
         type="button"
         onClick={onDismiss}
-        className="text-xs text-amber-800 dark:text-amber-300 underline underline-offset-2 hover:text-amber-900 dark:hover:text-amber-200 self-center focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-500 rounded"
+        className="min-h-11 self-start rounded-lg px-2 text-left text-sm font-medium text-warning underline underline-offset-4 transition-colors hover:bg-warning/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-warning"
       >
         These don&apos;t match — submit mine
       </button>

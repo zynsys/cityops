@@ -1,12 +1,12 @@
-"use client";
+'use client';
 
-import { Suspense } from "react";
-import { MapPinOff } from "lucide-react";
-import ReportFilters from "./ReportFilters";
-import ReportListItem from "./ReportListItem";
-import ReportListPagination from "./ReportListPagination";
-import ReportLocationSearch from "./ReportLocationSearch";
-import type { PublicReport, CategoryOption } from "@/db/queries/reports";
+import { Suspense } from 'react';
+import { MapPinOff } from 'lucide-react';
+import ReportFilters from './ReportFilters';
+import ReportListItem from './ReportListItem';
+import ReportListPagination from './ReportListPagination';
+import ReportLocationSearch from './ReportLocationSearch';
+import type { PublicReport, CategoryOption } from '@/db/queries/reports';
 
 interface TenantOption {
   slug: string;
@@ -54,11 +54,25 @@ export default function ReportListPanel({
   const to = Math.min(currentPage * PAGE_SIZE, total);
 
   return (
-    <div className="flex flex-col h-full overflow-hidden">
+    <div className="flex min-h-0 min-w-0 flex-col lg:h-full">
       {/* Always-visible header: location search + filters */}
-      <div className="pt-4 pb-3 border-b border-border space-y-3 shrink-0">
-        <h1 className="text-base font-bold text-foreground">Reports</h1>
-        <Suspense fallback={<div className="h-20" />}>
+      <div className="shrink-0 space-y-4 border-b border-border p-5 sm:p-6">
+        <div>
+          <p className="eyebrow">Community reports</p>
+          <h1 className="page-title mt-2">Reports</h1>
+          <p className="mt-2 text-sm leading-6 text-muted-foreground">
+            Explore local issues and follow their progress.
+          </p>
+        </div>
+        <Suspense
+          fallback={
+            <div
+              className="h-[156px] animate-pulse rounded-xl bg-muted sm:h-[72px]"
+              role="status"
+              aria-label="Loading location filters"
+            />
+          }
+        >
           <ReportLocationSearch
             tenants={tenants}
             currentCouncil={currentCouncil}
@@ -66,7 +80,15 @@ export default function ReportListPanel({
             currentCity={currentCity}
           />
         </Suspense>
-        <Suspense fallback={<div className="h-9" />}>
+        <Suspense
+          fallback={
+            <div
+              className="h-[156px] animate-pulse rounded-xl bg-muted"
+              role="status"
+              aria-label="Loading report filters"
+            />
+          }
+        >
           <ReportFilters
             categories={categories}
             currentStatus={currentStatus}
@@ -75,73 +97,54 @@ export default function ReportListPanel({
           />
         </Suspense>
         {hasLocation && total > 0 && (
-          <p className="text-xs text-muted-foreground">
-            {from} to {to} of{" "}
-            <span className="font-semibold text-foreground">{total}</span>{" "}
-            reports
-            {locationHeading && (
-              <span className="ml-1">in {locationHeading}</span>
-            )}
+          <p className="border-t border-border pt-4 text-sm leading-6 text-muted-foreground">
+            {from} to {to} of <span className="font-semibold tabular-nums text-foreground">{total}</span> reports
+            {locationHeading && <span className="block break-words text-xs">{locationHeading}</span>}
           </p>
         )}
         {!hasLocation && total > 0 && (
-          <p className="text-xs text-muted-foreground">
-            {from} to {to} of{" "}
-            <span className="font-semibold text-foreground">{total}</span>{" "}
-            reports across all councils
+          <p className="border-t border-border pt-4 text-sm leading-6 text-muted-foreground">
+            {from} to {to} of <span className="font-semibold tabular-nums text-foreground">{total}</span> reports across
+            all councils
           </p>
         )}
       </div>
 
       {/* Scrollable list */}
-      <div className="flex-1 overflow-y-auto scrollbar-hide">
-            {total === 0 ? (
-              <div className="flex flex-col items-center justify-center gap-3 py-16 text-center">
-                <MapPinOff
-                  className="h-8 w-8 text-muted-foreground/40"
-                  aria-hidden="true"
-                />
-                {hasFilters ? (
-                  <>
-                    <p className="font-semibold text-foreground">No reports found</p>
-                    <p className="text-sm text-muted-foreground">
-                      Try adjusting your filters.
-                    </p>
-                    <a
-                      href={`/reports?${locationParams}`}
-                      className="text-sm text-accent hover:underline"
-                    >
-                      Clear filters
-                    </a>
-                  </>
-                ) : (
-                  <>
-                    <p className="font-semibold text-foreground">
-                      No reports in this area yet
-                    </p>
-                    <p className="text-sm text-muted-foreground">
-                      Check back later or try a different location.
-                    </p>
-                  </>
-                )}
-              </div>
+      <div className="min-h-0 flex-1 overflow-y-auto p-3 sm:p-4">
+        {total === 0 ? (
+          <div className="empty-state gap-3 px-4 py-12">
+            <span className="mb-1 flex h-12 w-12 items-center justify-center rounded-2xl bg-muted text-muted-foreground">
+              <MapPinOff className="h-6 w-6" aria-hidden="true" />
+            </span>
+            {hasFilters ? (
+              <>
+                <p className="font-semibold text-foreground">No reports found</p>
+                <p className="text-sm leading-6 text-muted-foreground">Try adjusting your filters.</p>
+                <a href={`/reports?${locationParams}`} className="btn-secondary mt-2">
+                  Clear filters
+                </a>
+              </>
             ) : (
-              <div>
-                {reports.map((report) => (
-                  <ReportListItem key={report.id} report={report} />
-                ))}
-              </div>
+              <>
+                <p className="font-semibold text-foreground">No reports in this area yet</p>
+                <p className="text-sm leading-6 text-muted-foreground">Check back later or try a different location.</p>
+              </>
             )}
           </div>
+        ) : (
+          <div className="space-y-3">
+            {reports.map((report) => (
+              <ReportListItem key={report.id} report={report} />
+            ))}
+          </div>
+        )}
+      </div>
 
-          {/* Pagination */}
-          <Suspense fallback={null}>
-            <ReportListPagination
-              currentPage={currentPage}
-              total={total}
-              pageSize={PAGE_SIZE}
-            />
-          </Suspense>
+      {/* Pagination */}
+      <Suspense fallback={null}>
+        <ReportListPagination currentPage={currentPage} total={total} pageSize={PAGE_SIZE} />
+      </Suspense>
     </div>
   );
 }

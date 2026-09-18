@@ -1,8 +1,8 @@
-"use client";
+'use client';
 
-import { useState } from "react";
-import { useRouter } from "next/navigation";
-import { useReportAssignee, type AssignedToUser } from "./ReportAssigneeContext";
+import { useState } from 'react';
+import { useRouter } from 'next/navigation';
+import { useReportAssignee, type AssignedToUser } from './ReportAssigneeContext';
 
 interface StaffUser {
   id: string;
@@ -15,11 +15,7 @@ interface AssigneeSelectorProps {
   sessionUserDisplayName: string;
 }
 
-export function AssigneeSelector({
-  reportId,
-  staffUsers,
-  sessionUserDisplayName,
-}: AssigneeSelectorProps) {
+export function AssigneeSelector({ reportId, staffUsers, sessionUserDisplayName }: AssigneeSelectorProps) {
   const router = useRouter();
   const { assignedTo, setAssignedTo } = useReportAssignee();
   const [isLoading, setIsLoading] = useState(false);
@@ -44,15 +40,15 @@ export function AssigneeSelector({
 
     try {
       const res = await fetch(`/api/staff/reports/${reportId}/assign`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ assignedToUserId: userId }),
       });
 
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
         setAssignedTo(previous); // revert
-        setError((data as { error?: string }).error ?? "Failed to update assignment");
+        setError((data as { error?: string }).error ?? 'Failed to update assignment');
         return;
       }
 
@@ -61,7 +57,7 @@ export function AssigneeSelector({
       router.refresh();
     } catch {
       setAssignedTo(previous); // revert
-      setError("Network error. Please try again.");
+      setError('Network error. Please try again.');
     } finally {
       setIsLoading(false);
     }
@@ -69,25 +65,24 @@ export function AssigneeSelector({
 
   const handleSelectChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
     const val = e.target.value;
-    submitAssignment(val === "" ? null : val);
+    submitAssignment(val === '' ? null : val);
   };
 
   return (
-    <div className="flex flex-col items-end gap-1">
-      <div className="flex items-center gap-1.5">
+    <div className="flex w-full min-w-0 flex-col gap-2 sm:w-auto sm:items-end">
+      <div className="flex w-full items-center gap-2 sm:w-auto">
         {isLoading && (
           <span
-            className="h-3 w-3 animate-spin rounded-full border border-border border-t-accent"
+            className="h-4 w-4 shrink-0 animate-spin rounded-full border-2 border-border border-t-accent"
             aria-hidden="true"
           />
         )}
         <select
-          value={assignedTo?.id ?? ""}
+          value={assignedTo?.id ?? ''}
           onChange={handleSelectChange}
           disabled={isLoading}
           aria-label="Assign report to staff member"
-          className="w-[160px] rounded-md border border-border bg-surface px-2 py-1 text-xs font-medium text-foreground
-                     focus:outline-none focus:ring-2 focus:ring-accent disabled:opacity-50 cursor-pointer"
+          className="input-field w-full min-w-0 cursor-pointer disabled:cursor-wait disabled:opacity-60 sm:w-[180px]"
         >
           <option value="">Unassigned</option>
           {staffUsers.map((user) => (
@@ -99,7 +94,11 @@ export function AssigneeSelector({
       </div>
 
       {error && (
-        <p className="text-xs text-red-400" role="alert" aria-live="assertive">
+        <p
+          className="max-w-full rounded-lg bg-danger/10 px-3 py-2 text-xs leading-relaxed text-danger sm:max-w-[200px]"
+          role="alert"
+          aria-live="assertive"
+        >
           {error}
         </p>
       )}

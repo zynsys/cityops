@@ -1,12 +1,22 @@
-import KpiCards from "./KpiCards";
-import TrendChart from "./TrendChart";
-import CategoryBreakdown from "./CategoryBreakdown";
-import StatusDistribution from "./StatusDistribution";
-import PriorityDistribution from "./PriorityDistribution";
-import DashboardHeatmapLoader from "./DashboardHeatmapLoader";
-import ResolutionFunnel from "./ResolutionFunnel";
-import RecentReportsFeed from "./RecentReportsFeed";
-import type { DashboardKPIs, TimeRange, TrendDataSets, CategoryBreakdownItem, StatusDistributionItem, PriorityDistributionItem, HeatmapPoint, FunnelStage, AnalyticsRecentReport } from "@/db/queries/analytics";
+import KpiCards from './KpiCards';
+import TrendChart from './TrendChart';
+import CategoryBreakdown from './CategoryBreakdown';
+import StatusDistribution from './StatusDistribution';
+import PriorityDistribution from './PriorityDistribution';
+import DashboardHeatmapLoader from './DashboardHeatmapLoader';
+import ResolutionFunnel from './ResolutionFunnel';
+import RecentReportsFeed from './RecentReportsFeed';
+import type {
+  DashboardKPIs,
+  TimeRange,
+  TrendDataSets,
+  CategoryBreakdownItem,
+  StatusDistributionItem,
+  PriorityDistributionItem,
+  HeatmapPoint,
+  FunnelStage,
+  AnalyticsRecentReport,
+} from '@/db/queries/analytics';
 
 interface DashboardGridProps {
   kpis: DashboardKPIs;
@@ -22,9 +32,21 @@ interface DashboardGridProps {
   postcode?: string;
 }
 
-export default function DashboardGrid({ kpis, trendData, categoryData, statusData, priorityData, heatmapPoints, funnelData, recentReports, range, councilSlug, postcode }: DashboardGridProps) {
+export default function DashboardGrid({
+  kpis,
+  trendData,
+  categoryData,
+  statusData,
+  priorityData,
+  heatmapPoints,
+  funnelData,
+  recentReports,
+  range,
+  councilSlug,
+  postcode,
+}: DashboardGridProps) {
   return (
-    <div className="grid grid-cols-1 md:grid-cols-6 lg:grid-cols-12 gap-4">
+    <div className="grid grid-cols-1 gap-5 md:grid-cols-6 lg:grid-cols-12 lg:gap-6 [&>div]:min-w-0">
       {/* KPI Summary Cards — full width */}
       <div className="lg:col-span-12 md:col-span-6">
         <KpiCards data={kpis} range={range} />

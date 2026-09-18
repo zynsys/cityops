@@ -1,8 +1,9 @@
-"use client";
+'use client';
 
-import { forwardRef } from "react";
-import { Check } from "lucide-react";
-import type { CategorySummary } from "@/db/queries/categories";
+import { forwardRef } from 'react';
+import { Check } from 'lucide-react';
+import { CategoryIcon, getCategoryTone } from '@/components/ui/CategoryIcon';
+import type { CategorySummary } from '@/db/queries/categories';
 
 interface CategoryCardProps {
   category: CategorySummary;
@@ -12,68 +13,51 @@ interface CategoryCardProps {
   tabIndex?: number;
 }
 
-const CategoryCard = forwardRef<HTMLButtonElement, CategoryCardProps>(
-  function CategoryCard(
-    { category, selected, onSelect, onKeyDown, tabIndex },
-    ref
-  ) {
-    const { name, description, icon, color } = category;
+const CategoryCard = forwardRef<HTMLButtonElement, CategoryCardProps>(function CategoryCard(
+  { category, selected, onSelect, onKeyDown, tabIndex },
+  ref,
+) {
+  const { name, description, slug } = category;
 
-    // Category colour at ~15% opacity for icon background (hex alpha 26 ≈ 15%)
-    const iconBg = color ? `${color}26` : "oklch(74.5% 0.183 62.8 / 0.15)";
-    const iconColor = color ?? "oklch(74.5% 0.183 62.8)";
-
-    return (
-      <button
-        ref={ref}
-        type="button"
-        aria-pressed={selected}
-        tabIndex={tabIndex ?? -1}
-        onClick={onSelect}
-        onKeyDown={onKeyDown}
-        className={[
-          "relative flex flex-col items-start gap-2 rounded-xl p-3 text-left w-full",
-          "border bg-surface transition-all duration-150",
-          "hover:shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent",
-          selected
-            ? "shadow-sm"
-            : "border-border hover:border-accent/40",
-        ].join(" ")}
-        style={
-          selected
-            ? { borderColor: color ?? "oklch(74.5% 0.183 62.8)", borderWidth: "2px" }
-            : {}
-        }
-      >
-        {/* Checkmark badge when selected */}
-        {selected && (
-          <span className="absolute top-2 right-2 flex h-5 w-5 items-center justify-center rounded-full bg-green-500 text-white">
-            <Check size={12} strokeWidth={3} />
-          </span>
-        )}
-
-        {/* Icon area */}
+  return (
+    <button
+      ref={ref}
+      type="button"
+      aria-pressed={selected}
+      tabIndex={tabIndex ?? -1}
+      onClick={onSelect}
+      onKeyDown={onKeyDown}
+      className={[
+        'relative flex h-full min-h-40 w-full flex-col items-start gap-3 rounded-2xl p-4 text-left sm:p-5',
+        'border bg-surface transition-colors duration-150',
+        'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-background',
+        selected
+          ? 'border-accent shadow-soft ring-1 ring-accent'
+          : 'border-border hover:border-accent/50 hover:bg-muted/40',
+      ].join(' ')}
+    >
+      {/* Checkmark badge when selected */}
+      {selected && (
         <span
-          className="flex h-10 w-10 items-center justify-center rounded-lg text-xl shrink-0"
-          style={{ backgroundColor: iconBg, color: iconColor }}
+          className="absolute top-3 right-3 flex h-6 w-6 items-center justify-center rounded-full bg-accent text-accent-foreground"
+          aria-hidden="true"
         >
-          {icon ?? "📋"}
+          <Check size={14} strokeWidth={2.5} />
         </span>
+      )}
 
-        {/* Name */}
-        <span className="text-sm font-semibold text-foreground leading-tight">
-          {name}
-        </span>
+      {/* Icon area */}
+      <span className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-xl ${getCategoryTone(slug)}`}>
+        <CategoryIcon slug={slug} size={30} />
+      </span>
 
-        {/* Description — one line, truncated */}
-        {description && (
-          <span className="text-xs text-muted-foreground truncate w-full">
-            {description}
-          </span>
-        )}
-      </button>
-    );
-  }
-);
+      {/* Name */}
+      <span className="w-full text-sm leading-snug font-semibold wrap-break-word text-foreground">{name}</span>
+
+      {/* Description stays readable instead of being truncated to one line. */}
+      {description && <span className="w-full text-xs leading-relaxed text-muted-foreground">{description}</span>}
+    </button>
+  );
+});
 
 export default CategoryCard;

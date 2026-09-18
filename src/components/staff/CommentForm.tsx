@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { User } from 'lucide-react';
+import { Globe, LockKeyhole, Send, User } from 'lucide-react';
 
 const MAX_BODY = 2000;
 
@@ -75,66 +75,70 @@ export function CommentForm({ reportId }: CommentFormProps) {
   };
 
   return (
-    <div className="space-y-3 mt-4">
+    <div className="mt-6 space-y-4">
       {/* Optimistically rendered new comments */}
       {newComments.map((comment) => (
         <div
           key={comment.id}
           className={
             comment.isInternal
-              ? 'rounded-lg bg-muted border-l-4 border-accent/40 p-4'
-              : 'rounded-lg border border-border bg-surface p-4'
+              ? 'rounded-xl border border-border border-l-2 border-l-accent/50 bg-muted/30 p-4'
+              : 'rounded-xl border border-border bg-background/50 p-4'
           }
         >
-          <div className="flex items-center gap-2 mb-2">
-            <div className="flex h-6 w-6 items-center justify-center rounded-full bg-muted border border-border">
-              <User className="h-3 w-3 text-muted-foreground" aria-hidden="true" />
+          <div className="mb-3 flex flex-wrap items-center gap-2.5">
+            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-border bg-surface">
+              <User className="h-4.5 w-4.5 text-muted-foreground" aria-hidden="true" />
             </div>
-            <span className="text-sm font-medium text-foreground">{comment.user.displayName}</span>
-            {comment.isInternal && (
-              <span className="rounded-full bg-accent/15 px-2 py-0.5 text-xs font-medium text-accent">Internal</span>
-            )}
+            <span className="text-sm font-semibold text-foreground">{comment.user.displayName}</span>
+            {comment.isInternal && <span className="status-badge bg-accent/10 text-accent">Internal</span>}
             <span className="ml-auto text-xs text-muted-foreground">
               {formatRelativeTime(new Date(comment.createdAt))}
             </span>
           </div>
-          <p className="text-sm text-foreground/90 whitespace-pre-wrap leading-relaxed">{comment.body}</p>
+          <p className="whitespace-pre-wrap text-sm leading-relaxed text-foreground">{comment.body}</p>
         </div>
       ))}
 
       {/* Comment form */}
-      <form onSubmit={handleSubmit} className="rounded-lg border border-border bg-surface p-4 space-y-3">
+      <form onSubmit={handleSubmit} className="space-y-4 rounded-xl border border-border bg-muted/20 p-4 sm:p-5">
         {/* Mode toggle */}
         <div
-          className="flex rounded-md border border-border overflow-hidden text-xs font-medium"
+          className="grid grid-cols-2 gap-1 rounded-xl border border-border bg-surface p-1 text-xs font-medium sm:text-sm"
           role="group"
           aria-label="Comment visibility"
         >
           <button
             type="button"
             onClick={() => setIsInternal(true)}
-            className={`flex-1 px-3 py-1.5 transition-colors ${
-              isInternal ? 'bg-accent text-white' : 'bg-surface text-muted-foreground hover:text-foreground'
+            className={`flex min-h-11 items-center justify-center gap-2 rounded-lg px-3 py-2 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent ${
+              isInternal
+                ? 'bg-accent text-accent-foreground shadow-soft'
+                : 'text-muted-foreground hover:bg-muted/50 hover:text-foreground'
             }`}
             aria-pressed={isInternal}
           >
+            <LockKeyhole className="h-4.5 w-4.5 shrink-0" aria-hidden="true" />
             Internal note
           </button>
           <button
             type="button"
             onClick={() => setIsInternal(false)}
-            className={`flex-1 px-3 py-1.5 transition-colors ${
-              !isInternal ? 'bg-accent text-white' : 'bg-surface text-muted-foreground hover:text-foreground'
+            className={`flex min-h-11 items-center justify-center gap-2 rounded-lg px-3 py-2 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent ${
+              !isInternal
+                ? 'bg-accent text-accent-foreground shadow-soft'
+                : 'text-muted-foreground hover:bg-muted/50 hover:text-foreground'
             }`}
             aria-pressed={!isInternal}
           >
+            <Globe className="h-4.5 w-4.5 shrink-0" aria-hidden="true" />
             Public reply
           </button>
         </div>
 
         {/* Textarea */}
         <div>
-          <label htmlFor={`comment-body-${reportId}`} className="sr-only">
+          <label htmlFor={`comment-body-${reportId}`} className="field-label">
             Write a comment
           </label>
           <textarea
@@ -145,18 +149,20 @@ export function CommentForm({ reportId }: CommentFormProps) {
             rows={3}
             maxLength={MAX_BODY}
             disabled={isSubmitting}
-            className="w-full resize-y rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground
-                       placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-accent
-                       disabled:opacity-50"
+            className="input-field min-h-[120px] w-full resize-y disabled:opacity-50"
           />
-          <p className="mt-1 text-right text-xs text-muted-foreground" aria-live="polite">
+          <p className="mt-2 text-right text-xs text-muted-foreground tabular-nums" aria-live="polite">
             {body.length} / {MAX_BODY}
           </p>
         </div>
 
         {/* Error */}
         {error && (
-          <p className="text-xs text-red-400" role="alert" aria-live="assertive">
+          <p
+            className="rounded-lg border border-danger/20 bg-danger/10 px-3 py-2.5 text-sm text-danger"
+            role="alert"
+            aria-live="assertive"
+          >
             {error}
           </p>
         )}
@@ -166,10 +172,9 @@ export function CommentForm({ reportId }: CommentFormProps) {
           <button
             type="submit"
             disabled={!trimmed || isSubmitting}
-            className="rounded-md bg-accent px-4 py-1.5 text-xs font-medium text-white
-                       hover:bg-accent/90 disabled:opacity-50 disabled:cursor-not-allowed
-                       focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent transition-colors"
+            className="btn-primary disabled:cursor-not-allowed disabled:opacity-50"
           >
+            <Send className="h-4.5 w-4.5" aria-hidden="true" />
             {isSubmitting ? <span aria-live="polite">Posting…</span> : 'Post comment'}
           </button>
         </div>

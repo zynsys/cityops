@@ -1,11 +1,11 @@
-"use client";
+'use client';
 
-import { useCallback, useState } from "react";
-import { ArrowLeft, ArrowRight, Search, Loader2 } from "lucide-react";
-import { useReportSubmission } from "./ReportSubmissionContext";
-import SubmitReportMapLoader from "./SubmitReportMapLoader";
-import CouncilDetectionChip, { type DetectionStatus } from "./CouncilDetectionChip";
-import CouncilSelect, { type TenantOption } from "./CouncilSelect";
+import { useCallback, useState } from 'react';
+import { ArrowLeft, ArrowRight, Search, Loader2 } from 'lucide-react';
+import { useReportSubmission } from './ReportSubmissionContext';
+import SubmitReportMapLoader from './SubmitReportMapLoader';
+import CouncilDetectionChip, { type DetectionStatus } from './CouncilDetectionChip';
+import CouncilSelect, { type TenantOption } from './CouncilSelect';
 
 interface FlyToPos {
   lat: number;
@@ -21,52 +21,55 @@ interface Step2LocationProps {
 
 export default function Step2Location({ tenants, onBack, onNext }: Step2LocationProps) {
   const { state, dispatch } = useReportSubmission();
-  const [detectionStatus, setDetectionStatus] = useState<DetectionStatus>("idle");
+  const [detectionStatus, setDetectionStatus] = useState<DetectionStatus>('idle');
   const [showManualSelect, setShowManualSelect] = useState(false);
-  const [searchQuery, setSearchQuery] = useState("");
+  const [searchQuery, setSearchQuery] = useState('');
   const [searching, setSearching] = useState(false);
   const [searchError, setSearchError] = useState<string | null>(null);
   const [flyToPos, setFlyToPos] = useState<FlyToPos | null>(null);
 
   const canProceed = state.lat !== null && state.lng !== null && state.tenantId !== null;
 
-  const detectCouncil = useCallback(async (lat: number, lng: number) => {
-    setDetectionStatus("loading");
-    dispatch({ type: "CLEAR_TENANT" });
-    setShowManualSelect(false);
+  const detectCouncil = useCallback(
+    async (lat: number, lng: number) => {
+      setDetectionStatus('loading');
+      dispatch({ type: 'CLEAR_TENANT' });
+      setShowManualSelect(false);
 
-    try {
-      const res = await fetch("/api/detect-council", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ lat, lng }),
-      });
+      try {
+        const res = await fetch('/api/detect-council', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ lat, lng }),
+        });
 
-      if (!res.ok) throw new Error("API error");
+        if (!res.ok) throw new Error('API error');
 
-      const data = (await res.json()) as
-        | { matched: true; tenant: { id: string; name: string; slug: string } }
-        | { matched: false; tenant: null };
+        const data = (await res.json()) as
+          | { matched: true; tenant: { id: string; name: string; slug: string } }
+          | { matched: false; tenant: null };
 
-      if (data.matched) {
-        dispatch({ type: "SET_TENANT", tenantId: data.tenant.id, tenantName: data.tenant.name });
-        setDetectionStatus("matched");
-      } else {
-        setDetectionStatus("unmatched");
+        if (data.matched) {
+          dispatch({ type: 'SET_TENANT', tenantId: data.tenant.id, tenantName: data.tenant.name });
+          setDetectionStatus('matched');
+        } else {
+          setDetectionStatus('unmatched');
+          setShowManualSelect(true);
+        }
+      } catch {
+        setDetectionStatus('error');
         setShowManualSelect(true);
       }
-    } catch {
-      setDetectionStatus("error");
-      setShowManualSelect(true);
-    }
-  }, [dispatch]);
+    },
+    [dispatch],
+  );
 
   const handlePinChange = useCallback(
     (lat: number, lng: number) => {
-      dispatch({ type: "SET_LOCATION", lat, lng });
+      dispatch({ type: 'SET_LOCATION', lat, lng });
       detectCouncil(lat, lng);
     },
-    [dispatch, detectCouncil]
+    [dispatch, detectCouncil],
   );
 
   async function handleSearch(e: React.FormEvent) {
@@ -80,15 +83,15 @@ export default function Step2Location({ tenants, onBack, onNext }: Step2Location
     try {
       const res = await fetch(
         `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(q)}&format=json&limit=1&countrycodes=gb`,
-        { headers: { "User-Agent": "CityOps/1.0 (cityops.app)" } }
+        { headers: { 'User-Agent': 'CityOps/1.0 (cityops.app)' } },
       );
 
-      if (!res.ok) throw new Error("Nominatim error");
+      if (!res.ok) throw new Error('Nominatim error');
 
       const data = (await res.json()) as { lat: string; lon: string }[];
 
       if (!data.length) {
-        setSearchError("No location found — try a different address or drop a pin manually.");
+        setSearchError('No location found — try a different address or drop a pin manually.');
         return;
       }
 
@@ -97,7 +100,7 @@ export default function Step2Location({ tenants, onBack, onNext }: Step2Location
       setFlyToPos({ lat, lng, zoom: 16 });
       handlePinChange(lat, lng);
     } catch {
-      setSearchError("Search failed — try again or drop a pin manually.");
+      setSearchError('Search failed — try again or drop a pin manually.');
     } finally {
       setSearching(false);
     }
@@ -105,87 +108,99 @@ export default function Step2Location({ tenants, onBack, onNext }: Step2Location
 
   function handleEditCouncil() {
     setShowManualSelect(true);
-    setDetectionStatus("unmatched");
-    dispatch({ type: "CLEAR_TENANT" });
+    setDetectionStatus('unmatched');
+    dispatch({ type: 'CLEAR_TENANT' });
   }
 
   function handleManualSelect(tenant: TenantOption) {
-    dispatch({ type: "SET_TENANT", tenantId: tenant.id, tenantName: tenant.name });
-    setDetectionStatus("matched");
+    dispatch({ type: 'SET_TENANT', tenantId: tenant.id, tenantName: tenant.name });
+    setDetectionStatus('matched');
     setShowManualSelect(false);
   }
 
   return (
-    <div className="flex flex-col h-full">
-      {/* Location search bar */}
-      <div className="shrink-0 px-3 py-2 border-b border-border bg-surface">
-        <form onSubmit={handleSearch} className="flex gap-2">
-          <input
-            type="text"
-            value={searchQuery}
-            onChange={(e) => {
-              setSearchQuery(e.target.value);
-              setSearchError(null);
-            }}
-            placeholder="Search by address, street or postcode…"
-            className="flex-1 rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground outline-none focus:border-accent focus:ring-2 focus:ring-accent/20 transition-colors"
-            aria-label="Search location"
-          />
-          <button
-            type="submit"
-            disabled={searching || !searchQuery.trim()}
-            className="flex items-center justify-center rounded-lg border border-border bg-surface px-3 py-2 text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-            aria-label="Search"
-          >
-            {searching ? <Loader2 size={16} className="animate-spin" /> : <Search size={16} />}
-          </button>
-        </form>
-        {searchError && (
-          <p className="mt-1.5 text-xs text-amber-500" role="alert">{searchError}</p>
-        )}
-      </div>
-
-      {/* Map */}
-      <div className="flex-1 relative">
-        <SubmitReportMapLoader
-          pinLat={state.lat}
-          pinLng={state.lng}
-          onPinChange={handlePinChange}
-          flyToPos={flyToPos}
-        />
-        {state.lat === null && (
-          <div className="absolute bottom-4 left-1/2 -translate-x-1/2 z-10 pointer-events-none">
-            <div className="rounded-full border border-border bg-surface/90 backdrop-blur-sm px-4 py-2 text-sm text-muted-foreground shadow">
-              Search an address above or click to drop a pin
-            </div>
+    <div className="flex h-full min-h-0 flex-col">
+      <div className="min-h-0 flex-1 overflow-y-auto px-4 py-5 sm:px-6 sm:py-6">
+        <div className="mx-auto flex min-h-full w-full max-w-3xl flex-col gap-4">
+          <header className="shrink-0">
+            <p className="eyebrow mb-2">Step 2 · Location</p>
+            <h2 className="text-xl font-semibold tracking-tight text-foreground sm:text-2xl">Pinpoint the location</h2>
+            <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
+              Find the address, then place or drag the pin to the exact spot.
+            </p>
+          </header>
+          {/* Location search bar */}
+          <div className="surface-card shrink-0 p-4">
+            <form onSubmit={handleSearch} className="flex gap-2">
+              <input
+                type="text"
+                value={searchQuery}
+                onChange={(e) => {
+                  setSearchQuery(e.target.value);
+                  setSearchError(null);
+                }}
+                placeholder="Search by address, street or postcode…"
+                className="input-field min-w-0 flex-1"
+                aria-label="Search location"
+              />
+              <button
+                type="submit"
+                disabled={searching || !searchQuery.trim()}
+                className="btn-secondary shrink-0 px-3 sm:px-4"
+                aria-label="Search"
+              >
+                {searching ? (
+                  <Loader2 size={16} className="animate-spin" aria-hidden="true" />
+                ) : (
+                  <Search size={16} aria-hidden="true" />
+                )}
+                <span className="hidden sm:inline">Search</span>
+              </button>
+            </form>
+            {searchError && (
+              <p className="mt-3 text-sm leading-relaxed text-warning" role="alert">
+                {searchError}
+              </p>
+            )}
           </div>
-        )}
-      </div>
 
-      {/* Council detection — sits above the nav bar */}
-      <div className="shrink-0 border-t border-border bg-surface px-4 py-2 flex flex-col gap-2">
-        <CouncilDetectionChip
-          status={detectionStatus}
-          councilName={state.tenantName ?? undefined}
-          onEdit={detectionStatus === "matched" ? handleEditCouncil : undefined}
-        />
-        {showManualSelect && (
-          <CouncilSelect
-            tenants={tenants}
-            selectedId={state.tenantId}
-            onSelect={handleManualSelect}
-          />
-        )}
+          {/* Map */}
+          <div className="relative isolate min-h-72 flex-1 overflow-hidden rounded-2xl border border-border bg-muted shadow-xs">
+            <div className="absolute inset-0">
+              <SubmitReportMapLoader
+                pinLat={state.lat}
+                pinLng={state.lng}
+                onPinChange={handlePinChange}
+                flyToPos={flyToPos}
+              />
+            </div>
+            {state.lat === null && (
+              <div className="pointer-events-none absolute inset-x-3 bottom-3 z-10 flex justify-center">
+                <div className="max-w-sm rounded-xl border border-border bg-surface/95 px-4 py-3 text-center text-xs leading-relaxed text-foreground shadow-soft">
+                  Search an address above or click to drop a pin
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Council detection — sits above the nav bar */}
+          <div className="flex shrink-0 flex-col gap-3">
+            <CouncilDetectionChip
+              status={detectionStatus}
+              councilName={state.tenantName ?? undefined}
+              onEdit={detectionStatus === 'matched' ? handleEditCouncil : undefined}
+            />
+            {showManualSelect && (
+              <CouncilSelect tenants={tenants} selectedId={state.tenantId} onSelect={handleManualSelect} />
+            )}
+          </div>
+        </div>
       </div>
 
       {/* Bottom navigation */}
-      <div className="shrink-0 border-t border-border bg-surface px-4 py-3 flex items-center justify-between gap-3">
-        <button
-          type="button"
-          onClick={onBack}
-          className="flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold border border-border text-foreground hover:bg-muted transition-colors"
-        >
-          <ArrowLeft size={16} />
+      <div className="flex shrink-0 items-center justify-between gap-3 border-t border-border bg-surface px-4 py-3 sm:px-6 sm:py-4">
+        <button type="button" onClick={onBack} className="btn-secondary">
+          <ArrowLeft size={16} aria-hidden="true" />
           Back
         </button>
         <button
@@ -194,14 +209,12 @@ export default function Step2Location({ tenants, onBack, onNext }: Step2Location
           disabled={!canProceed}
           aria-disabled={!canProceed}
           className={[
-            "flex items-center gap-2 rounded-lg px-5 py-2 text-sm font-semibold transition-colors",
-            canProceed
-              ? "bg-accent text-accent-foreground hover:opacity-90 cursor-pointer"
-              : "bg-muted text-muted-foreground cursor-not-allowed opacity-50",
-          ].join(" ")}
+            'btn-primary min-w-24',
+            canProceed ? 'bg-accent text-accent-foreground' : 'bg-muted text-muted-foreground shadow-none',
+          ].join(' ')}
         >
           Next
-          <ArrowRight size={16} />
+          <ArrowRight size={16} aria-hidden="true" />
         </button>
       </div>
     </div>

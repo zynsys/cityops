@@ -1,6 +1,6 @@
 import Link from 'next/link';
-import Image from 'next/image';
 import { Twitter, Instagram, Facebook, Linkedin } from 'lucide-react';
+import { BrandMark } from '@/components/header/BrandMark';
 
 const FOOTER_LINKS = {
   'Get Started': [
@@ -40,23 +40,28 @@ export function Footer() {
   const currentYear = new Date().getFullYear();
 
   return (
-    <footer className="bg-[#161F2F] text-[oklch(85%_0.01_260)]">
-      <div className="container mx-auto px-4 sm:px-6 lg:px-8 py-12 md:py-16">
-        <div className="grid grid-cols-1 gap-10 md:grid-cols-2 lg:grid-cols-[1.2fr_1fr_1fr_1fr_1fr] lg:gap-14">
+    <footer className="border-t border-border bg-section-alt text-muted-foreground">
+      <div className="section-shell py-12 sm:py-14">
+        <div className="grid grid-cols-2 gap-x-8 gap-y-10 lg:grid-cols-4 xl:grid-cols-[1.35fr_repeat(4,minmax(0,1fr))]">
           {/* Branding column */}
-          <div>
-            <Link href="/" className="flex items-center gap-2">
-              <Image src="/logo.png" alt="" width={28} height={28} />
-              <span className="text-xl font-bold text-white">CityOps</span>
+          <div className="col-span-2 lg:col-span-4 xl:col-span-1">
+            <Link href="/" className="inline-flex min-h-11 items-center gap-2.5 rounded-xl">
+              <BrandMark />
+              <span className="font-heading text-xl font-bold tracking-tight text-foreground">CityOps</span>
             </Link>
-            <p className="mt-4 text-sm leading-relaxed">
-              Empowering communities to report and track local reports. Making cities more responsive, one report at a
+            <p className="mt-4 max-w-sm text-sm leading-relaxed">
+              Helping communities report local issues and follow their progress. More responsive cities, one report at a
               time.
             </p>
-            <div className="mt-6 flex items-center gap-4">
+            <div className="mt-5 flex items-center gap-2">
               {SOCIAL_LINKS.map((social) => (
-                <a key={social.label} href={social.href} aria-label={social.label} className="link-hover">
-                  <social.icon className="h-5 w-5" />
+                <a
+                  key={social.label}
+                  href={social.href}
+                  aria-label={social.label}
+                  className="inline-flex size-11 items-center justify-center rounded-xl border border-border text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                >
+                  <social.icon className="size-4.5" strokeWidth={1.75} aria-hidden="true" />
                 </a>
               ))}
             </div>
@@ -64,12 +69,15 @@ export function Footer() {
 
           {/* Link columns */}
           {Object.entries(FOOTER_LINKS).map(([heading, links]) => (
-            <div key={heading}>
-              <h2 className="text-xl font-bold text-white">{heading}</h2>
-              <ul className="mt-4 space-y-3">
+            <div key={heading} className="min-w-0">
+              <h2 className="text-xs font-semibold tracking-wider text-foreground uppercase">{heading}</h2>
+              <ul className="mt-3 space-y-0.5">
                 {links.map((link) => (
                   <li key={link.href}>
-                    <Link href={link.href} className="text-sm link-hover">
+                    <Link
+                      href={link.href}
+                      className="inline-flex min-h-11 items-center rounded-md py-2 text-sm leading-relaxed transition-colors hover:text-foreground"
+                    >
                       {link.label}
                     </Link>
                   </li>
@@ -81,17 +89,16 @@ export function Footer() {
       </div>
 
       {/* Copyright strip */}
-      <div className="container mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="border-t border-gray-500"></div>
-        <div className="py-6 flex flex-col items-center gap-2 sm:flex-row sm:justify-between">
-          <p className="text-sm text-[oklch(72%_0.015_260)]">&copy; {currentYear} CityOps. All rights reserved.</p>
-          <p className="text-sm text-[oklch(72%_0.015_260)] flex items-center gap-1">
+      <div className="section-shell">
+        <div className="flex flex-col gap-2 border-t border-border py-5 text-xs sm:flex-row sm:items-center sm:justify-between">
+          <p>&copy; {currentYear} CityOps. All rights reserved.</p>
+          <p className="flex items-center gap-1">
             Developed by{' '}
             <a
               href="https://www.linkedin.com/in/prasadhonrao/"
               target="_blank"
               rel="noopener noreferrer"
-              className="font-medium hover:underline"
+              className="inline-flex min-h-11 items-center rounded-md font-medium text-foreground underline-offset-4 hover:underline"
             >
               Prasad Honrao
             </a>

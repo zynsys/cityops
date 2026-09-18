@@ -1,6 +1,6 @@
-"use client";
+'use client';
 
-import { X } from "lucide-react";
+import { X } from 'lucide-react';
 
 interface PhotoThumbnailProps {
   file: File;
@@ -8,23 +8,15 @@ interface PhotoThumbnailProps {
   onRemove: () => void;
 }
 
-export default function PhotoThumbnail({
-  file,
-  objectUrl,
-  onRemove,
-}: PhotoThumbnailProps) {
+export default function PhotoThumbnail({ file, objectUrl, onRemove }: PhotoThumbnailProps) {
   return (
-    <div className="relative group rounded-lg overflow-hidden border border-border bg-muted aspect-square">
+    <div className="relative group aspect-square overflow-hidden rounded-xl border border-border bg-muted shadow-xs">
       {/* Preview image */}
       {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img
-        src={objectUrl}
-        alt={file.name}
-        className="w-full h-full object-cover"
-      />
+      <img src={objectUrl} alt={file.name} className="w-full h-full object-cover" />
 
       {/* Filename overlay at bottom */}
-      <div className="absolute bottom-0 inset-x-0 bg-black/50 px-1.5 py-1 text-white text-[10px] leading-tight truncate">
+      <div className="absolute inset-x-0 bottom-0 truncate border-t border-border bg-surface/95 px-3 py-2 text-xs text-foreground">
         {file.name}
       </div>
 
@@ -33,9 +25,9 @@ export default function PhotoThumbnail({
         type="button"
         aria-label={`Remove ${file.name}`}
         onClick={onRemove}
-        className="absolute top-1 right-1 flex h-5 w-5 items-center justify-center rounded-full bg-black/60 text-white hover:bg-black/80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white transition-colors"
+        className="absolute top-1 right-1 flex h-11 w-11 items-center justify-center rounded-xl border border-border bg-surface/95 text-foreground shadow-soft transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-inset"
       >
-        <X size={10} strokeWidth={3} />
+        <X size={16} aria-hidden="true" />
       </button>
     </div>
   );

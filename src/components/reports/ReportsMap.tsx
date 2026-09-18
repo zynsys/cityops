@@ -4,8 +4,10 @@ import { useRef, useEffect, useState } from 'react';
 import { MapContainer, TileLayer, Marker, Popup, useMap, GeoJSON } from 'react-leaflet';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
+import '@/components/map/map-chrome.css';
 import Link from 'next/link';
-import { getStatusConfig } from '@/lib/reportStatusConfig';
+import { ArrowUpRight } from 'lucide-react';
+import { StatusBadge } from '@/components/ui/StatusBadge';
 import { useReportsPageContext } from './ReportsPageContext';
 import type { PublicReport } from '@/db/queries/reports';
 
@@ -22,7 +24,7 @@ function createNormalIcon(color: string): L.DivIcon {
     html: `<svg width="32" height="32" viewBox="0 0 32 32" xmlns="http://www.w3.org/2000/svg">
       <defs>
         <filter id="pin-shadow" x="-30%" y="-20%" width="160%" height="160%">
-          <feDropShadow dx="0" dy="1.5" stdDeviation="1.5" flood-color="#000" flood-opacity="0.45"/>
+          <feDropShadow dx="0" dy="1.5" stdDeviation="1.5" flood-color="#000" flood-opacity="0.22"/>
         </filter>
       </defs>
       <path d="M16 2C9.92 2 5 6.92 5 13c0 8.5 11 17 11 17s11-8.5 11-17c0-6.08-4.92-11-11-11z"
@@ -41,7 +43,7 @@ function createHighlightIcon(color: string): L.DivIcon {
     html: `<svg width="40" height="40" viewBox="0 0 40 40" xmlns="http://www.w3.org/2000/svg">
       <defs>
         <filter id="pin-hl-shadow" x="-30%" y="-20%" width="160%" height="160%">
-          <feDropShadow dx="0" dy="2" stdDeviation="2" flood-color="#000" flood-opacity="0.5"/>
+          <feDropShadow dx="0" dy="2" stdDeviation="2" flood-color="#000" flood-opacity="0.32"/>
         </filter>
       </defs>
       <path d="M20 2C12.82 2 7 7.82 7 15c0 10.5 13 23 13 23s13-12.5 13-23c0-7.18-5.82-13-13-13z"
@@ -134,7 +136,7 @@ export default function ReportsMap({ reports, councilSlug, fitBounds = true }: R
     <MapContainer
       center={UK_CENTER}
       zoom={UK_ZOOM}
-      className="h-full w-full z-0"
+      className="cityops-map z-0 h-full w-full"
       scrollWheelZoom
       attributionControl={false}
     >
@@ -156,31 +158,35 @@ export default function ReportsMap({ reports, councilSlug, fitBounds = true }: R
       )}
 
       {reportsWithCoords.map((report) => {
-        const statusCfg = getStatusConfig(report.status);
         return (
           <Marker
             key={report.id}
             position={[report.latitude!, report.longitude!]}
             icon={createNormalIcon(report.category_color ?? DEFAULT_PIN_COLOR)}
+            title={report.title}
+            alt={report.title}
             ref={(el) => {
               if (el) markerRefs.current[report.id] = el;
               else delete markerRefs.current[report.id];
             }}
           >
             <Popup>
-              <div className="min-w-[180px] max-w-[240px]">
-                <p className="font-semibold text-sm leading-snug line-clamp-2 mb-1.5">{report.title}</p>
-                <span
-                  className="inline-block text-xs font-medium px-2 py-0.5 rounded-full text-white mb-2"
-                  style={{ backgroundColor: statusCfg.color }}
+              <div className="min-w-[180px] max-w-[240px] text-foreground">
+                <div
+                  className="max-h-[min(30dvh,14rem)] overflow-y-auto overscroll-contain rounded-md pr-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent"
+                  tabIndex={0}
+                  role="region"
+                  aria-label="Report summary"
                 >
-                  {statusCfg.label}
-                </span>
+                  <p className="mt-0! mb-3! break-words pr-6 text-sm font-semibold leading-6">{report.title}</p>
+                  <StatusBadge status={report.status} />
+                </div>
                 <Link
                   href={`/reports/${report.id}`}
-                  className="block text-xs font-medium text-blue-600 hover:text-blue-800 hover:underline"
+                  className="mt-4 flex min-h-11 items-center justify-between gap-3 rounded-lg border border-border px-3 text-sm font-medium text-accent! transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
                 >
-                  View details →
+                  View details
+                  <ArrowUpRight className="h-4 w-4 shrink-0" aria-hidden="true" />
                 </Link>
               </div>
             </Popup>

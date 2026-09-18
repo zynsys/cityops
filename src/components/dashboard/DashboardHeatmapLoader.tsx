@@ -1,24 +1,27 @@
-"use client";
+'use client';
 
-import dynamic from "next/dynamic";
-import type { HeatmapPoint } from "@/db/queries/analytics";
+import dynamic from 'next/dynamic';
+import { LoaderCircle, MapPin } from 'lucide-react';
+import type { HeatmapPoint } from '@/db/queries/analytics';
 
-const DashboardHeatmap = dynamic(
-  () => import("@/components/dashboard/DashboardHeatmap"),
-  {
-    ssr: false,
-    loading: () => (
-      <div className="rounded-xl border border-border bg-surface overflow-hidden">
-        <div className="px-4 py-3 border-b border-border">
-          <h3 className="text-sm font-semibold text-foreground">Report Density</h3>
-        </div>
-        <div className="h-[250px] md:h-[350px] flex items-center justify-center bg-muted/30">
-          <p className="text-muted-foreground text-sm">Loading map…</p>
+const DashboardHeatmap = dynamic(() => import('@/components/dashboard/DashboardHeatmap'), {
+  ssr: false,
+  loading: () => (
+    <div className="surface-card overflow-hidden">
+      <div className="flex items-start gap-3 border-b border-border p-5 sm:px-6">
+        <MapPin className="mt-0.5 h-5 w-5 shrink-0 text-accent" aria-hidden="true" />
+        <div>
+          <h2 className="text-base font-semibold text-foreground">Report density</h2>
+          <p className="mt-1 text-sm text-muted-foreground">Geographic concentration of reported issues</p>
         </div>
       </div>
-    ),
-  }
-);
+      <div className="flex h-[250px] items-center justify-center gap-3 bg-muted/20 md:h-[400px]" role="status">
+        <LoaderCircle className="h-5 w-5 animate-spin text-accent" aria-hidden="true" />
+        <p className="text-sm text-muted-foreground">Loading map…</p>
+      </div>
+    </div>
+  ),
+});
 
 interface DashboardHeatmapLoaderProps {
   points: HeatmapPoint[];

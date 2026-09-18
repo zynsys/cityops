@@ -1,9 +1,9 @@
-"use client";
+'use client';
 
-import { useState, useEffect, useRef, useCallback } from "react";
-import { useRouter } from "next/navigation";
-import { Search, X } from "lucide-react";
-import { getStatusConfig } from "@/lib/reportStatusConfig";
+import { useState, useEffect, useRef, useCallback } from 'react';
+import { useRouter } from 'next/navigation';
+import { ChevronRight, Link2, Search, X } from 'lucide-react';
+import { StatusBadge } from '@/components/ui/StatusBadge';
 
 interface DuplicateLink {
   id: string;
@@ -27,17 +27,17 @@ function shortId(id: number): string {
 }
 
 function formatDate(date: Date): string {
-  return new Date(date).toLocaleDateString("en-GB", {
-    day: "numeric",
-    month: "short",
-    year: "numeric",
+  return new Date(date).toLocaleDateString('en-GB', {
+    day: 'numeric',
+    month: 'short',
+    year: 'numeric',
   });
 }
 
 export function DuplicateLinksPanel({ reportId, initialLinks }: DuplicateLinksPanelProps) {
   const router = useRouter();
   const [links, setLinks] = useState<DuplicateLink[]>(initialLinks);
-  const [query, setQuery] = useState("");
+  const [query, setQuery] = useState('');
   const [results, setResults] = useState<SearchResult[]>([]);
   const [isSearching, setIsSearching] = useState(false);
   const [showDropdown, setShowDropdown] = useState(false);
@@ -60,9 +60,7 @@ export function DuplicateLinksPanel({ reportId, initialLinks }: DuplicateLinksPa
       debounceRef.current = setTimeout(async () => {
         setIsSearching(true);
         try {
-          const res = await fetch(
-            `/api/staff/reports/search?q=${encodeURIComponent(q)}&excludeId=${reportId}`
-          );
+          const res = await fetch(`/api/staff/reports/search?q=${encodeURIComponent(q)}&excludeId=${reportId}`);
           if (res.ok) {
             const data = (await res.json()) as SearchResult[];
             setResults(data);
@@ -73,7 +71,7 @@ export function DuplicateLinksPanel({ reportId, initialLinks }: DuplicateLinksPa
         }
       }, 300);
     },
-    [reportId]
+    [reportId],
   );
 
   useEffect(() => {
@@ -90,8 +88,8 @@ export function DuplicateLinksPanel({ reportId, initialLinks }: DuplicateLinksPa
         setShowDropdown(false);
       }
     }
-    document.addEventListener("mousedown", handleClick);
-    return () => document.removeEventListener("mousedown", handleClick);
+    document.addEventListener('mousedown', handleClick);
+    return () => document.removeEventListener('mousedown', handleClick);
   }, []);
 
   const handleSelectResult = (result: SearchResult) => {
@@ -107,14 +105,14 @@ export function DuplicateLinksPanel({ reportId, initialLinks }: DuplicateLinksPa
 
     try {
       const res = await fetch(`/api/staff/reports/${reportId}/duplicates`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ targetReportId: selected.id }),
       });
 
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
-        setError((data as { error?: string }).error ?? "Failed to link report");
+        setError((data as { error?: string }).error ?? 'Failed to link report');
         return;
       }
 
@@ -130,11 +128,11 @@ export function DuplicateLinksPanel({ reportId, initialLinks }: DuplicateLinksPa
           otherReport: data.link.targetReport,
         },
       ]);
-      setQuery("");
+      setQuery('');
       setSelected(null);
       router.refresh();
     } catch {
-      setError("Network error. Please try again.");
+      setError('Network error. Please try again.');
     } finally {
       setIsLinking(false);
     }
@@ -146,67 +144,65 @@ export function DuplicateLinksPanel({ reportId, initialLinks }: DuplicateLinksPa
 
     try {
       const res = await fetch(`/api/staff/reports/${reportId}/duplicates/${linkId}`, {
-        method: "DELETE",
+        method: 'DELETE',
       });
 
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
-        setError((data as { error?: string }).error ?? "Failed to remove link");
+        setError((data as { error?: string }).error ?? 'Failed to remove link');
         return;
       }
 
       setLinks((prev) => prev.filter((l) => l.id !== linkId));
       router.refresh();
     } catch {
-      setError("Network error. Please try again.");
+      setError('Network error. Please try again.');
     } finally {
       setRemovingId(null);
     }
   };
 
   return (
-    <details className="group">
-      <summary className="flex cursor-pointer items-center gap-1 text-xs font-medium text-muted-foreground hover:text-foreground transition-colors list-none">
-        <svg
-          className="h-3 w-3 transition-transform group-open:rotate-90"
-          fill="none"
-          viewBox="0 0 24 24"
-          stroke="currentColor"
-          strokeWidth={2}
-          aria-hidden="true"
-        >
-          <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
-        </svg>
+    <details className="surface-card group p-4 sm:p-5">
+      <summary className="flex min-h-11 cursor-pointer list-none items-center gap-3 rounded-lg text-sm font-semibold text-foreground transition-colors hover:text-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent">
+        <Link2 className="h-5 w-5 shrink-0 text-muted-foreground" aria-hidden="true" />
         Linked duplicates ({links.length})
+        <ChevronRight
+          className="ml-auto h-4.5 w-4.5 shrink-0 text-muted-foreground transition-transform group-open:rotate-90"
+          aria-hidden="true"
+        />
       </summary>
 
-      <div className="mt-2 space-y-2">
+      <div className="mt-3 space-y-3 border-t border-border pt-4">
         {/* Existing links */}
         {links.length === 0 ? (
-          <p className="text-xs text-muted-foreground italic">No duplicates linked.</p>
+          <p className="rounded-xl bg-muted/30 px-4 py-4 text-sm text-muted-foreground">No duplicates linked.</p>
         ) : (
           links.map((link) => (
             <div
               key={link.id}
-              className="flex items-start justify-between gap-2 rounded-md border border-border bg-muted/40 px-3 py-2"
+              className="flex items-start justify-between gap-3 rounded-xl border border-border bg-muted/20 px-4 py-3"
             >
               <div className="min-w-0">
-                <p className="text-xs font-medium text-foreground truncate">
+                <p className="line-clamp-2 text-sm font-medium text-foreground">
                   #{shortId(link.otherReport.id)} — {link.otherReport.title}
                 </p>
-                <p className="text-xs text-muted-foreground">{formatDate(link.createdAt)}</p>
+                <p className="mt-1 text-xs text-muted-foreground">{formatDate(link.createdAt)}</p>
               </div>
               <button
                 type="button"
                 onClick={() => handleRemoveLink(link.id)}
                 disabled={removingId === link.id}
                 aria-label={`Remove duplicate link to ${link.otherReport.title}`}
-                className="shrink-0 rounded p-0.5 text-muted-foreground hover:text-foreground hover:bg-muted disabled:opacity-50 transition-colors"
+                className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-muted hover:text-danger focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent disabled:opacity-50"
               >
                 {removingId === link.id ? (
-                  <span className="block h-3 w-3 animate-spin rounded-full border border-border border-t-accent" aria-hidden="true" />
+                  <span
+                    className="block h-4 w-4 animate-spin rounded-full border-2 border-border border-t-accent"
+                    aria-hidden="true"
+                  />
                 ) : (
-                  <X className="h-3 w-3" aria-hidden="true" />
+                  <X className="h-4.5 w-4.5" aria-hidden="true" />
                 )}
               </button>
             </div>
@@ -216,7 +212,10 @@ export function DuplicateLinksPanel({ reportId, initialLinks }: DuplicateLinksPa
         {/* Search input */}
         <div ref={containerRef} className="relative">
           <div className="relative">
-            <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-3 w-3 text-muted-foreground pointer-events-none" aria-hidden="true" />
+            <Search
+              className="pointer-events-none absolute left-3.5 top-1/2 h-4.5 w-4.5 -translate-y-1/2 text-muted-foreground"
+              aria-hidden="true"
+            />
             <input
               type="text"
               value={query}
@@ -226,11 +225,13 @@ export function DuplicateLinksPanel({ reportId, initialLinks }: DuplicateLinksPa
               }}
               placeholder="Find report to link…"
               aria-label="Search for report to link as duplicate"
-              className="w-full rounded-md border border-border bg-background pl-7 pr-2 py-1.5 text-xs text-foreground
-                         placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-accent"
+              className="input-field w-full pl-11 pr-11"
             />
             {isSearching && (
-              <span className="absolute right-2 top-1/2 -translate-y-1/2 h-3 w-3 animate-spin rounded-full border border-border border-t-accent" aria-hidden="true" />
+              <span
+                className="absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 animate-spin rounded-full border-2 border-border border-t-accent"
+                aria-hidden="true"
+              />
             )}
           </div>
 
@@ -239,57 +240,51 @@ export function DuplicateLinksPanel({ reportId, initialLinks }: DuplicateLinksPa
             <ul
               role="listbox"
               aria-label="Search results"
-              className="absolute z-10 mt-1 w-full rounded-md border border-border bg-surface shadow-md"
+              className="absolute z-10 mt-2 max-h-72 w-full overflow-y-auto rounded-xl border border-border bg-surface p-1 shadow-raised"
             >
-              {results.map((r) => {
-                const statusCfg = getStatusConfig(r.status);
-                return (
-                  <li key={r.id}>
-                    <button
-                      type="button"
-                      role="option"
-                      aria-selected={selected?.id === r.id}
-                      onClick={() => handleSelectResult(r)}
-                      className="w-full flex items-center gap-2 px-3 py-2 text-left text-xs hover:bg-muted transition-colors"
-                    >
-                      <span className="font-mono text-muted-foreground shrink-0">
-                        #{shortId(r.id)}
-                      </span>
-                      <span className="flex-1 truncate text-foreground">{r.title}</span>
-                      <span
-                        className="shrink-0 rounded-full px-2 py-0.5 text-xs font-medium"
-                        style={{ backgroundColor: `${statusCfg.color}20`, color: statusCfg.color }}
-                      >
-                        {statusCfg.label}
-                      </span>
-                    </button>
-                  </li>
-                );
-              })}
+              {results.map((r) => (
+                <li key={r.id}>
+                  <button
+                    type="button"
+                    role="option"
+                    aria-selected={selected?.id === r.id}
+                    onClick={() => handleSelectResult(r)}
+                    className="grid min-h-11 w-full grid-cols-[auto_minmax(0,1fr)] items-center gap-2 rounded-lg px-3 py-3 text-left text-sm transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent"
+                  >
+                    <span className="shrink-0 text-xs text-muted-foreground tabular-nums">#{shortId(r.id)}</span>
+                    <span className="min-w-0 truncate text-foreground">{r.title}</span>
+                    <StatusBadge status={r.status} className="col-span-2 justify-self-start" />
+                  </button>
+                </li>
+              ))}
             </ul>
           )}
         </div>
 
         {/* Confirm add chip */}
         {selected && (
-          <div className="flex items-center justify-between gap-2 rounded-md border border-accent/40 bg-accent/10 px-3 py-2">
-            <p className="text-xs text-foreground truncate min-w-0">
+          <div className="flex flex-col items-start justify-between gap-3 rounded-xl border border-accent/25 bg-accent/5 px-4 py-3 sm:flex-row sm:items-center">
+            <p className="min-w-0 break-words text-sm text-foreground">
               Link to: <strong>#{shortId(selected.id)}</strong> — {selected.title}
             </p>
             <button
               type="button"
               onClick={handleAddLink}
               disabled={isLinking}
-              className="shrink-0 rounded-md bg-accent px-2.5 py-1 text-xs font-medium text-white hover:bg-accent/90 disabled:opacity-50 transition-colors"
+              className="btn-primary shrink-0 disabled:opacity-50"
             >
-              {isLinking ? "Adding…" : "Add link"}
+              {isLinking ? 'Adding…' : 'Add link'}
             </button>
           </div>
         )}
 
         {/* Error */}
         {error && (
-          <p className="text-xs text-red-400" role="alert" aria-live="assertive">
+          <p
+            className="rounded-lg border border-danger/20 bg-danger/10 px-3 py-2.5 text-sm text-danger"
+            role="alert"
+            aria-live="assertive"
+          >
             {error}
           </p>
         )}
