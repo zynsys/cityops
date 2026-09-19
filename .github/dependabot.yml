@@ -1,0 +1,136 @@
+﻿# Dependabot version + security updates for CityOps.
+#
+# Two npm trees are deliberately separate entries: the root Next.js app and the workshop
+# site each have their own package-lock.json and are built independently.
+#
+# Grouping strategy: packages that must move in lockstep get their own group (a solo
+# `next` bump without `eslint-config-next` produces a broken PR). Everything else is
+# grouped by minor/patch so routine churn lands as two PRs a week. Majors fall outside
+# those groups and arrive individually, because they need a human to read the changelog.
+# Order matters — a dependency joins the first group it matches.
+version: 2
+
+updates:
+  # ---------------------------------------------------------------------------
+  # Root app — Next.js 16 / React 19 / Prisma 7
+  # ---------------------------------------------------------------------------
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: '06:00'
+      timezone: Europe/London
+    open-pull-requests-limit: 10
+    # Cooldown does not apply to security updates, so CVE fixes still arrive immediately.
+    cooldown:
+      default-days: 7
+      semver-major-days: 14
+    commit-message:
+      prefix: chore
+      prefix-development: chore
+      include: scope
+    groups:
+      next:
+        patterns:
+          - next
+          - '@next/*'
+          - eslint-config-next
+      react:
+        patterns:
+          - react
+          - react-dom
+          - '@types/react'
+          - '@types/react-dom'
+      prisma:
+        patterns:
+          - prisma
+          - '@prisma/*'
+      azure:
+        patterns:
+          - '@azure/*'
+      production-minor-patch:
+        dependency-type: production
+        update-types:
+          - minor
+          - patch
+      development-minor-patch:
+        dependency-type: development
+        update-types:
+          - minor
+          - patch
+
+  # ---------------------------------------------------------------------------
+  # Workshop site — separate lockfile, deployed to GitHub Pages
+  # ---------------------------------------------------------------------------
+  - package-ecosystem: npm
+    directory: /workshop
+    schedule:
+      interval: weekly
+      day: tuesday
+      time: '06:00'
+      timezone: Europe/London
+    open-pull-requests-limit: 5
+    cooldown:
+      default-days: 7
+      semver-major-days: 14
+    commit-message:
+      prefix: chore
+      prefix-development: chore
+      include: scope
+    groups:
+      workshop-next:
+        patterns:
+          - next
+          - '@next/*'
+          - eslint-config-next
+      workshop-react:
+        patterns:
+          - react
+          - react-dom
+          - '@types/react'
+          - '@types/react-dom'
+      workshop-minor-patch:
+        update-types:
+          - minor
+          - patch
+
+  # ---------------------------------------------------------------------------
+  # GitHub Actions
+  # ---------------------------------------------------------------------------
+  # `/` only covers .github/workflows plus a root action.yml, so the composite actions
+  # under .github/actions/ need their own glob or their pinned `uses:` never get updated.
+  - package-ecosystem: github-actions
+    directories:
+      - /
+      - /.github/actions/*
+    schedule:
+      interval: weekly
+      day: monday
+      time: '06:00'
+      timezone: Europe/London
+    open-pull-requests-limit: 5
+    cooldown:
+      default-days: 7
+    commit-message:
+      prefix: ci
+    groups:
+      actions:
+        update-types:
+          - minor
+          - patch
+
+  # ---------------------------------------------------------------------------
+  # Dockerfile base images
+  # ---------------------------------------------------------------------------
+  - package-ecosystem: docker
+    directory: /
+    schedule:
+      interval: monthly
+      time: '06:00'
+      timezone: Europe/London
+    open-pull-requests-limit: 3
+    cooldown:
+      default-days: 7
+    commit-message:
+      prefix: chore
