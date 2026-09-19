@@ -20,8 +20,16 @@ name: CityOps App CI/CD
 on:
   push:
     branches: [main]
+    paths-ignore:
+      - "docs/**"
+      - "workshop/**"
+      - "scripts/**"
   pull_request:
     branches: [main]
+    paths-ignore:
+      - "docs/**"
+      - "workshop/**"
+      - "scripts/**"
   schedule:
     - cron: "0 2 * * *" # nightly 02:00 UTC — full e2e run
   workflow_dispatch: {} # manual run — required to promote to prod

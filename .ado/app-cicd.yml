@@ -14,10 +14,24 @@ parameters:
     default: false
 
 trigger:
-  - main
+  branches:
+    include:
+      - main
+  paths:
+    exclude:
+      - docs/**
+      - workshop/**
+      - scripts/**
 
 pr:
-  - main
+  branches:
+    include:
+      - main
+  paths:
+    exclude:
+      - docs/**
+      - workshop/**
+      - scripts/**
 
 schedules:
   - cron: '0 2 * * *' # nightly 02:00 UTC — full e2e run
