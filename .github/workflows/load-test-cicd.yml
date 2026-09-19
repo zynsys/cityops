@@ -34,7 +34,7 @@ jobs:
           set +e
           mkdir -p k6-out
           docker run --rm \
-            -v "$(pwd)/k6:/scripts:ro" \
+            -v "$(pwd)/performance-tests:/scripts:ro" \
             -v "$(pwd)/k6-out:/out:rw" \
             -e BASE_URL="https://${{ steps.names.outputs.web-app-name }}-dev.azurewebsites.net" \
             grafana/k6 run --summary-export=/out/k6-summary.json /scripts/load-test.js

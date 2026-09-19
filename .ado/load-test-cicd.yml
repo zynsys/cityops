@@ -40,7 +40,7 @@ stages:
               set +e
               mkdir -p "$(Build.ArtifactStagingDirectory)/k6"
               docker run --rm \
-                -v "$(System.DefaultWorkingDirectory)/k6:/scripts:ro" \
+                -v "$(System.DefaultWorkingDirectory)/performance-tests:/scripts:ro" \
                 -v "$(Build.ArtifactStagingDirectory)/k6:/out:rw" \
                 -e BASE_URL="https://$(webAppName)-dev.azurewebsites.net" \
                 grafana/k6 run --summary-export=/out/k6-summary.json /scripts/load-test.js

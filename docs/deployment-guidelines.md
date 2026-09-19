@@ -805,7 +805,7 @@ that doesn't need commit-level granularity (the same separation-of-concerns reas
   push/PR trigger. It targets the dev slot's **persistent** URL directly (via the same
   `resolve-azure-names` template/action every other stage uses), so it isn't chained to any
   specific `app-cicd` run and needs no `dependsOn`/`needs` on a deploy stage.
-- **Script**: [`k6/load-test.js`](../k6/load-test.js) ramps 0→20 virtual users over 30s, holds for
+- **Script**: [`performance-tests/load-test.js`](../performance-tests/load-test.js) ramps 0→20 virtual users over 30s, holds for
   1 minute, then ramps back down, hitting `/`, `/map`, and `/api/health` — all unauthenticated
   routes (see `middleware.ts` `PUBLIC_PREFIXES`/`PUBLIC_EXACT`), so no login flow is needed.
   Thresholds: `http_req_failed` rate < 1%, `http_req_duration` p95 < 1000ms.
@@ -850,7 +850,7 @@ that doesn't need commit-level granularity (the same separation-of-concerns reas
 | [`e2e/visual.spec.ts`](../e2e/visual.spec.ts)                                                 | Visual regression screenshots, part of `UITest`/`ui_test` (§11.8) |
 | [`.ado/load-test-cicd.yml`](../.ado/load-test-cicd.yml)                                       | Load testing pipeline (k6), separate from app/infra (§11.9)       |
 | [`.github/workflows/load-test-cicd.yml`](../.github/workflows/load-test-cicd.yml)             | GitHub Actions equivalent of the load-test pipeline (§11.9)       |
-| [`k6/load-test.js`](../k6/load-test.js)                                                       | k6 load test script (§11.9)                                       |
+| [`performance-tests/load-test.js`](../performance-tests/load-test.js)                         | k6 load test script (§11.9)                                       |
 | [`eslint.config.mjs`](../eslint.config.mjs)                                                   | Lint rules, incl. `complexity` code metric (§11.3)                |
 | [`.env.example`](../.env.example)                                                             | Full list of runtime environment variables                        |
 | [`Dockerfile`](../Dockerfile)                                                                 | Optional container build (not used for App Service code deploy)   |
