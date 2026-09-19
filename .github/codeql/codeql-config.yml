@@ -1,0 +1,41 @@
+﻿# CodeQL configuration for CityOps advanced setup.
+# Referenced by .github/workflows/codeql.yml (config-file input).
+#
+# Why a config file instead of inlining everything in the workflow?
+#   - Query suites and path filters live in one place for every language in the matrix.
+#   - Path filtering happens INSIDE the analysis, so the workflow itself still runs on
+#     every push/PR. That matters because "CodeQL / Analyze" is a required status check —
+#     a workflow-level paths-ignore would make the check never report and block merges.
+name: 'CityOps CodeQL config'
+
+# security-extended = the default 'security' suite plus lower-severity / higher-precision
+# security queries. We deliberately do NOT use 'security-and-quality': its maintainability
+# rules overlap with ESLint and add noise to the Security tab.
+queries:
+  - uses: security-extended
+
+# Files excluded from analysis. Keep this list tight — every exclusion is a blind spot.
+paths-ignore:
+  # Generated Prisma client — not authored code, and regenerated on every install.
+  - src/generated
+  # Test and tooling code: findings here are not exploitable in production.
+  - src/__tests__
+  - e2e
+  - performance-tests
+  - prisma/seed.ts
+  - prisma/seed
+  # Build/report output that can end up in a working tree.
+  - coverage
+  - reports
+  - .next
+  - node_modules
+  # Static assets and user uploads — no executable source.
+  - public
+  # Vendored/minified third-party bundles anywhere in the tree.
+  - '**/*.min.js'
+# Deliberately NOT ignored, despite being in the other workflows' paths-ignore (those skip
+# builds, which is a different concern):
+#   workshop/ — a real Next.js app deployed to GitHub Pages, so it ships to users.
+#   scripts/  — only .sh today (CodeQL can't analyse shell anyway); excluding it would
+#               silently hide any Node script added there later.
+#   docs/     — markdown only; CodeQL never extracts it, so an entry would be a no-op.
