@@ -4,8 +4,8 @@
 # Why a config file instead of inlining everything in the workflow?
 #   - Query suites and path filters live in one place for every language in the matrix.
 #   - Path filtering happens INSIDE the analysis, so the workflow itself still runs on
-#     every push/PR. That matters because "CodeQL / Analyze" is a required status check —
-#     a workflow-level paths-ignore would make the check never report and block merges.
+#     every push/PR. That matters because the "Security analysis" checks gate merges —
+#     a workflow-level paths-ignore would make them never report and block merges.
 name: 'CityOps CodeQL config'
 
 # security-extended = the default 'security' suite plus lower-severity / higher-precision

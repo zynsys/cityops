@@ -15,7 +15,11 @@
 # Both languages use build-mode 'none': javascript-typescript is interpreted and the
 # 'actions' analyzer only reads YAML, so no npm install / next build is needed. Do NOT add
 # a build step "to be safe" — it doubles run time and changes nothing in the results.
-name: CodeQL
+#
+# Named "Advanced" after GitHub's own term for this setup, to distinguish it in the
+# Actions list from the built-in "CodeQL - Code Quality" workflow. The two are not tiers:
+# this one runs security queries, Code Quality covers maintainability.
+name: CodeQL Advanced
 
 on:
   push:
@@ -44,7 +48,7 @@ concurrency:
 
 jobs:
   analyze:
-    name: Analyze (${{ matrix.language }})
+    name: Security analysis (${{ matrix.language }})
     runs-on: ubuntu-latest
     timeout-minutes: 60
     permissions:
