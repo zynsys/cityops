@@ -83,9 +83,9 @@ Enter a postcode or address in the search box and drop the pin on the map to mar
 
 ![Report wizard — Step 2: Location](../images/new-report-step-2.png)
 
-- Type a postcode (e.g. `BH1 3EW`) and press the search icon — the map will centre on that location
+- Type a postcode (e.g. `BH1 3EW`) and click **Search** — the map will centre on that location
 - Drag the pin to fine-tune the position
-- Once the pin is placed, the responsible council is detected automatically from the boundary data and shown to the right of the search box — **notice this happens without any manual selection**
+- Once the pin is placed, the responsible council is detected automatically from the boundary data and confirmed in a banner beneath the map — **notice this happens without any manual selection**
 
 > [!NOTE]
 > This is PostGIS `ST_Within` in action. The app queries which council boundary polygon contains the pin's coordinates and assigns the report automatically.
@@ -140,7 +140,7 @@ The seed data includes pre-created staff accounts for each council. Use them to 
    | `fiona.grant@bournemouth.cityops.dev` | `Password123!` | Tenant Admin   |
 
 3. You are redirected to the **Reports** list at `/staff/reports`
-4. Note the heading says **All reports for BCP Council** — you only see reports belonging to your council. This is tenant isolation in action.
+4. Note the subheading says **Manage reports for BCP Council** — you only see reports belonging to your council. This is tenant isolation in action.
 
    ![Staff report list](../images/staff-report-list.png)
 
