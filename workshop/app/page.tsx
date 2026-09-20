@@ -29,8 +29,7 @@ export default function HomePage(): React.JSX.Element {
       <section className="hero">
         <div className="container">
           <div className="hero-badge">
-            <img className="cityops-logo" src={withBasePath('/assets/logos/cityops.png')} alt="" /> Built on a Real
-            Full-Stack Project
+            <img className="cityops-logo" src={withBasePath('/icon.svg')} alt="" /> Built on a Real Full-Stack Project
           </div>
           <h1>{workshop.title}</h1>
           <p className="hero-subtitle">

@@ -36,7 +36,7 @@ export default async function LessonPage({ params }: LessonPageProps): Promise<R
         <div className="header-content">
           <Link href="/#tracks" className="header-brand">
             <span className="brand-icon" aria-hidden="true">
-              <img className="cityops-logo" src={withBasePath('/assets/logos/cityops.png')} alt="" />
+              <img className="cityops-logo" src={withBasePath('/icon.svg')} alt="" />
             </span>
             <span className="header-title">{workshop.title}</span>
           </Link>
