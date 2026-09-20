@@ -24,6 +24,16 @@ name: CodeQL Advanced
 on:
   push:
     branches: [main]
+    # Safe on push only: a commit touching nothing but raster images cannot change CodeQL
+    # results. paths-ignore skips only when EVERY changed file matches, so a commit with a
+    # .png and a .ts still runs. SVG is deliberately absent — it can carry script.
+    paths-ignore:
+      - "**/*.png"
+      - "**/*.jpg"
+      - "**/*.jpeg"
+      - "**/*.gif"
+      - "**/*.webp"
+      - "**/*.ico"
   pull_request:
     branches: [main]
   schedule:
@@ -32,9 +42,13 @@ on:
     - cron: "37 16 * * 2"
   workflow_dispatch: {}
 
-# NOTE: intentionally no paths-ignore on the triggers above. Code scanning results gate PR
-# merges, and a skipped workflow never reports its check. File-level scoping is done in the
-# CodeQL config file instead, which filters inside the analysis rather than skipping it.
+# NOTE: the `pull_request` trigger intentionally has NO paths-ignore. The repo's `main`
+# ruleset has a `code_scanning` rule (CodeQL, high_or_higher) that gates merges, and a
+# workflow skipped by paths-ignore reports no status at all rather than a passing one —
+# which would leave PRs permanently blocked. That gate evaluates on pull_request only, so
+# filtering the `push` trigger above is safe; the weekly cron keeps main's baseline fresh.
+# All other file-level scoping is done in the CodeQL config file, which filters inside the
+# analysis rather than skipping it.
 
 # Least privilege at workflow level; the analyze job widens only what it needs.
 permissions:
