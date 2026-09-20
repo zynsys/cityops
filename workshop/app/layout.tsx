@@ -5,6 +5,9 @@ import './globals.css';
 export const metadata: Metadata = {
   title: 'Master AI-Powered DevOps with CityOps',
   description: 'Choose GitHub or Azure DevOps and follow a sequential AI-powered DevOps workshop using CityOps.',
+  icons: {
+    icon: '/assets/logos/cityops.png',
+  },
 };
 
 // Runs before paint so the stored theme is applied without a flash of the default theme.
