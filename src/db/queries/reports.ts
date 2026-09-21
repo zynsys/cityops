@@ -537,7 +537,9 @@ export async function getSimilarReports(
   const conditions: Prisma.Sql[] = [
     Prisma.sql`r.deleted_at IS NULL`,
     Prisma.sql`r.location_point IS NOT NULL`,
-    Prisma.sql`r.status::text IN ('validated', 'assigned', 'in_progress')`,
+    // Includes under_validation so reports still pending review (incl. ones the AI itself
+    // already flagged as duplicate_suspected) still surface as candidates before submission.
+    Prisma.sql`r.status::text IN ('under_validation', 'validated', 'assigned', 'in_progress')`,
     Prisma.sql`ST_DWithin(
       r.location_point,
       ST_SetSRID(ST_Point(${lng}::float8, ${lat}::float8), 4326)::geography,
