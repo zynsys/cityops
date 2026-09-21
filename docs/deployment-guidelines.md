@@ -435,19 +435,20 @@ Runtime config mirrors [`.env.example`](../.env.example): non-secret values are 
 | `AZURE_STORAGE_CONNECTION_STRING`                   | Key Vault ref (`AZURE-STORAGE-CONNECTION-STRING`), shared         |
 | `AZURE_STORAGE_CONTAINER`                           | App setting per slot (`report-attachments` / `-dev`), slot-sticky |
 | `AZURE_OPENAI_ENDPOINT` / `AZURE_OPENAI_DEPLOYMENT` | App setting, shared by both slots                                 |
-| `AZURE_OPENAI_API_KEY`                              | Key Vault ref (`AZURE-OPENAI-API-KEY`), shared by both slots      |
+
+Azure OpenAI has API key auth disabled (`disableLocalAuth`) — there is no `AZURE_OPENAI_API_KEY`. The app authenticates via Entra ID using each slot's managed identity (`DefaultAzureCredential` + `getBearerTokenProvider`, `src/lib/ai/validateReport.ts`), granted the **Cognitive Services OpenAI User** role directly on the OpenAI account.
 
 Config is validated at startup by `validateEnv()` (`src/instrumentation.ts`) — a missing required variable fails fast.
 
 ### Secrets model — three tiers
 
-| Tier                             | Used by             | Stored in                                  | Examples                                                                                             |
-| -------------------------------- | ------------------- | ------------------------------------------ | ---------------------------------------------------------------------------------------------------- |
-| **Provisioning-time**            | Infra pipeline only | `cityops-infra` variable group (secret)    | `pgAdminPassword`, `authSecret`, `authSecretDev`                                                     |
-| **Runtime**                      | The running app     | Azure Key Vault, read via managed identity | `DATABASE-URL(-DEV)`, `AUTH-SECRET(-DEV)`, `AZURE-OPENAI-API-KEY`, `AZURE-STORAGE-CONNECTION-STRING` |
-| **Pipeline config (non-secret)** | Both pipelines      | `cityops-env` variable group               | `resourceGroup`, `location`, `dbLocation`, `baseName`                                                |
+| Tier                             | Used by             | Stored in                                  | Examples                                                                     |
+| -------------------------------- | ------------------- | ------------------------------------------ | ---------------------------------------------------------------------------- |
+| **Provisioning-time**            | Infra pipeline only | `cityops-infra` variable group (secret)    | `pgAdminPassword`, `authSecret`, `authSecretDev`                             |
+| **Runtime**                      | The running app     | Azure Key Vault, read via managed identity | `DATABASE-URL(-DEV)`, `AUTH-SECRET(-DEV)`, `AZURE-STORAGE-CONNECTION-STRING` |
+| **Pipeline config (non-secret)** | Both pipelines      | `cityops-env` variable group               | `resourceGroup`, `location`, `dbLocation`, `baseName`                        |
 
-No secret is ever a plaintext App Service setting or a pipeline YAML literal — always `@Microsoft.KeyVault(VaultName=...;SecretName=...)`, resolved via **Key Vault Secrets User** RBAC. `AZURE-OPENAI-API-KEY` is pulled from the OpenAI account with `listKeys()` inside Bicep, never exposed as an output.
+No secret is ever a plaintext App Service setting or a pipeline YAML literal — always `@Microsoft.KeyVault(VaultName=...;SecretName=...)`, resolved via **Key Vault Secrets User** RBAC. Azure OpenAI has no key secret at all — access is Entra ID/RBAC only (**Cognitive Services OpenAI User**, assigned to both slots' managed identities in `resources.bicep`).
 
 ---
 

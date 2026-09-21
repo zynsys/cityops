@@ -118,7 +118,7 @@ SMTP_PORT=1025
 ```
 
 > [!TIP]
-> Azure OpenAI configuration (`AZURE_OPENAI_ENDPOINT`, `AZURE_OPENAI_API_KEY`, `AZURE_OPENAI_DEPLOYMENT`) is optional — only required for the AI image validation feature. The app skips that step gracefully if these values are not set.
+> Azure OpenAI configuration (`AZURE_OPENAI_ENDPOINT`, `AZURE_OPENAI_DEPLOYMENT`) is optional — only required for the AI image validation feature. The app skips that step gracefully if these values are not set. Authentication is Entra ID only (API keys are disabled on the resource) — run `az login` and ensure your account has the "Cognitive Services OpenAI User" role.
 >
 > To create an Azure OpenAI resource and deploy a `gpt-4o` model, follow the [Create an Azure OpenAI resource](https://learn.microsoft.com/en-us/microsoft-cloud/dev/tutorials/openai-acs-msgraph/02-openai-create-resource) guide. You will need an Azure subscription — a free trial is available at [azure.microsoft.com/free](https://azure.microsoft.com/free).
 

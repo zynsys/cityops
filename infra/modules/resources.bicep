@@ -264,19 +264,6 @@ resource secretAuthSecretDev 'Microsoft.KeyVault/vaults/secrets@2023-07-01' = {
   ]
 }
 
-// Pulled from the existing OpenAI account via listKeys() — never exposed as a deployment output.
-resource secretOpenAiKey 'Microsoft.KeyVault/vaults/secrets@2023-07-01' = {
-  parent: keyVaultRef
-  name: 'AZURE-OPENAI-API-KEY'
-  properties: {
-    value: openAiRef.listKeys().key1
-  }
-  dependsOn: [
-    keyVault
-    openAi
-  ]
-}
-
 resource secretStorageConnectionString 'Microsoft.KeyVault/vaults/secrets@2023-07-01' = {
   parent: keyVaultRef
   name: 'AZURE-STORAGE-CONNECTION-STRING'
@@ -319,10 +306,6 @@ var commonAppSettings = [
   {
     name: 'AZURE_OPENAI_DEPLOYMENT'
     value: openAiDeploymentName
-  }
-  {
-    name: 'AZURE_OPENAI_API_KEY'
-    value: '@Microsoft.KeyVault(VaultName=${kvName};SecretName=AZURE-OPENAI-API-KEY)'
   }
   {
     name: 'APPLICATIONINSIGHTS_CONNECTION_STRING'
@@ -400,7 +383,6 @@ module appService 'appservice.bicep' = {
     secretDatabaseUrlDev
     secretAuthSecret
     secretAuthSecretDev
-    secretOpenAiKey
     secretStorageConnectionString
   ]
 }
@@ -435,6 +417,36 @@ resource kvRoleAssignmentDevSlot 'Microsoft.Authorization/roleAssignments@2022-0
   }
   dependsOn: [
     keyVault
+  ]
+}
+
+// Azure OpenAI has API key auth disabled (disableLocalAuth) — the app authenticates with Entra ID
+// via its managed identity instead, so both slots need this role directly on the OpenAI account.
+var cognitiveServicesOpenAiUserRoleId = '5e0bd9bd-7b93-4f28-af87-19fc36ad61bd' // Cognitive Services OpenAI User
+
+resource openAiRoleAssignment 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
+  name: guid(openAiRef.id, resourceId('Microsoft.Web/sites', appName), cognitiveServicesOpenAiUserRoleId)
+  scope: openAiRef
+  properties: {
+    principalId: appService.outputs.webAppPrincipalId
+    roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', cognitiveServicesOpenAiUserRoleId)
+    principalType: 'ServicePrincipal'
+  }
+  dependsOn: [
+    openAi
+  ]
+}
+
+resource openAiRoleAssignmentDevSlot 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
+  name: guid(openAiRef.id, resourceId('Microsoft.Web/sites/slots', appName, devSlotName), cognitiveServicesOpenAiUserRoleId)
+  scope: openAiRef
+  properties: {
+    principalId: appService.outputs.devSlotPrincipalId
+    roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', cognitiveServicesOpenAiUserRoleId)
+    principalType: 'ServicePrincipal'
+  }
+  dependsOn: [
+    openAi
   ]
 }
 

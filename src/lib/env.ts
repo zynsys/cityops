@@ -17,7 +17,6 @@ const envSchema = z
     SMTP_PORT: z.coerce.number().int().positive().optional(),
     EMAIL_FROM: z.string().optional(),
     AZURE_OPENAI_ENDPOINT: z.string().optional(),
-    AZURE_OPENAI_API_KEY: z.string().optional(),
     AZURE_OPENAI_DEPLOYMENT: z.string().optional(),
     AZURE_OPENAI_API_VERSION: z.string().optional(),
     AI_MODEL_VERSION: z.string().optional(),
@@ -58,15 +57,14 @@ const envSchema = z
       }
     }
 
-    const aiKeys = [env.AZURE_OPENAI_ENDPOINT, env.AZURE_OPENAI_API_KEY, env.AZURE_OPENAI_DEPLOYMENT];
+    const aiKeys = [env.AZURE_OPENAI_ENDPOINT, env.AZURE_OPENAI_DEPLOYMENT];
     const someAi = aiKeys.some(Boolean);
     const allAi = aiKeys.every(Boolean);
     if (someAi && !allAi) {
       ctx.addIssue({
         code: 'custom',
         path: ['AZURE_OPENAI_ENDPOINT'],
-        message:
-          'AI validation requires AZURE_OPENAI_ENDPOINT, AZURE_OPENAI_API_KEY and AZURE_OPENAI_DEPLOYMENT to be set together',
+        message: 'AI validation requires AZURE_OPENAI_ENDPOINT and AZURE_OPENAI_DEPLOYMENT to be set together',
       });
     }
   });

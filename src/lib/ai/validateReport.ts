@@ -1,7 +1,11 @@
-import { AzureOpenAI } from "openai";
-import { prisma } from "@/lib/prisma";
-import type { ReportStatus, AiValidationOutcome } from "@/generated/prisma/enums";
-import { awardPoints } from "@/lib/rewards";
+import { AzureOpenAI } from 'openai';
+import { DefaultAzureCredential, getBearerTokenProvider } from '@azure/identity';
+import { prisma } from '@/lib/prisma';
+import type { ReportStatus, AiValidationOutcome } from '@/generated/prisma/enums';
+import { awardPoints } from '@/lib/rewards';
+
+// Azure OpenAI's Cognitive Services resource scope for Entra ID access tokens.
+const COGNITIVE_SERVICES_SCOPE = 'https://cognitiveservices.azure.com/.default';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -32,19 +36,21 @@ function getClient(): AzureOpenAI {
   if (_client) return _client;
 
   const endpoint = process.env.AZURE_OPENAI_ENDPOINT;
-  const apiKey = process.env.AZURE_OPENAI_API_KEY;
   const deployment = process.env.AZURE_OPENAI_DEPLOYMENT;
 
-  if (!endpoint || !apiKey || !deployment) {
-    throw new Error(
-      "[AI Validation] Missing required env vars: AZURE_OPENAI_ENDPOINT, AZURE_OPENAI_API_KEY, AZURE_OPENAI_DEPLOYMENT"
-    );
+  if (!endpoint || !deployment) {
+    throw new Error('[AI Validation] Missing required env vars: AZURE_OPENAI_ENDPOINT, AZURE_OPENAI_DEPLOYMENT');
   }
+
+  // API key auth is disabled on the Azure OpenAI resource — authenticate with Entra ID instead.
+  // DefaultAzureCredential picks up the App Service managed identity in Azure and the signed-in
+  // Azure CLI/VS Code account for local development.
+  const azureADTokenProvider = getBearerTokenProvider(new DefaultAzureCredential(), COGNITIVE_SERVICES_SCOPE);
 
   _client = new AzureOpenAI({
     endpoint,
-    apiKey,
-    apiVersion: process.env.AZURE_OPENAI_API_VERSION ?? "2024-02-01",
+    azureADTokenProvider,
+    apiVersion: process.env.AZURE_OPENAI_API_VERSION ?? '2024-02-01',
     deployment,
   });
 
@@ -63,7 +69,7 @@ const CONFIG_DEFAULTS: AiValidationConfig = {
 
 async function getAiConfig(tenantId: string): Promise<AiValidationConfig> {
   const row = await prisma.tenantConfig.findUnique({
-    where: { tenantId_namespace: { tenantId, namespace: "ai_validation" } },
+    where: { tenantId_namespace: { tenantId, namespace: 'ai_validation' } },
     select: { config: true },
   });
 
@@ -71,15 +77,11 @@ async function getAiConfig(tenantId: string): Promise<AiValidationConfig> {
 
   const raw = row.config as Record<string, unknown>;
   return {
-    enabled: typeof raw.enabled === "boolean" ? raw.enabled : CONFIG_DEFAULTS.enabled,
+    enabled: typeof raw.enabled === 'boolean' ? raw.enabled : CONFIG_DEFAULTS.enabled,
     confidenceThreshold:
-      typeof raw.confidenceThreshold === "number"
-        ? raw.confidenceThreshold
-        : CONFIG_DEFAULTS.confidenceThreshold,
+      typeof raw.confidenceThreshold === 'number' ? raw.confidenceThreshold : CONFIG_DEFAULTS.confidenceThreshold,
     autoRejectInvalid:
-      typeof raw.autoRejectInvalid === "boolean"
-        ? raw.autoRejectInvalid
-        : CONFIG_DEFAULTS.autoRejectInvalid,
+      typeof raw.autoRejectInvalid === 'boolean' ? raw.autoRejectInvalid : CONFIG_DEFAULTS.autoRejectInvalid,
   };
 }
 
@@ -89,12 +91,12 @@ async function getAiConfig(tenantId: string): Promise<AiValidationConfig> {
 
 function outcomeToStatus(outcome: AiOutcome): ReportStatus {
   switch (outcome) {
-    case "valid":
-      return "validated";
-    case "review_required":
-      return "under_validation";
-    case "invalid":
-      return "invalid";
+    case 'valid':
+      return 'validated';
+    case 'review_required':
+      return 'under_validation';
+    case 'invalid':
+      return 'invalid';
   }
 }
 
@@ -111,57 +113,54 @@ If "Nearby open reports" are provided and one or more is clearly the same issue 
 
 // Only pass URLs that look publicly accessible (http/https, not local paths)
 function isPublicUrl(url: string): boolean {
-  return url.startsWith("http://") || url.startsWith("https://");
+  return url.startsWith('http://') || url.startsWith('https://');
 }
 
 // ---------------------------------------------------------------------------
 // Response parsing
 // ---------------------------------------------------------------------------
 
-const VALID_OUTCOMES = new Set<string>(["valid", "review_required", "invalid"]);
+const VALID_OUTCOMES = new Set<string>(['valid', 'review_required', 'invalid']);
 
 function parseAiResponse(raw: string): ParsedAiResponse {
   // Strip any accidental markdown code fence the model may have added
-  const cleaned = raw.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, "").trim();
+  const cleaned = raw
+    .replace(/^```(?:json)?\s*/i, '')
+    .replace(/\s*```$/, '')
+    .trim();
 
   let parsed: unknown;
   try {
     parsed = JSON.parse(cleaned);
   } catch {
     return {
-      outcome: "review_required",
+      outcome: 'review_required',
       confidenceScore: 0,
       reasonCodes: [],
       reasonText: `AI response parsing failed. Raw: ${raw.slice(0, 200)}`,
     };
   }
 
-  if (typeof parsed !== "object" || parsed === null) {
+  if (typeof parsed !== 'object' || parsed === null) {
     return {
-      outcome: "review_required",
+      outcome: 'review_required',
       confidenceScore: 0,
       reasonCodes: [],
-      reasonText: "AI returned non-object JSON.",
+      reasonText: 'AI returned non-object JSON.',
     };
   }
 
   const obj = parsed as Record<string, unknown>;
 
-  const outcome = VALID_OUTCOMES.has(String(obj.outcome))
-    ? (obj.outcome as AiOutcome)
-    : "review_required";
+  const outcome = VALID_OUTCOMES.has(String(obj.outcome)) ? (obj.outcome as AiOutcome) : 'review_required';
 
-  const confidenceScore =
-    typeof obj.confidenceScore === "number"
-      ? Math.min(1, Math.max(0, obj.confidenceScore))
-      : 0;
+  const confidenceScore = typeof obj.confidenceScore === 'number' ? Math.min(1, Math.max(0, obj.confidenceScore)) : 0;
 
   const reasonCodes = Array.isArray(obj.reasonCodes)
-    ? obj.reasonCodes.filter((c): c is string => typeof c === "string")
+    ? obj.reasonCodes.filter((c): c is string => typeof c === 'string')
     : [];
 
-  const reasonText =
-    typeof obj.reasonText === "string" ? obj.reasonText : "";
+  const reasonText = typeof obj.reasonText === 'string' ? obj.reasonText : '';
 
   return { outcome, confidenceScore, reasonCodes, reasonText };
 }
@@ -184,7 +183,7 @@ export async function validateReportWithAI(reportId: number): Promise<void> {
       category: { select: { name: true } },
       attachments: {
         select: { storagePath: true },
-        orderBy: { createdAt: "asc" },
+        orderBy: { createdAt: 'asc' },
         take: 3,
       },
     },
@@ -196,8 +195,15 @@ export async function validateReportWithAI(reportId: number): Promise<void> {
   }
 
   // 2a. Fetch coordinates + nearby open reports in one go
-  interface NearbyRow { id: number; title: string; status: string }
-  interface CoordsRow { latitude: number; longitude: number }
+  interface NearbyRow {
+    id: number;
+    title: string;
+    status: string;
+  }
+  interface CoordsRow {
+    latitude: number;
+    longitude: number;
+  }
   let nearbyReports: NearbyRow[] = [];
   let coords: CoordsRow | null = null;
   try {
@@ -241,66 +247,56 @@ export async function validateReportWithAI(reportId: number): Promise<void> {
     console.warn(`[AI Validation] AI disabled for tenant — routing report ${reportId} to staff review.`);
     await prisma.report.update({
       where: { id: reportId },
-      data: { status: "under_validation" },
+      data: { status: 'under_validation' },
     });
     return;
   }
 
-  const isServiceConfigured =
-    !!process.env.AZURE_OPENAI_ENDPOINT &&
-    !!process.env.AZURE_OPENAI_API_KEY &&
-    !!process.env.AZURE_OPENAI_DEPLOYMENT;
+  const isServiceConfigured = !!process.env.AZURE_OPENAI_ENDPOINT && !!process.env.AZURE_OPENAI_DEPLOYMENT;
 
   if (!isServiceConfigured) {
     console.warn(`[AI Validation] Azure OpenAI not configured — routing report ${reportId} to staff review.`);
     await prisma.report.update({
       where: { id: reportId },
-      data: { status: "under_validation" },
+      data: { status: 'under_validation' },
     });
     return;
   }
 
-  const modelVersion = process.env.AI_MODEL_VERSION ?? "v1";
+  const modelVersion = process.env.AI_MODEL_VERSION ?? 'v1';
 
   // 3. Build prompt content parts
-  const publicImageUrls = report.attachments
-    .map((a) => a.storagePath)
-    .filter(isPublicUrl);
+  const publicImageUrls = report.attachments.map((a) => a.storagePath).filter(isPublicUrl);
 
-  type ContentPart =
-    | { type: "text"; text: string }
-    | { type: "image_url"; image_url: { url: string } };
+  type ContentPart = { type: 'text'; text: string } | { type: 'image_url'; image_url: { url: string } };
 
   const locationSection = [
     report.locationText ? `Location: ${report.locationText}` : null,
     coords ? `Coordinates: ${coords.latitude.toFixed(6)}, ${coords.longitude.toFixed(6)}` : null,
   ]
     .filter(Boolean)
-    .join("\n");
+    .join('\n');
 
   const nearbySection =
     nearbyReports.length > 0
       ? `\n\nNearby open reports (same category, within 200 m):\n` +
-        nearbyReports
-          .map((r) => `- [#${r.id}] "${r.title}" (status: ${r.status})`)
-          .join("\n")
-      : "";
+        nearbyReports.map((r) => `- [#${r.id}] "${r.title}" (status: ${r.status})`).join('\n')
+      : '';
 
   const userContent: ContentPart[] = [
     {
-      type: "text",
-      text: [
-        `Category: ${report.category.name}`,
-        `Title: ${report.title}`,
-        `Description: ${report.description}`,
-        locationSection,
-      ]
-        .filter(Boolean)
-        .join("\n") + nearbySection,
+      type: 'text',
+      text:
+        [
+          `Category: ${report.category.name}`,
+          `Title: ${report.title}`,
+          `Description: ${report.description}`,
+          locationSection,
+        ]
+          .filter(Boolean)
+          .join('\n') + nearbySection,
     },
-    ...publicImageUrls.map(
-      (url): ContentPart => ({ type: "image_url", image_url: { url } })
-    ),
+    ...publicImageUrls.map((url): ContentPart => ({ type: 'image_url', image_url: { url } })),
   ];
 
   // 4. Call Azure OpenAI
@@ -313,23 +309,28 @@ export async function validateReportWithAI(reportId: number): Promise<void> {
       {
         model: process.env.AZURE_OPENAI_DEPLOYMENT!,
         messages: [
-          { role: "system", content: SYSTEM_PROMPT },
-          { role: "user", content: userContent },
+          { role: 'system', content: SYSTEM_PROMPT },
+          { role: 'user', content: userContent },
         ],
-        temperature: 0,
-        max_tokens: 300,
+        // No `temperature` override and `max_completion_tokens` (not `max_tokens`) — reasoning
+        // models (e.g. gpt-5) reject a non-default temperature and only accept the newer param.
+        // `reasoning_effort: 'minimal'` keeps reasoning models from spending the whole token
+        // budget on internal reasoning and returning empty content; ignored by non-reasoning
+        // models (e.g. gpt-4o).
+        max_completion_tokens: 1000,
+        reasoning_effort: 'minimal',
       },
-      { timeout: 30_000 } // 30 second timeout
+      { timeout: 30_000 }, // 30 second timeout
     );
 
     rawResponse = response;
-    const content = response.choices[0]?.message?.content ?? "";
+    const content = response.choices[0]?.message?.content ?? '';
     console.log(`[AI Validation] Got response for report ${reportId}:`, content.slice(0, 100));
     parsed = parseAiResponse(content);
   } catch (err) {
     console.error(`[AI Validation] API call failed for report ${reportId}:`, err);
     parsed = {
-      outcome: "review_required",
+      outcome: 'review_required',
       confidenceScore: 0,
       reasonCodes: [],
       reasonText: `AI service error: ${err instanceof Error ? err.message : String(err)}`,
@@ -337,19 +338,15 @@ export async function validateReportWithAI(reportId: number): Promise<void> {
   }
 
   // 5. Apply confidence threshold
-  if (
-    parsed.outcome === "valid" &&
-    parsed.confidenceScore < config.confidenceThreshold
-  ) {
-    parsed.outcome = "review_required";
+  if (parsed.outcome === 'valid' && parsed.confidenceScore < config.confidenceThreshold) {
+    parsed.outcome = 'review_required';
     parsed.reasonText =
-      parsed.reasonText ||
-      `Confidence ${parsed.confidenceScore} below threshold ${config.confidenceThreshold}.`;
+      parsed.reasonText || `Confidence ${parsed.confidenceScore} below threshold ${config.confidenceThreshold}.`;
   }
 
   // 6. Apply autoRejectInvalid override
-  if (!config.autoRejectInvalid && parsed.outcome === "invalid") {
-    parsed.outcome = "review_required";
+  if (!config.autoRejectInvalid && parsed.outcome === 'invalid') {
+    parsed.outcome = 'review_required';
   }
 
   const newStatus = outcomeToStatus(parsed.outcome);
@@ -380,7 +377,7 @@ export async function validateReportWithAI(reportId: number): Promise<void> {
         tenantId: report.tenantId,
         reportId: report.id,
         userId: null,
-        action: "validation_completed",
+        action: 'validation_completed',
         newValue: parsed.outcome,
         metadata: {
           aiResultId: aiResult.id,
@@ -390,16 +387,18 @@ export async function validateReportWithAI(reportId: number): Promise<void> {
     });
   });
 
-  console.log(`[AI Validation] Completed for report ${reportId}: outcome=${parsed.outcome}, confidence=${parsed.confidenceScore}, status=${newStatus}`);
+  console.log(
+    `[AI Validation] Completed for report ${reportId}: outcome=${parsed.outcome}, confidence=${parsed.confidenceScore}, status=${newStatus}`,
+  );
 
   // Award points to the reporter — only for valid reports
-  if (parsed.outcome === "valid") {
+  if (parsed.outcome === 'valid') {
     void awardPoints({
       tenantId: report.tenantId,
       userId: report.reporterUserId,
       points: 15,
-      reason: "report_validated",
-      referenceType: "report",
+      reason: 'report_validated',
+      referenceType: 'report',
       referenceId: String(reportId),
     });
   }
