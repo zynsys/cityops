@@ -2,7 +2,6 @@ import { prisma } from '@/lib/prisma';
 import { Prisma } from '@/generated/prisma/client';
 
 export type TimeRange = '7d' | '30d' | '90d' | '12m' | 'all';
-export type Grouping = 'daily' | 'weekly' | 'monthly';
 
 export interface DashboardFilters {
   range: TimeRange;
@@ -224,19 +223,6 @@ export interface TrendDataSets {
   daily: TrendDataPoint[];
   weekly: TrendDataPoint[];
   monthly: TrendDataPoint[];
-}
-
-export function getDefaultGrouping(range: TimeRange): Grouping {
-  switch (range) {
-    case '7d':
-    case '30d':
-      return 'daily';
-    case '90d':
-      return 'weekly';
-    case '12m':
-    case 'all':
-      return 'monthly';
-  }
 }
 
 async function fetchTrendBucket(

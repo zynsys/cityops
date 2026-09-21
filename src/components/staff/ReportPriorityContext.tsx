@@ -1,8 +1,7 @@
-"use client";
+'use client';
 
-import { createContext, useContext, useState } from "react";
-import type { ReportPriority } from "@/generated/prisma/enums";
-import { getPriorityConfig } from "@/lib/reportStatusConfig";
+import { createContext, useContext, useState } from 'react';
+import type { ReportPriority } from '@/generated/prisma/enums';
 
 interface ReportPriorityContextValue {
   priority: ReportPriority | null;
@@ -13,7 +12,7 @@ const ReportPriorityContext = createContext<ReportPriorityContextValue | null>(n
 
 export function useReportPriority() {
   const ctx = useContext(ReportPriorityContext);
-  if (!ctx) throw new Error("useReportPriority must be used within ReportPriorityProvider");
+  if (!ctx) throw new Error('useReportPriority must be used within ReportPriorityProvider');
   return ctx;
 }
 
@@ -25,19 +24,5 @@ export function ReportPriorityProvider({
   children: React.ReactNode;
 }) {
   const [priority, setPriority] = useState<ReportPriority | null>(initialPriority);
-  return (
-    <ReportPriorityContext.Provider value={{ priority, setPriority }}>
-      {children}
-    </ReportPriorityContext.Provider>
-  );
-}
-
-export function ReportPriorityBadge() {
-  const { priority } = useReportPriority();
-  const cfg = getPriorityConfig(priority);
-  return (
-    <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${cfg.bg}`}>
-      {cfg.label}
-    </span>
-  );
+  return <ReportPriorityContext.Provider value={{ priority, setPriority }}>{children}</ReportPriorityContext.Provider>;
 }
