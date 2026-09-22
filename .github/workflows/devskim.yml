@@ -1,0 +1,51 @@
+# DevSkim is an MIT-licensed security linter from Microsoft. It requires no
+# external account, API key, or paid scanner license and publishes findings to
+# GitHub's Security > Code scanning view through SARIF.
+name: DevSkim Security Scan
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  schedule:
+    # Re-scan unchanged code when DevSkim ships new or updated rules.
+    - cron: "23 17 * * 3"
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+concurrency:
+  group: devskim-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  scan:
+    name: DevSkim analysis
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      actions: read # required by upload-sarif for private repositories
+      contents: read
+      security-events: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Run DevSkim
+        uses: microsoft/DevSkim-Action@v1
+        with:
+          # Generated output and runtime uploads are not reviewable source code.
+          ignore-globs: "**/.git/**,**/node_modules/**,**/.next/**,coverage/**,reports/**,src/generated/**,public/uploads/**,workshop/public/assets/images/**"
+          output-filename: devskim-results.sarif
+
+      - name: Upload findings to GitHub code scanning
+        # Fork PRs receive a read-only token and cannot write security events.
+        if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+        uses: github/codeql-action/upload-sarif@v4
+        with:
+          sarif_file: devskim-results.sarif
+          category: devskim
+          wait-for-processing: true
