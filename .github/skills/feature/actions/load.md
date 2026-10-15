@@ -9,6 +9,8 @@
    - Update H1 heading to include feature name (e.g., `# Current Feature: Add Navbar`)
    - Write goals as bullet points under ## Goals
    - Write any additional notes/context under ## Notes
+   - Add the source spec under ## References
+   - Clear ## Plan and restore its placeholder comment
    - Set Status to "Not Started"
 
 3. Confirm spec loaded and show the feature summary
