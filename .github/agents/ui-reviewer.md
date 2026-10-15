@@ -1,7 +1,7 @@
 ---
 name: ui-reviewer
 description: Reviews UI for visual issues, responsiveness, and accessibility
-tools: "Read, Glob, Grep, mcp\_\_playwright\_\_*"
+tools: [read, search, playwright/*]
 model: sonnet
 ---
 
