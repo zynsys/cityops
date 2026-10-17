@@ -12,23 +12,47 @@ vi.mock('fs/promises', () => ({ ...fsMocks, default: fsMocks }));
 const azure = vi.hoisted(() => {
   const uploadData = vi.fn();
   const deleteIfExists = vi.fn();
+  const download = vi.fn();
   const getBlockBlobClient = vi.fn((blobName: string) => ({
     url: `https://stcityopstest.blob.core.windows.net/report-attachments/${blobName}`,
     uploadData,
     deleteIfExists,
+    download,
   }));
   const getContainerClient = vi.fn((name: string) => ({
     containerName: name,
     getBlockBlobClient,
   }));
   const fromConnectionString = vi.fn(() => ({ getContainerClient }));
-  return { uploadData, deleteIfExists, getBlockBlobClient, getContainerClient, fromConnectionString };
+  const constructed = vi.fn();
+  class BlobServiceClient {
+    static fromConnectionString = fromConnectionString;
+    getContainerClient = getContainerClient;
+    constructor(url: string, credential: unknown) {
+      constructed(url, credential);
+    }
+  }
+  return {
+    uploadData,
+    deleteIfExists,
+    download,
+    getBlockBlobClient,
+    getContainerClient,
+    fromConnectionString,
+    constructed,
+    BlobServiceClient,
+  };
 });
-vi.mock('@azure/storage-blob', () => ({
-  BlobServiceClient: { fromConnectionString: azure.fromConnectionString },
+vi.mock('@azure/storage-blob', () => ({ BlobServiceClient: azure.BlobServiceClient }));
+vi.mock('@azure/identity', () => ({
+  DefaultAzureCredential: class {
+    readonly kind = 'default-credential';
+  },
 }));
 
-import { uploadAttachment, deleteAttachment } from '@/lib/storage';
+import { uploadAttachment, deleteAttachment, readAttachment, isValidAttachmentName } from '@/lib/storage';
+
+const BLOB_NAME = '42/0f8fad5b-d9cb-469f-a165-70867728950e.jpg';
 
 const OLD_ENV = process.env;
 
@@ -74,7 +98,7 @@ describe('uploadAttachment — azure provider', () => {
     process.env.AZURE_STORAGE_CONTAINER = 'report-attachments';
   });
 
-  it("uploads to {reportId}/{storageName} with the file's content type and returns the blob URL", async () => {
+  it("uploads to {reportId}/{storageName} with the file's content type and returns the app path", async () => {
     const result = await uploadAttachment(makeFile('p.jpg', 'image/jpeg'), 42, 'abc.jpg');
 
     expect(azure.fromConnectionString).toHaveBeenCalledWith('conn-string');
@@ -83,15 +107,30 @@ describe('uploadAttachment — azure provider', () => {
     expect(azure.uploadData).toHaveBeenCalledWith(expect.any(Buffer), {
       blobHTTPHeaders: { blobContentType: 'image/jpeg' },
     });
-    expect(result.storagePath).toBe('https://stcityopstest.blob.core.windows.net/report-attachments/42/abc.jpg');
+    expect(result.storagePath).toBe('/uploads/42/abc.jpg');
     expect(fsMocks.writeFile).not.toHaveBeenCalled();
+  });
+
+  it('uses the managed identity when only AZURE_STORAGE_ACCOUNT_URL is set', async () => {
+    delete process.env.AZURE_STORAGE_CONNECTION_STRING;
+    process.env.AZURE_STORAGE_ACCOUNT_URL = 'https://stcityopstest.blob.core.windows.net/';
+
+    await uploadAttachment(makeFile(), 42, 'abc.jpg');
+
+    expect(azure.fromConnectionString).not.toHaveBeenCalled();
+    expect(azure.constructed).toHaveBeenCalledWith(
+      'https://stcityopstest.blob.core.windows.net/',
+      expect.objectContaining({ kind: 'default-credential' }),
+    );
+    expect(azure.getBlockBlobClient).toHaveBeenCalledWith('42/abc.jpg');
   });
 
   it('throws a clear error when required env vars are missing', async () => {
     delete process.env.AZURE_STORAGE_CONNECTION_STRING;
+    delete process.env.AZURE_STORAGE_ACCOUNT_URL;
 
     await expect(uploadAttachment(makeFile(), 1, 'a.jpg')).rejects.toThrow(
-      /AZURE_STORAGE_CONNECTION_STRING and AZURE_STORAGE_CONTAINER/,
+      /AZURE_STORAGE_CONTAINER and either AZURE_STORAGE_ACCOUNT_URL or AZURE_STORAGE_CONNECTION_STRING/,
     );
   });
 });
@@ -128,7 +167,14 @@ describe('deleteAttachment — azure provider', () => {
     process.env.AZURE_STORAGE_CONTAINER = 'report-attachments';
   });
 
-  it('parses the blob name from the stored URL and deletes it', async () => {
+  it('deletes the blob for an app-relative /uploads path', async () => {
+    await deleteAttachment('/uploads/42/abc.jpg');
+
+    expect(azure.getBlockBlobClient).toHaveBeenCalledWith('42/abc.jpg');
+    expect(azure.deleteIfExists).toHaveBeenCalledTimes(1);
+  });
+
+  it('parses the blob name from a legacy stored URL and deletes it', async () => {
     await deleteAttachment('https://stcityopstest.blob.core.windows.net/report-attachments/42/abc.jpg');
 
     expect(azure.getBlockBlobClient).toHaveBeenCalledWith('42/abc.jpg');
@@ -139,5 +185,46 @@ describe('deleteAttachment — azure provider', () => {
     await deleteAttachment('https://stcityopstest.blob.core.windows.net/report-attachments/42/a%20b.jpg');
 
     expect(azure.getBlockBlobClient).toHaveBeenCalledWith('42/a b.jpg');
+  });
+});
+
+describe('readAttachment', () => {
+  beforeEach(() => {
+    process.env.STORAGE_PROVIDER = 'azure';
+    process.env.AZURE_STORAGE_CONNECTION_STRING = 'conn-string';
+    process.env.AZURE_STORAGE_CONTAINER = 'report-attachments';
+  });
+
+  it('accepts only {reportId|avatars}/{uuid}.{ext} names', () => {
+    expect(isValidAttachmentName(BLOB_NAME)).toBe(true);
+    expect(isValidAttachmentName('avatars/0f8fad5b-d9cb-469f-a165-70867728950e.png')).toBe(true);
+    expect(isValidAttachmentName('../42/0f8fad5b-d9cb-469f-a165-70867728950e.jpg')).toBe(false);
+    expect(isValidAttachmentName('42/abc.jpg')).toBe(false);
+    expect(isValidAttachmentName('other/0f8fad5b-d9cb-469f-a165-70867728950e.jpg')).toBe(false);
+  });
+
+  it('returns null without calling storage for an invalid name', async () => {
+    await expect(readAttachment('../secrets.txt')).resolves.toBeNull();
+    expect(azure.getBlockBlobClient).not.toHaveBeenCalled();
+  });
+
+  it('returns the blob stream and metadata', async () => {
+    const body = { pipe: vi.fn() };
+    azure.download.mockResolvedValueOnce({ readableStreamBody: body, contentType: 'image/jpeg', contentLength: 4 });
+
+    await expect(readAttachment(BLOB_NAME)).resolves.toEqual({ body, contentType: 'image/jpeg', contentLength: 4 });
+    expect(azure.getBlockBlobClient).toHaveBeenCalledWith(BLOB_NAME);
+  });
+
+  it('returns null when the blob does not exist', async () => {
+    azure.download.mockRejectedValueOnce(Object.assign(new Error('missing'), { statusCode: 404 }));
+
+    await expect(readAttachment(BLOB_NAME)).resolves.toBeNull();
+  });
+
+  it('rethrows other storage errors', async () => {
+    azure.download.mockRejectedValueOnce(Object.assign(new Error('forbidden'), { statusCode: 403 }));
+
+    await expect(readAttachment(BLOB_NAME)).rejects.toThrow('forbidden');
   });
 });

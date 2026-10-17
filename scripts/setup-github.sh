@@ -36,9 +36,11 @@ DELEGATABLE_ROLE_IDS=(
   5e0bd9bd-7b93-4f28-af87-19fc36ad61bd # Cognitive Services OpenAI User
   de139f84-1756-47ae-9be6-808fbbbdf0ee # Website Contributor
   acdd72a7-3385-48ef-bd42-f606fba81ae7 # Reader
+  ba92f5b4-2d11-453d-a403-e96b0029c9fe # Storage Blob Data Contributor
 )
 LEGACY_REPO_SECRETS=(AZURE_CLIENT_ID AZURE_TENANT_ID AZURE_SUBSCRIPTION_ID PG_ADMIN_PASSWORD AUTH_SECRET AUTH_SECRET_DEV)
 INFRA_SECRETS=(PG_ADMIN_PASSWORD AUTH_SECRET AUTH_SECRET_DEV)
+PG_ADMIN_LOGIN="${PG_ADMIN_LOGIN:-cityopsadmin}" # must match pgAdminLogin in infra/main.bicep
 
 [[ "$AZURE_BASE_NAME" =~ ^[a-z0-9]{3,16}$ ]] || die "AZURE_BASE_NAME must be 3-16 lowercase letters/digits."
 require_value ALERT_EMAIL_ADDRESS
@@ -97,6 +99,16 @@ for name in "${INFRA_SECRETS[@]}"; do
     die "$name must be at least 32 characters."
   fi
 done
+
+# Release jobs run database migrations from GitHub-hosted runners, which cannot reach the private
+# Key Vault, so each release environment holds its own DATABASE_URL secret built from PG_ADMIN_PASSWORD.
+if [[ -z "${PG_ADMIN_PASSWORD:-}" ]]; then
+  for env_name in dev prod; do
+    gh secret list --repo "$GITHUB_REPO_SLUG" --env "$env_name" --json name --jq '.[].name' 2>/dev/null | tr -d '\r' \
+      | grep -Fxq DATABASE_URL \
+      || die "PG_ADMIN_PASSWORD is required to create the DATABASE_URL secret in the '$env_name' environment."
+  done
+fi
 
 # ---------------------------------------------------------------------------------------------
 # Entra identities
@@ -288,6 +300,20 @@ for name in "${INFRA_SECRETS[@]}"; do
     echo "  $name kept (already set)"
   fi
 done
+
+log "Setting release environment DATABASE_URL secrets"
+if [[ -n "${PG_ADMIN_PASSWORD:-}" ]]; then
+  pg_host="pg-$AZURE_BASE_NAME.postgres.database.azure.com"
+  pg_password_uri="$(jq -rn --arg value "$PG_ADMIN_PASSWORD" '$value | @uri')"
+  for target in "dev cityops_dev" "prod cityops"; do
+    read -r env_name db_name <<< "$target"
+    printf '%s' "postgresql://$PG_ADMIN_LOGIN:$pg_password_uri@$pg_host:5432/$db_name?sslmode=require" \
+      | gh secret set DATABASE_URL --repo "$GITHUB_REPO_SLUG" --env "$env_name" >/dev/null
+    echo "  $env_name: DATABASE_URL set ($db_name)"
+  done
+else
+  echo "  DATABASE_URL kept in dev and prod (already set)"
+fi
 
 log "Setting repository variables"
 set_variable() { gh variable set "$1" --repo "$GITHUB_REPO_SLUG" --body "$2" >/dev/null && echo "  $1=$2"; }

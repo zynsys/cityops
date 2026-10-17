@@ -501,12 +501,14 @@ jobs:
         with:
           base-name: ${{ env.AZURE_BASE_NAME }}
 
-      - name: Fetch dev DB secret
+      # The private Key Vault is unreachable from GitHub-hosted runners; the dev environment
+      # holds its own DATABASE_URL secret (scripts/setup-github.sh).
+      - name: Load dev DB connection
+        env:
+          ENV_DATABASE_URL: ${{ secrets.DATABASE_URL }}
         run: |
-          set -e
-          value=$(az keyvault secret show --vault-name "${{ steps.names.outputs.key-vault-name }}" --name DATABASE-URL-DEV --query value -o tsv)
-          echo "::add-mask::$value"
-          echo "DATABASE_URL=$value" >> "$GITHUB_ENV"
+          [ -n "$ENV_DATABASE_URL" ] || { echo "::error::DATABASE_URL secret is missing in the 'dev' environment. Re-run scripts/setup-github.sh with PG_ADMIN_PASSWORD."; exit 1; }
+          echo "DATABASE_URL=$ENV_DATABASE_URL" >> "$GITHUB_ENV"
 
       - name: Migrate cityops_dev
         run: npm run db:migrate:deploy
@@ -615,12 +617,12 @@ jobs:
         with:
           base-name: ${{ env.AZURE_BASE_NAME }}
 
-      - name: Fetch prod DB secret
+      - name: Load prod DB connection
+        env:
+          ENV_DATABASE_URL: ${{ secrets.DATABASE_URL }}
         run: |
-          set -e
-          value=$(az keyvault secret show --vault-name "${{ steps.names.outputs.key-vault-name }}" --name DATABASE-URL --query value -o tsv)
-          echo "::add-mask::$value"
-          echo "DATABASE_URL=$value" >> "$GITHUB_ENV"
+          [ -n "$ENV_DATABASE_URL" ] || { echo "::error::DATABASE_URL secret is missing in the 'prod' environment. Re-run scripts/setup-github.sh with PG_ADMIN_PASSWORD."; exit 1; }
+          echo "DATABASE_URL=$ENV_DATABASE_URL" >> "$GITHUB_ENV"
 
       - name: Migrate cityops (prod)
         run: npm run db:migrate:deploy

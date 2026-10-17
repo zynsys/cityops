@@ -28,6 +28,9 @@ param devAppSettings array
 @description('Names of app settings that must stay slot-sticky (do not travel on swap).')
 param stickyAppSettingNames array
 
+@description('Subnet (delegated to Microsoft.Web/serverFarms) for VNet integration, used to reach private endpoints.')
+param virtualNetworkSubnetId string
+
 @description('Name of the pre-production deployment slot.')
 param devSlotName string = 'dev'
 
@@ -59,7 +62,9 @@ resource webApp 'Microsoft.Web/sites@2023-12-01' = {
   properties: {
     serverFarmId: plan.id
     httpsOnly: true
+    virtualNetworkSubnetId: virtualNetworkSubnetId
     siteConfig: {
+      vnetRouteAllEnabled: true // required on Linux to reach private endpoints (incl. Key Vault references)
       linuxFxVersion: 'NODE|24-lts'
       alwaysOn: alwaysOn
       ftpsState: 'Disabled'
@@ -84,7 +89,9 @@ resource devSlot 'Microsoft.Web/sites/slots@2023-12-01' = {
   properties: {
     serverFarmId: plan.id
     httpsOnly: true
+    virtualNetworkSubnetId: virtualNetworkSubnetId
     siteConfig: {
+      vnetRouteAllEnabled: true
       linuxFxVersion: 'NODE|24-lts'
       alwaysOn: alwaysOn
       ftpsState: 'Disabled'

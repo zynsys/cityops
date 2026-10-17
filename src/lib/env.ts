@@ -12,6 +12,7 @@ const envSchema = z
     NEXTAUTH_URL: z.string().optional(),
     STORAGE_PROVIDER: z.enum(['local', 'azure']).default('local'),
     AZURE_STORAGE_CONNECTION_STRING: z.string().optional(),
+    AZURE_STORAGE_ACCOUNT_URL: z.string().url().optional(),
     AZURE_STORAGE_CONTAINER: z.string().optional(),
     SMTP_HOST: z.string().optional(),
     SMTP_PORT: z.coerce.number().int().positive().optional(),
@@ -41,11 +42,11 @@ const envSchema = z
     }
 
     if (env.STORAGE_PROVIDER === 'azure') {
-      if (!env.AZURE_STORAGE_CONNECTION_STRING) {
+      if (!env.AZURE_STORAGE_ACCOUNT_URL && !env.AZURE_STORAGE_CONNECTION_STRING) {
         ctx.addIssue({
           code: 'custom',
-          path: ['AZURE_STORAGE_CONNECTION_STRING'],
-          message: 'is required when STORAGE_PROVIDER=azure',
+          path: ['AZURE_STORAGE_ACCOUNT_URL'],
+          message: 'AZURE_STORAGE_ACCOUNT_URL (managed identity) or AZURE_STORAGE_CONNECTION_STRING is required when STORAGE_PROVIDER=azure',
         });
       }
       if (!env.AZURE_STORAGE_CONTAINER) {

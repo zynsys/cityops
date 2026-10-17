@@ -2,10 +2,12 @@
 //
 // ONE shared Standard_LRS account (like the shared Postgres server and Key Vault), with TWO
 // containers isolating prod from dev by convention: `<container>` (prod) and `<container>-dev`
-// (dev) — mirroring the two-databases pattern. Containers use anonymous *blob* read (publicAccess
-// 'Blob'), so blobs are readable by direct URL (needed for next/image) but the container cannot be
-// listed. Blob names are unguessable UUIDs (see src/app/api/reports/route.ts). Report photos are
-// public content anyway (shown on public report pages), so this is an acceptable trade-off.
+// (dev) — mirroring the two-databases pattern.
+//
+// The account is fully private (organisation policy requires it): no anonymous access, no shared
+// keys, and public network access disabled. The web app reaches it through a private endpoint and
+// authenticates with its managed identity; it serves blobs to browsers at /uploads/... (see
+// src/app/uploads/[...path]/route.ts). Containers are still created through ARM (control plane).
 
 @description('Azure region for the storage account.')
 param location string
@@ -32,10 +34,15 @@ resource storageAccount 'Microsoft.Storage/storageAccounts@2023-05-01' = {
   kind: 'StorageV2'
   properties: {
     accessTier: 'Hot'
-    allowBlobPublicAccess: true
+    allowBlobPublicAccess: false
     minimumTlsVersion: 'TLS1_2'
     supportsHttpsTrafficOnly: true
-    allowSharedKeyAccess: true // connection-string auth uses the account key
+    allowSharedKeyAccess: false
+    publicNetworkAccess: 'Disabled'
+    networkAcls: {
+      defaultAction: 'Deny'
+      bypass: 'AzureServices'
+    }
   }
 }
 
@@ -48,7 +55,7 @@ resource container 'Microsoft.Storage/storageAccounts/blobServices/containers@20
   parent: blobService
   name: containerName
   properties: {
-    publicAccess: 'Blob'
+    publicAccess: 'None'
   }
 }
 
@@ -56,9 +63,10 @@ resource containerDev 'Microsoft.Storage/storageAccounts/blobServices/containers
   parent: blobService
   name: containerNameDev
   properties: {
-    publicAccess: 'Blob'
+    publicAccess: 'None'
   }
 }
 
+output id string = storageAccount.id
 output name string = storageAccount.name
 output primaryBlobEndpoint string = storageAccount.properties.primaryEndpoints.blob

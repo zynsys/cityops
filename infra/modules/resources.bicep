@@ -175,9 +175,21 @@ var databaseUrlProd = 'postgresql://${pgAdminLogin}:${uriComponent(pgAdminPasswo
 var databaseUrlDev = 'postgresql://${pgAdminLogin}:${uriComponent(pgAdminPassword)}@${postgres.outputs.fqdn}:5432/${dbNameDev}?sslmode=require'
 
 // ---------------------------------------------------------------------------
-// Blob storage — one shared account, two containers (prod + dev). Connection string is built
-// from the account key and stored in Key Vault; the app reads it via a Key Vault app-setting
-// reference (STORAGE_PROVIDER=azure).
+// Network — organisation policy disables public access to Storage and Key Vault, so the web app
+// uses VNet integration and reaches both through private endpoints.
+// ---------------------------------------------------------------------------
+module network 'network.bicep' = {
+  name: 'networkDeploy'
+  params: {
+    location: location
+    baseName: baseName
+    tags: tags
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Blob storage — one shared private account, two containers (prod + dev). No keys: each slot's
+// managed identity gets Storage Blob Data Contributor on its own container only.
 // ---------------------------------------------------------------------------
 module storage 'storage.bicep' = {
   name: 'storageDeploy'
@@ -190,16 +202,18 @@ module storage 'storage.bicep' = {
   }
 }
 
-// Existing-resource lookup so listKeys() can build the connection string (module outputs can't
-// expose keys). dependsOn prevents ARM racing this lookup against storageDeploy on a new account.
-resource storageRef 'Microsoft.Storage/storageAccounts@2023-05-01' existing = {
-  name: storageName
-  dependsOn: [
-    storage
-  ]
+module storagePrivateEndpoint 'private-endpoint.bicep' = {
+  name: 'storagePrivateEndpointDeploy'
+  params: {
+    location: location
+    name: 'pe-${storageName}-blob'
+    targetResourceId: storage.outputs.id
+    groupId: 'blob'
+    subnetId: network.outputs.privateEndpointSubnetId
+    privateDnsZoneId: network.outputs.blobDnsZoneId
+    tags: tags
+  }
 }
-
-var storageConnectionString = 'DefaultEndpointsProtocol=https;AccountName=${storageName};AccountKey=${storageRef.listKeys().keys[0].value};EndpointSuffix=${environment().suffixes.storage}'
 
 // ---------------------------------------------------------------------------
 // Security layer — Key Vault (RBAC) + secrets
@@ -223,6 +237,19 @@ resource keyVaultRef 'Microsoft.KeyVault/vaults@2023-07-01' existing = {
   dependsOn: [
     keyVault
   ]
+}
+
+module keyVaultPrivateEndpoint 'private-endpoint.bicep' = {
+  name: 'keyVaultPrivateEndpointDeploy'
+  params: {
+    location: location
+    name: 'pe-${kvName}'
+    targetResourceId: keyVault.outputs.id
+    groupId: 'vault'
+    subnetId: network.outputs.privateEndpointSubnetId
+    privateDnsZoneId: network.outputs.keyVaultDnsZoneId
+    tags: tags
+  }
 }
 
 resource secretDatabaseUrl 'Microsoft.KeyVault/vaults/secrets@2023-07-01' = {
@@ -270,17 +297,6 @@ resource secretAuthSecretDev 'Microsoft.KeyVault/vaults/secrets@2023-07-01' = {
   ]
 }
 
-resource secretStorageConnectionString 'Microsoft.KeyVault/vaults/secrets@2023-07-01' = {
-  parent: keyVaultRef
-  name: 'AZURE-STORAGE-CONNECTION-STRING'
-  properties: {
-    value: storageConnectionString
-  }
-  dependsOn: [
-    keyVault
-  ]
-}
-
 // ---------------------------------------------------------------------------
 // Compute layer — App Service plan + Web App (Node 20, code deploy)
 // ---------------------------------------------------------------------------
@@ -302,8 +318,8 @@ var commonAppSettings = [
     value: 'azure'
   }
   {
-    name: 'AZURE_STORAGE_CONNECTION_STRING'
-    value: '@Microsoft.KeyVault(VaultName=${kvName};SecretName=AZURE-STORAGE-CONNECTION-STRING)'
+    name: 'AZURE_STORAGE_ACCOUNT_URL'
+    value: 'https://${storageName}.blob.${environment().suffixes.storage}/'
   }
   {
     name: 'AZURE_OPENAI_ENDPOINT'
@@ -376,6 +392,7 @@ module appService 'appservice.bicep' = {
     prodAppSettings: prodAppSettings
     devAppSettings: devAppSettings
     devSlotName: devSlotName
+    virtualNetworkSubnetId: network.outputs.appSubnetId
     tags: tags
     stickyAppSettingNames: [
       'DATABASE_URL'
@@ -389,7 +406,8 @@ module appService 'appservice.bicep' = {
     secretDatabaseUrlDev
     secretAuthSecret
     secretAuthSecretDev
-    secretStorageConnectionString
+    keyVaultPrivateEndpoint
+    storagePrivateEndpoint
   ]
 }
 
@@ -456,11 +474,58 @@ resource openAiRoleAssignmentDevSlot 'Microsoft.Authorization/roleAssignments@20
   ]
 }
 
+// Blob data access with managed identity (shared keys are disabled). Each slot can only touch its
+// own container, so dev can never read or overwrite production attachments.
+var storageBlobDataContributorRoleId = 'ba92f5b4-2d11-453d-a403-e96b0029c9fe' // Storage Blob Data Contributor
+
+resource storageRef 'Microsoft.Storage/storageAccounts@2023-05-01' existing = {
+  name: storageName
+  dependsOn: [
+    storage
+  ]
+}
+
+resource blobServiceRef 'Microsoft.Storage/storageAccounts/blobServices@2023-05-01' existing = {
+  parent: storageRef
+  name: 'default'
+}
+
+resource prodContainerRef 'Microsoft.Storage/storageAccounts/blobServices/containers@2023-05-01' existing = {
+  parent: blobServiceRef
+  name: storageContainer
+}
+
+resource devContainerRef 'Microsoft.Storage/storageAccounts/blobServices/containers@2023-05-01' existing = {
+  parent: blobServiceRef
+  name: storageContainerDev
+}
+
+resource blobRoleAssignment 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
+  name: guid(prodContainerRef.id, resourceId('Microsoft.Web/sites', appName), storageBlobDataContributorRoleId)
+  scope: prodContainerRef
+  properties: {
+    principalId: appService.outputs.webAppPrincipalId
+    roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', storageBlobDataContributorRoleId)
+    principalType: 'ServicePrincipal'
+  }
+}
+
+resource blobRoleAssignmentDevSlot 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
+  name: guid(devContainerRef.id, resourceId('Microsoft.Web/sites/slots', appName, devSlotName), storageBlobDataContributorRoleId)
+  scope: devContainerRef
+  properties: {
+    principalId: appService.outputs.devSlotPrincipalId
+    roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', storageBlobDataContributorRoleId)
+    principalType: 'ServicePrincipal'
+  }
+}
+
 // ---------------------------------------------------------------------------
 // CI/CD release identities — least privilege, managed as code so a redeploy restores them.
-// Dev release: deploy to the dev slot and read only the dev database secret.
-// Production release: swap slots on the site and read only the production database secret.
-// Both get Reader on the resource group to verify the environment before deploying.
+// Dev release: deploy to the dev slot. Production release: swap slots on the site.
+// Both get Reader on the resource group to verify the environment before deploying. Database
+// migrations use the DATABASE_URL GitHub environment secret, because the private Key Vault is
+// not reachable from GitHub-hosted runners.
 // ---------------------------------------------------------------------------
 var readerRoleId = 'acdd72a7-3385-48ef-bd42-f606fba81ae7' // Reader
 var websiteContributorRoleId = 'de139f84-1756-47ae-9be6-808fbbbdf0ee' // Website Contributor
@@ -496,16 +561,6 @@ resource devReleaseSlotContributor 'Microsoft.Authorization/roleAssignments@2022
   }
 }
 
-resource devReleaseDatabaseSecret 'Microsoft.Authorization/roleAssignments@2022-04-01' = if (!empty(devReleasePrincipalId)) {
-  name: guid(secretDatabaseUrlDev.id, devReleasePrincipalId, kvSecretsUserRoleId)
-  scope: secretDatabaseUrlDev
-  properties: {
-    principalId: devReleasePrincipalId
-    roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', kvSecretsUserRoleId)
-    principalType: 'ServicePrincipal'
-  }
-}
-
 resource prodReleaseReader 'Microsoft.Authorization/roleAssignments@2022-04-01' = if (!empty(prodReleasePrincipalId)) {
   name: guid(resourceGroup().id, prodReleasePrincipalId, readerRoleId)
   properties: {
@@ -521,16 +576,6 @@ resource prodReleaseSiteContributor 'Microsoft.Authorization/roleAssignments@202
   properties: {
     principalId: prodReleasePrincipalId
     roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', websiteContributorRoleId)
-    principalType: 'ServicePrincipal'
-  }
-}
-
-resource prodReleaseDatabaseSecret 'Microsoft.Authorization/roleAssignments@2022-04-01' = if (!empty(prodReleasePrincipalId)) {
-  name: guid(secretDatabaseUrl.id, prodReleasePrincipalId, kvSecretsUserRoleId)
-  scope: secretDatabaseUrl
-  properties: {
-    principalId: prodReleasePrincipalId
-    roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', kvSecretsUserRoleId)
     principalType: 'ServicePrincipal'
   }
 }

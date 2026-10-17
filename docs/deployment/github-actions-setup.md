@@ -12,6 +12,7 @@ Repeat them for every new Azure environment. Do not skip a step's checks.
 | Infrastructure as code | [infra/main.bicep](../../infra/main.bicep), deployed at subscription scope by the Infrastructure CI/CD workflow. It creates the resource group, `dev` slot, slot-specific settings, secrets and role assignments. | Deterministic names and incremental deployments make reruns idempotent. `what-if` previews every change. |
 | Deployment identities | Separate Entra workload identities, trusted through OIDC: read-only preview, infrastructure apply, dev release and production release. | Least privilege. Dev release credentials cannot change production or infrastructure. |
 | Approvals | Infrastructure apply and production promotion require an independent reviewer. Dev deploys automatically after CI. | Human control over shared and production-impacting changes. |
+| Network | Storage and Key Vault are private (no public network access, no shared keys, no anonymous blobs). The web app uses VNet integration and private endpoints; PostgreSQL and Azure OpenAI stay public with Entra ID or firewall controls. | Complies with organisation policies (for example MCAPS "Secure PaaS" and "Safe Secrets") that force these settings on creation. |
 
 **Known limitation:** the slots share one App Service plan and one PostgreSQL server.
 Heavy dev load can affect production. For a real customer production workload, use separate
@@ -21,6 +22,8 @@ resource groups or subscriptions per environment and keep a staging slot for swa
 
 1. [Prerequisites and pre-flight checks](#step-1-prerequisites-and-pre-flight-checks)
 2. [Merge the workflow and identity changes](#step-2-merge-the-workflow-and-identity-changes)
+3. [Create identities, environments and secrets](#step-3-create-identities-environments-and-secrets)
+4. [Deploy the infrastructure](#step-4-deploy-the-infrastructure)
 
 ---
 
@@ -70,7 +73,7 @@ gh api repos/<owner>/<repo> --jq .permissions.admin
 Registration is idempotent and takes a few minutes the first time.
 
 ```powershell
-$providers = "Microsoft.Web","Microsoft.DBforPostgreSQL","Microsoft.KeyVault","Microsoft.CognitiveServices","Microsoft.Storage","Microsoft.Insights","Microsoft.OperationalInsights","Microsoft.PolicyInsights","Microsoft.ManagedIdentity"
+$providers = "Microsoft.Web","Microsoft.DBforPostgreSQL","Microsoft.KeyVault","Microsoft.CognitiveServices","Microsoft.Storage","Microsoft.Network","Microsoft.Insights","Microsoft.OperationalInsights","Microsoft.PolicyInsights","Microsoft.ManagedIdentity"
 foreach ($p in $providers) { az provider register --namespace $p --output none }
 foreach ($p in $providers) { "{0,-32} {1}" -f $p, (az provider show --namespace $p --query registrationState --output tsv) }
 ```
@@ -190,15 +193,17 @@ and OIDC environment credentials only work, from definitions on the default bran
 | GitHub environment | Entra app | Azure roles | Protection | Used by |
 | --- | --- | --- | --- | --- |
 | `azure-readonly` | `<base>-gh-readonly` | Reader and `<base> deployment preview` (what-if, validate, policy scan) at subscription scope | `main` only | Infra preview, policy scan, smoke test; app environment check |
-| `infra` | `<base>-gh-infra` | Contributor, Resource Policy Contributor, RBAC Administrator restricted to the four roles Bicep assigns | `main` only, required reviewers, no admin bypass | Infra apply |
-| `dev` | `<base>-gh-release-dev` | Reader on the resource group; Website Contributor on the `dev` slot; read `DATABASE-URL-DEV` (granted by Bicep) | `main` only | App deploy to dev slot |
-| `prod` | `<base>-gh-release-prod` | Reader on the resource group; Website Contributor on the site; read `DATABASE-URL` (granted by Bicep) | `main` only, required reviewers, no admin bypass | App production promotion |
+| `infra` | `<base>-gh-infra` | Contributor, Resource Policy Contributor, RBAC Administrator restricted to the five roles Bicep assigns | `main` only, required reviewers, no admin bypass | Infra apply |
+| `dev` | `<base>-gh-release-dev` | Reader on the resource group; Website Contributor on the `dev` slot (granted by Bicep) | `main` only | App deploy to dev slot |
+| `prod` | `<base>-gh-release-prod` | Reader on the resource group; Website Contributor on the site (granted by Bicep) | `main` only, required reviewers, no admin bypass | App production promotion |
 
 - Each app trusts exactly one subject: `repo:<owner>/<repo>:environment:<env>`. There are no branch or
   pull-request credentials, so pull requests never receive Azure tokens.
 - Each environment stores its own `AZURE_CLIENT_ID` variable. Client IDs are not secret.
 - `PG_ADMIN_PASSWORD`, `AUTH_SECRET` and `AUTH_SECRET_DEV` are **`infra` environment secrets**, so
   only the approved apply job can read them.
+- `dev` and `prod` each hold a `DATABASE_URL` secret for their own database, used to run migrations.
+  Key Vault is private, so GitHub-hosted runners cannot read it.
 - Shared, non-secret values are repository variables.
 
 **Demo exception:** `ALLOW_SELF_APPROVAL=true` lets a single maintainer approve their own `infra` and
@@ -229,3 +234,81 @@ identities. That failure is expected; do not re-run it yet.
 
 - [ ] Pull request checks green.
 - [ ] Changes merged to `main`.
+
+---
+
+## Step 3: Create identities, environments and secrets
+
+**Goal:** run [scripts/setup-github.sh](../../scripts/setup-github.sh) once. It is idempotent; re-run it
+whenever the role list or secrets change.
+
+Run it from Git Bash (Windows) or a Linux/macOS shell, signed in to both `az` (as subscription Owner) and
+`gh` (as a repository admin). Enter secrets without echoing them:
+
+```bash
+read -rsp 'PostgreSQL admin password: ' PG_ADMIN_PASSWORD; echo
+export PG_ADMIN_PASSWORD
+export AUTH_SECRET="$(openssl rand -base64 48)"
+export AUTH_SECRET_DEV="$(openssl rand -base64 48)"
+
+AZURE_BASE_NAME=<base> \
+AZURE_RESOURCE_GROUP=<resource-group> \
+AZURE_LOCATION=francecentral AZURE_DB_LOCATION=francecentral \
+AZURE_OPENAI_ACCOUNT_NAME=<openai-account> \
+ALERT_EMAIL_ADDRESS=<email> \
+GITHUB_APPROVERS=<login-or-org/team> \
+ALLOW_SELF_APPROVAL=false \
+bash scripts/setup-github.sh
+```
+
+- Store `PG_ADMIN_PASSWORD` in a password manager. The script writes it to the `infra` environment and
+  builds the `DATABASE_URL` secrets for `dev` (`cityops_dev`) and `prod` (`cityops`).
+- On a re-run you can omit the three secrets; existing values are kept. Changing `PG_ADMIN_PASSWORD`
+  later requires re-running both the script and the infrastructure apply.
+- The script reads the repository's OIDC subject format, so it also works with immutable subjects
+  (`repo:<owner>@<owner-id>/<repo>@<repo-id>:environment:<env>`).
+- `copilot` and `github-pages` environments, if present, are managed by GitHub. Leave them.
+
+### Step 3 checklist
+
+- [ ] Script finished without errors.
+- [ ] Settings → Environments shows `azure-readonly`, `infra`, `dev` and `prod` with the expected reviewers.
+- [ ] `dev` and `prod` each have an `AZURE_CLIENT_ID` variable and a `DATABASE_URL` secret.
+
+---
+
+## Step 4: Deploy the infrastructure
+
+**Goal:** create every Azure resource from Bicep through the `CityOps Infra CI/CD` workflow.
+
+```powershell
+gh workflow run infra-cicd.yml --ref main -f operation=apply
+gh run watch (gh run list --workflow infra-cicd.yml --limit 1 --json databaseId --jq '.[0].databaseId')
+```
+
+1. Preview, policy and cost checks run first. Read the `what-if` summary in the run.
+2. The `deploy` job waits for approval of the `infra` environment. Review, then approve.
+3. The deployment takes about 15–25 minutes (PostgreSQL is the slowest resource).
+4. The smoke test confirms the resources exist.
+
+What gets created: VNet with an App Service integration subnet and a private endpoint subnet; private
+DNS zones; private endpoints for Blob Storage and Key Vault; PostgreSQL with `cityops` and
+`cityops_dev`; Key Vault and secrets; Storage with private `report-attachments` and
+`report-attachments-dev` containers; App Service plan, web app and `dev` slot; Azure OpenAI; Application
+Insights, alerts and policy assignments; and all role assignments.
+
+**If the deployment fails with a policy error** (for example `RequestDisallowedByPolicy` or
+`PublicAccessNotPermitted`), list the assignments that apply and compare their effects with the
+template:
+
+```powershell
+az policy assignment list --scope /subscriptions/<subscription-id> --disable-scope-strict-match -o table
+```
+
+Fix the template, merge, and re-run the workflow. Incremental deployment keeps resources that already
+succeeded.
+
+### Step 4 checklist
+
+- [ ] Infra CI/CD run green, including the smoke test.
+- [ ] The resource group contains the web app, the `dev` slot and both private endpoints.

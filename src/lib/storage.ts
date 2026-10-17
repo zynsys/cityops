@@ -2,8 +2,21 @@ import { writeFile, mkdir, unlink } from 'fs/promises';
 import { join } from 'path';
 
 export interface UploadedFile {
-  /** URL-accessible path stored in the DB and used by next/image, e.g. /uploads/{reportId}/{name} */
+  /** App-relative path stored in the DB and used by next/image, e.g. /uploads/{reportId}/{name} */
   storagePath: string;
+}
+
+export interface StoredAttachment {
+  body: NodeJS.ReadableStream;
+  contentType: string;
+  contentLength?: number;
+}
+
+/** Blob names are `{reportId|avatars}/{uuid}.{ext}`; anything else is rejected before touching storage. */
+const ATTACHMENT_NAME_PATTERN = /^(?:\d+|avatars)\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\.[a-z0-9]{1,5}$/;
+
+export function isValidAttachmentName(blobName: string): boolean {
+  return ATTACHMENT_NAME_PATTERN.test(blobName);
 }
 
 /**
@@ -41,37 +54,72 @@ async function uploadToLocal(file: File, reportId: number | string, storageName:
 
 async function uploadToAzure(file: File, reportId: number | string, storageName: string): Promise<UploadedFile> {
   const container = await getAzureContainerClient();
-  const blobClient = container.getBlockBlobClient(`${String(reportId)}/${storageName}`);
+  const blobName = `${String(reportId)}/${storageName}`;
+  const blobClient = container.getBlockBlobClient(blobName);
   const buffer = Buffer.from(await file.arrayBuffer());
   await blobClient.uploadData(buffer, {
     blobHTTPHeaders: { blobContentType: file.type },
   });
-  // The full blob URL is stored in the DB and rendered directly by next/image
-  // (the container has anonymous blob read; the account host is allow-listed in next.config.ts).
-  return { storagePath: blobClient.url };
+  // The container is private; the app serves the blob at this path (src/app/uploads/[...path]/route.ts).
+  return { storagePath: `/uploads/${blobName}` };
+}
+
+/** Maps a stored path (`/uploads/...` or a legacy full blob URL) to its blob name. */
+function toBlobName(storagePath: string, containerName: string): string {
+  if (storagePath.startsWith('/uploads/')) {
+    return decodeURIComponent(storagePath.slice('/uploads/'.length));
+  }
+  const { pathname } = new URL(storagePath);
+  const marker = `/${containerName}/`;
+  const idx = pathname.indexOf(marker);
+  return decodeURIComponent(idx >= 0 ? pathname.slice(idx + marker.length) : pathname.replace(/^\//, ''));
 }
 
 async function deleteFromAzure(storagePath: string): Promise<void> {
   const container = await getAzureContainerClient();
-  // storagePath is the full blob URL — the blob name is the path after "/{container}/".
-  const { pathname } = new URL(storagePath);
-  const marker = `/${container.containerName}/`;
-  const idx = pathname.indexOf(marker);
-  const blobName = decodeURIComponent(idx >= 0 ? pathname.slice(idx + marker.length) : pathname.replace(/^\//, ''));
-  await container.getBlockBlobClient(blobName).deleteIfExists();
+  await container.getBlockBlobClient(toBlobName(storagePath, container.containerName)).deleteIfExists();
 }
 
-/** Builds a container client from the connection-string env vars (validated at startup by env.ts). */
+/**
+ * Reads an attachment from Azure Blob Storage. Returns null when the name is invalid or the blob
+ * doesn't exist. Only used with STORAGE_PROVIDER=azure; local files are served from public/.
+ */
+export async function readAttachment(blobName: string): Promise<StoredAttachment | null> {
+  if (!isValidAttachmentName(blobName)) return null;
+  const container = await getAzureContainerClient();
+  try {
+    const download = await container.getBlockBlobClient(blobName).download();
+    if (!download.readableStreamBody) return null;
+    return {
+      body: download.readableStreamBody,
+      contentType: download.contentType ?? 'application/octet-stream',
+      contentLength: download.contentLength,
+    };
+  } catch (err) {
+    if ((err as { statusCode?: number }).statusCode === 404) return null;
+    throw err;
+  }
+}
+
+/**
+ * Builds a container client. In Azure the app authenticates with its managed identity
+ * (AZURE_STORAGE_ACCOUNT_URL); a connection string is accepted for local emulators such as Azurite.
+ */
 async function getAzureContainerClient() {
   const connectionString = process.env.AZURE_STORAGE_CONNECTION_STRING;
+  const accountUrl = process.env.AZURE_STORAGE_ACCOUNT_URL;
   const containerName = process.env.AZURE_STORAGE_CONTAINER;
-  if (!connectionString || !containerName) {
+  if ((!connectionString && !accountUrl) || !containerName) {
     throw new Error(
-      'AZURE_STORAGE_CONNECTION_STRING and AZURE_STORAGE_CONTAINER are required when STORAGE_PROVIDER=azure.',
+      'AZURE_STORAGE_CONTAINER and either AZURE_STORAGE_ACCOUNT_URL or AZURE_STORAGE_CONNECTION_STRING are required when STORAGE_PROVIDER=azure.',
     );
   }
   const { BlobServiceClient } = await import('@azure/storage-blob');
-  return BlobServiceClient.fromConnectionString(connectionString).getContainerClient(containerName);
+  if (connectionString) {
+    return BlobServiceClient.fromConnectionString(connectionString).getContainerClient(containerName);
+  }
+  const { DefaultAzureCredential } = await import('@azure/identity');
+  return new BlobServiceClient(accountUrl as string, new DefaultAzureCredential()).getContainerClient(containerName);
 }
 
 /**

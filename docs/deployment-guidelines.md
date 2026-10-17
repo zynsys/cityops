@@ -435,11 +435,13 @@ Runtime config mirrors [`.env.example`](../.env.example): non-secret values are 
 | `NEXTAUTH_URL`                                      | App setting per slot, slot-sticky                                 |
 | `NODE_ENV`                                          | `production`                                                      |
 | `STORAGE_PROVIDER`                                  | `azure` (uploads go to Blob Storage; `local` writes to disk)      |
-| `AZURE_STORAGE_CONNECTION_STRING`                   | Key Vault ref (`AZURE-STORAGE-CONNECTION-STRING`), shared         |
+| `AZURE_STORAGE_ACCOUNT_URL`                         | App setting (blob endpoint), shared; auth via managed identity    |
 | `AZURE_STORAGE_CONTAINER`                           | App setting per slot (`report-attachments` / `-dev`), slot-sticky |
 | `AZURE_OPENAI_ENDPOINT` / `AZURE_OPENAI_DEPLOYMENT` | App setting, shared by both slots                                 |
 
 Azure OpenAI has API key auth disabled (`disableLocalAuth`) — there is no `AZURE_OPENAI_API_KEY`. The app authenticates via Entra ID using each slot's managed identity (`DefaultAzureCredential` + `getBearerTokenProvider`, `src/lib/ai/validateReport.ts`), granted the **Cognitive Services OpenAI User** role directly on the OpenAI account.
+
+Blob Storage and Key Vault are **private** (public network access disabled, no shared keys, no anonymous blob access), which organisation Azure Policy may also enforce. The web app uses regional VNet integration (`infra/modules/network.bicep`, `vnetRouteAllEnabled`) and reaches both through private endpoints. Each slot's managed identity has **Storage Blob Data Contributor** on its own container only, and the app serves attachments to browsers at `/uploads/...` (`src/app/uploads/[...path]/route.ts`). PostgreSQL and Azure OpenAI remain reachable over their public endpoints.
 
 Config is validated at startup by `validateEnv()` (`src/instrumentation.ts`) — a missing required variable fails fast.
 
@@ -448,7 +450,7 @@ Config is validated at startup by `validateEnv()` (`src/instrumentation.ts`) —
 | Tier                             | Used by             | Stored in                                  | Examples                                                                     |
 | -------------------------------- | ------------------- | ------------------------------------------ | ---------------------------------------------------------------------------- |
 | **Provisioning-time**            | Infra pipeline only | `cityops-infra` variable group (secret)    | `pgAdminPassword`, `authSecret`, `authSecretDev`                             |
-| **Runtime**                      | The running app     | Azure Key Vault, read via managed identity | `DATABASE-URL(-DEV)`, `AUTH-SECRET(-DEV)`, `AZURE-STORAGE-CONNECTION-STRING` |
+| **Runtime**                      | The running app     | Azure Key Vault, read via managed identity | `DATABASE-URL(-DEV)`, `AUTH-SECRET(-DEV)`                                    |
 | **Pipeline config (non-secret)** | Both pipelines      | `cityops-env` variable group               | `resourceGroup`, `location`, `dbLocation`, `baseName`                        |
 
 No secret is ever a plaintext App Service setting or a pipeline YAML literal — always `@Microsoft.KeyVault(VaultName=...;SecretName=...)`, resolved via **Key Vault Secrets User** RBAC. Azure OpenAI has no key secret at all — access is Entra ID/RBAC only (**Cognitive Services OpenAI User**, assigned to both slots' managed identities in `resources.bicep`).
