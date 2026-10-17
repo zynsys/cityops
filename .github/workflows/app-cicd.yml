@@ -115,7 +115,7 @@ jobs:
     name: Verify Azure environment
     timeout-minutes: 10
     needs: [changes, ci_gate]
-    if: github.ref == 'refs/heads/main' && needs.changes.outputs.app == 'true' && (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && (inputs.operation == 'dev' || inputs.operation == 'production')))
+    if: ${{ !cancelled() && needs.ci_gate.result == 'success' && github.ref == 'refs/heads/main' && needs.changes.outputs.app == 'true' && (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && (inputs.operation == 'dev' || inputs.operation == 'production'))) }}
     runs-on: ubuntu-latest
     environment: azure-readonly
     permissions:
@@ -478,7 +478,9 @@ jobs:
     name: Deploy to Dev slot
     timeout-minutes: 20
     needs: [build_and_unit_test, ci_gate, verify_azure_env]
-    if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && (inputs.operation == 'dev' || inputs.operation == 'production')))
+    # ci_gate depends on jobs skipped on push (e2e/ui), so explicit result checks are needed;
+    # without !cancelled() the skipped status would propagate and silently skip deployment.
+    if: ${{ !cancelled() && needs.build_and_unit_test.result == 'success' && needs.ci_gate.result == 'success' && needs.verify_azure_env.result == 'success' && github.ref == 'refs/heads/main' && (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && (inputs.operation == 'dev' || inputs.operation == 'production'))) }}
     runs-on: ubuntu-latest
     environment: dev
     permissions:
@@ -551,7 +553,7 @@ jobs:
     name: OWASP ZAP baseline scan (dev slot)
     timeout-minutes: 15
     needs: deploy_dev
-    if: success()
+    if: ${{ !cancelled() && needs.deploy_dev.result == 'success' }}
     runs-on: ubuntu-latest
     env:
       AZURE_BASE_NAME: ${{ vars.AZURE_BASE_NAME || 'cityops' }}
@@ -591,7 +593,7 @@ jobs:
     name: Deploy to Production (swap)
     timeout-minutes: 20
     needs: [deploy_dev, ci_gate, zap_scan]
-    if: github.ref == 'refs/heads/main' && github.event_name == 'workflow_dispatch' && inputs.operation == 'production'
+    if: ${{ !cancelled() && needs.deploy_dev.result == 'success' && needs.ci_gate.result == 'success' && needs.zap_scan.result == 'success' && github.ref == 'refs/heads/main' && github.event_name == 'workflow_dispatch' && inputs.operation == 'production' }}
     runs-on: ubuntu-latest
     environment: prod
     concurrency:
@@ -762,7 +764,7 @@ jobs:
     name: Deploy workshop to Pages
     timeout-minutes: 10
     needs: [workshop_build, ci_gate]
-    if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && (inputs.operation == 'dev' || inputs.operation == 'production')))
+    if: ${{ !cancelled() && needs.workshop_build.result == 'success' && needs.ci_gate.result == 'success' && github.ref == 'refs/heads/main' && (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && (inputs.operation == 'dev' || inputs.operation == 'production'))) }}
     runs-on: ubuntu-latest
     environment:
       name: github-pages
