@@ -476,7 +476,7 @@ jobs:
   # ---------------------------------------------------------------------------
   deploy_dev:
     name: Deploy to Dev slot
-    timeout-minutes: 20
+    timeout-minutes: 30
     needs: [build_and_unit_test, ci_gate, verify_azure_env]
     # ci_gate depends on jobs skipped on push (e2e/ui), so explicit result checks are needed;
     # without !cancelled() the skipped status would propagate and silently skip deployment.
@@ -591,7 +591,7 @@ jobs:
   # ---------------------------------------------------------------------------
   deploy_prod:
     name: Deploy to Production (swap)
-    timeout-minutes: 20
+    timeout-minutes: 30
     needs: [deploy_dev, ci_gate, zap_scan]
     if: ${{ !cancelled() && needs.deploy_dev.result == 'success' && needs.ci_gate.result == 'success' && needs.zap_scan.result == 'success' && github.ref == 'refs/heads/main' && github.event_name == 'workflow_dispatch' && inputs.operation == 'production' }}
     runs-on: ubuntu-latest
