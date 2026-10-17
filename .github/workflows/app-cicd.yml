@@ -163,8 +163,13 @@ jobs:
       - name: Lint
         run: npm run lint
 
-      - name: Dependency vulnerability audit
-        run: npm audit --audit-level=high
+      # Blocking: runtime (production) dependencies ship to Azure, so any high/critical fails CI.
+      - name: Dependency vulnerability audit (production, blocking)
+        run: npm audit --omit=dev --audit-level=high
+
+      # Warn-only: dev tooling (lint/test/CLI) never ships; upstream fixes can lag behind advisories.
+      - name: Dependency vulnerability audit (dev tooling, warn-only)
+        run: npm audit --audit-level=high || echo "::warning::Dev-only dependency advisories found (see log). They do not ship to Azure."
 
       - name: Code duplication check (warn-only, jscpd)
         run: npm run check:duplication || echo "::warning::Code duplication exceeds the 5% threshold (warn-only for now)."

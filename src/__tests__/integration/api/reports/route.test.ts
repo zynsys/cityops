@@ -1,3 +1,5 @@
+import type { Session } from "next-auth";
+import type { Mock } from "vitest";
 import { NextRequest } from "next/server";
 import { auth } from "@auth";
 import { createReport } from "@/db/mutations/reports";
@@ -30,6 +32,9 @@ vi.mock("@/lib/ai/validateReport", () => ({
 vi.mock("@/lib/email", () => ({
   sendReportSubmissionEmail: vi.fn(),
 }));
+
+// auth() is overloaded (session getter + middleware wrapper); type the mock as the session getter.
+const mockedAuth = auth as unknown as Mock<() => Promise<Session | null>>;
 
 const validPayload = {
   tenantId: "11111111-1111-4111-8111-111111111111",
@@ -69,13 +74,13 @@ describe("GET /api/reports", () => {
 
 describe("POST /api/reports", () => {
   beforeEach(() => {
-    vi.mocked(auth).mockReset();
+    mockedAuth.mockReset();
     vi.mocked(createReport).mockReset();
     vi.mocked(validateReportWithAI).mockReset();
   });
 
   it("returns 401 when there is no session", async () => {
-    vi.mocked(auth).mockResolvedValue(null);
+    mockedAuth.mockResolvedValue(null);
 
     const response = await POST(buildRequest(JSON.stringify(validPayload)));
 
@@ -86,7 +91,7 @@ describe("POST /api/reports", () => {
   });
 
   it("returns 400 when the data field is missing", async () => {
-    vi.mocked(auth).mockResolvedValue({
+    mockedAuth.mockResolvedValue({
       user: { userId: "user-1", role: "citizen", tenantId: "tenant-1" },
       expires: "2099-12-31T23:59:59.000Z",
     });
@@ -100,7 +105,7 @@ describe("POST /api/reports", () => {
   });
 
   it("returns 400 when the data field contains invalid JSON", async () => {
-    vi.mocked(auth).mockResolvedValue({
+    mockedAuth.mockResolvedValue({
       user: { userId: "user-1", role: "citizen", tenantId: "tenant-1" },
       expires: "2099-12-31T23:59:59.000Z",
     });
@@ -114,7 +119,7 @@ describe("POST /api/reports", () => {
   });
 
   it("returns 400 with validation_error for invalid payloads", async () => {
-    vi.mocked(auth).mockResolvedValue({
+    mockedAuth.mockResolvedValue({
       user: { userId: "user-1", role: "citizen", tenantId: "tenant-1" },
       expires: "2099-12-31T23:59:59.000Z",
     });
@@ -140,7 +145,7 @@ describe("POST /api/reports", () => {
   });
 
   it("returns 201 for a valid authenticated submission", async () => {
-    vi.mocked(auth).mockResolvedValue({
+    mockedAuth.mockResolvedValue({
       user: { userId: "user-1", role: "citizen", tenantId: "tenant-1" },
       expires: "2099-12-31T23:59:59.000Z",
     });
