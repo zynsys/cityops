@@ -12,6 +12,10 @@ const pages = [
 for (const { path, name } of pages) {
   test(`${name} page matches visual baseline`, async ({ page }) => {
     await page.goto(path);
-    await expect(page).toHaveScreenshot(`${name}.png`, { fullPage: true });
+    await expect(page).toHaveScreenshot(`${name}.png`, {
+      fullPage: true,
+      // Absorbs anti-aliasing and third-party map-tile rendering noise.
+      maxDiffPixelRatio: 0.02,
+    });
   });
 }
