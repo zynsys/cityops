@@ -1,34 +1,28 @@
 # CityOps — Infrastructure pipeline (Bicep). GitHub Actions equivalent of .ado/infra-cicd.yml.
 # IaC has no compiled artifact, so the "build/CI" is lint + what-if (a safe preview), governance
 # is a dedicated compliance stage, and the "release/CD" is the apply. Job order:
-#   validate  →  {policy_compliance, cost_estimate}  →  deploy (environment approval)  →  smoke_test
+#   validate  →  preview  →  {policy_compliance, cost_estimate}  →  deploy (approval)  →  smoke_test
 #
-# NO HARDCODING: environment-specific values come from repo variables/secrets below. Resource
-# NAMES (web app, key vault, slot) are never hardcoded — they're derived deterministically inside
-# main.bicep and resolved dynamically by naming convention at deploy time in app-cicd.yml.
+# NO HARDCODING: environment-specific values come from GitHub variables/secrets. Resource NAMES
+# (web app, key vault, slot) are derived deterministically inside main.bicep.
 #
-# PREREQUISITES (one-time — see docs/deployment-guidelines.md):
-#   1. An Entra ID app registration with a federated credential trusting this repo (OIDC — no
-#      client secret). Its service principal needs Contributor + User Access Administrator (or
-#      Owner) at the target scope — User Access Administrator is required because the template
-#      creates Key Vault role assignments. Store as repo secrets:
-#        AZURE_CLIENT_ID, AZURE_TENANT_ID, AZURE_SUBSCRIPTION_ID
-#   2. Repo variables (Settings → Secrets and variables → Actions → Variables):
-#        AZURE_RESOURCE_GROUP, AZURE_LOCATION, AZURE_DB_LOCATION, AZURE_BASE_NAME (default
-#        'cityops'), AZURE_OPENAI_ACCOUNT_NAME, ALERT_EMAIL_ADDRESS (email that receives Azure
-#        Monitor alerts when the deployed app raises exceptions/failed requests; leave unset/blank
-#        to fall back to the triggering commit's author email)
-#   3. Repo/environment secrets (Settings → Secrets and variables → Actions → Secrets):
-#        PG_ADMIN_PASSWORD  (fixed — changing it rotates the DB admin password)
-#        AUTH_SECRET        (fixed, >= 32 chars — changing it invalidates prod sessions)
-#        AUTH_SECRET_DEV    (fixed, >= 32 chars — changing it invalidates dev sessions)
-#   4. GitHub Environment 'prod' with required reviewers — the deploy job targets it because a
-#      single Bicep apply provisions/updates shared, production-impacting resources (Key Vault,
-#      PostgreSQL, App Service plan) that both the dev slot and production sit on.
+# IDENTITIES (Entra workload identity federation/OIDC — no client secrets). Each GitHub
+# environment holds its own AZURE_CLIENT_ID variable, so a job can only obtain the identity of
+# the environment it targets:
+#   azure-readonly  Reader + what-if/policy-scan custom role   preview, policy_compliance, smoke_test
+#   infra           Contributor, Resource Policy Contributor,   deploy (required reviewers)
+#                   role-constrained RBAC Administrator
+# Repository variables: AZURE_TENANT_ID, AZURE_SUBSCRIPTION_ID, AZURE_RESOURCE_GROUP,
+#   AZURE_LOCATION, AZURE_DB_LOCATION, AZURE_BASE_NAME, AZURE_OPENAI_ACCOUNT_NAME,
+#   ALERT_EMAIL_ADDRESS, AZURE_RELEASE_DEV_PRINCIPAL_ID, AZURE_RELEASE_PROD_PRINCIPAL_ID,
+#   ALLOW_SELF_APPROVAL (demo exception; leave unset for real deployments)
+# 'infra' environment secrets (stable; changing them rotates credentials or invalidates sessions):
+#   PG_ADMIN_PASSWORD, AUTH_SECRET, AUTH_SECRET_DEV
+# scripts/setup-github.sh creates all of the above; see docs/deployment/github-actions-setup.md.
 #
 # Run this workflow FIRST (before app-cicd.yml ever needs to deploy anything) — it provisions the
 # resource group, App Service (+ dev slot), PostgreSQL, Key Vault, and Azure OpenAI, and wires up
-# the RBAC between them, so the app workflow always finds a ready-to-deploy-to environment.
+# the RBAC between them and the app release identities.
 name: CityOps Infra CI/CD
 
 on:
@@ -36,15 +30,40 @@ on:
     branches: [main]
     paths:
       - "infra/**"
+      - "scripts/infra/**"
+      - "scripts/github/**"
+      - "scripts/lib/**"
+      - ".github/actions/**"
       - ".github/workflows/infra-cicd.yml"
   pull_request:
     branches: [main]
     paths:
       - "infra/**"
+      - "scripts/infra/**"
+      - "scripts/github/**"
+      - "scripts/lib/**"
+      - ".github/actions/**"
       - ".github/workflows/infra-cicd.yml"
   schedule:
     - cron: "0 3 * * *" # nightly 03:00 UTC — drift detection (what-if only; deploy stays manual-gated)
-  workflow_dispatch: {} # manual run — required to apply
+  workflow_dispatch:
+    inputs:
+      operation:
+        description: "Preview only, or apply after independent approval"
+        type: choice
+        options: [validate, apply]
+        default: validate
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    shell: bash
+
+concurrency:
+  group: ${{ github.ref == 'refs/heads/main' && github.event_name == 'workflow_dispatch' && inputs.operation == 'apply' && 'cityops-azure-release' || format('cityops-infra-{0}-{1}', github.ref, github.event_name) }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 env:
   AZURE_BASE_NAME: ${{ vars.AZURE_BASE_NAME || 'cityops' }}
@@ -55,11 +74,9 @@ jobs:
   # Read-only. Runs on PRs and main so infra changes are reviewed before apply.
   # -------------------------------------------------------------------------
   validate:
-    name: Validate (lint + what-if)
+    name: Bicep build and unit tests (no Azure credentials)
+    timeout-minutes: 20
     runs-on: ubuntu-latest
-    permissions:
-      id-token: write
-      contents: read
     steps:
       - uses: actions/checkout@v4
       - name: Bicep unit tests (Pester)
@@ -81,12 +98,32 @@ jobs:
         with:
           name: bicep-unit-tests
           path: bicep-unit-tests.xml
-      - name: Azure login (OIDC)
+
+  preview:
+    name: Azure what-if preview
+    timeout-minutes: 20
+    needs: validate
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    environment: azure-readonly
+    permissions:
+      contents: read
+      actions: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify independent approval configuration before apply
+        if: inputs.operation == 'apply'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ALLOW_SELF_APPROVAL: ${{ vars.ALLOW_SELF_APPROVAL }}
+        run: bash scripts/github/check-environment.sh infra
+      - name: Azure login (OIDC, read-only identity)
         uses: azure/login@v2
         with:
-          client-id: ${{ secrets.AZURE_CLIENT_ID }}
-          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
-          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
 
       - name: Bicep lint + what-if preview
         env:
@@ -96,6 +133,11 @@ jobs:
           AZURE_BASE_NAME: ${{ env.AZURE_BASE_NAME }}
           AZURE_OPENAI_ACCOUNT_NAME: ${{ vars.AZURE_OPENAI_ACCOUNT_NAME }}
           ALERT_EMAIL_ADDRESS: ${{ vars.ALERT_EMAIL_ADDRESS }}
+          AZURE_RELEASE_DEV_PRINCIPAL_ID: ${{ vars.AZURE_RELEASE_DEV_PRINCIPAL_ID }}
+          AZURE_RELEASE_PROD_PRINCIPAL_ID: ${{ vars.AZURE_RELEASE_PROD_PRINCIPAL_ID }}
+          # Read-only identity: validate resource payloads with read (not write) permission checks.
+          AZURE_WHATIF_VALIDATION_LEVEL: ProviderNoRbac
+          # what-if never reads or compares secure values, so placeholders keep real secrets out of this job.
           PG_ADMIN_PASSWORD: ValidationOnly-Pg-Password-2026!
           AUTH_SECRET: validation-only-auth-secret-production
           AUTH_SECRET_DEV: validation-only-auth-secret-development
@@ -119,18 +161,20 @@ jobs:
   # -------------------------------------------------------------------------
   policy_compliance:
     name: Policy compliance (drift check)
-    needs: validate
+    timeout-minutes: 30
+    needs: preview
     runs-on: ubuntu-latest
+    environment: azure-readonly
     permissions:
       id-token: write
       contents: read
     steps:
-      - name: Azure login (OIDC)
+      - name: Azure login (OIDC, read-only identity)
         uses: azure/login@v2
         with:
-          client-id: ${{ secrets.AZURE_CLIENT_ID }}
-          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
-          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
 
       - uses: actions/checkout@v4
       - name: Azure Policy compliance check
@@ -152,7 +196,8 @@ jobs:
   # -------------------------------------------------------------------------
   cost_estimate:
     name: Cost estimate
-    needs: validate
+    timeout-minutes: 10
+    needs: preview
     runs-on: ubuntu-latest
     env:
       APP_SERVICE_SKU: S1 # must match appServiceSkuName default in main.bicep
@@ -212,23 +257,24 @@ jobs:
           PYEOF
 
   # -------------------------------------------------------------------------
-  # DEPLOY = the "release/CD": apply the template. Runs on push to main and on
-  # manual runs (workflow_dispatch) — but NOT on PRs. This infra apply is a
+  # DEPLOY = the "release/CD": manual apply on main only, after approval.
+  # This infra apply is a
   # single, atomic operation against SHARED resources (one Key Vault, one Postgres
   # server, one App Service plan) serving both dev and prod at once, so there is
   # no separate "dev infra" to validate in isolation first. The validate job's
-  # `what-if` output (runs on every push/PR) is the pre-apply review; the 'prod'
-  # environment's required reviewers are the deliberate human gate before apply.
+  # `what-if` output (main pushes and manual runs) is the pre-apply review; the
+  # 'infra' environment's required reviewers are the deliberate human gate before apply.
   # policy_compliance is an additional automated gate: if the resource group has
   # drifted out of policy compliance since the last apply, deploy never runs.
-  # To apply: push/merge to main (auto) or Actions → CityOps Infra CI/CD → Run workflow.
+  # To apply: Actions -> CityOps Infra CI/CD -> Run workflow -> operation: apply.
   # -------------------------------------------------------------------------
   deploy:
     name: Deploy (apply)
+    timeout-minutes: 60
     needs: [policy_compliance, cost_estimate]
-    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+    if: github.ref == 'refs/heads/main' && github.event_name == 'workflow_dispatch' && inputs.operation == 'apply'
     runs-on: ubuntu-latest
-    environment: prod
+    environment: infra
     concurrency:
       group: cityops-infra-deploy
       cancel-in-progress: false
@@ -237,30 +283,32 @@ jobs:
       contents: read
     steps:
       - uses: actions/checkout@v4
-      - name: Verify deployment secrets are configured
+      - name: Verify deployment secrets and identities are configured
         shell: bash
         env:
           PG_ADMIN_PASSWORD: ${{ secrets.PG_ADMIN_PASSWORD }}
           AUTH_SECRET: ${{ secrets.AUTH_SECRET }}
           AUTH_SECRET_DEV: ${{ secrets.AUTH_SECRET_DEV }}
+          AZURE_RELEASE_DEV_PRINCIPAL_ID: ${{ vars.AZURE_RELEASE_DEV_PRINCIPAL_ID }}
+          AZURE_RELEASE_PROD_PRINCIPAL_ID: ${{ vars.AZURE_RELEASE_PROD_PRINCIPAL_ID }}
         run: |
           set -e
           missing=()
-          for name in PG_ADMIN_PASSWORD AUTH_SECRET AUTH_SECRET_DEV; do
+          for name in PG_ADMIN_PASSWORD AUTH_SECRET AUTH_SECRET_DEV AZURE_RELEASE_DEV_PRINCIPAL_ID AZURE_RELEASE_PROD_PRINCIPAL_ID; do
             if [[ -z "${!name}" ]]; then
               missing+=("$name")
             fi
           done
           if (( ${#missing[@]} > 0 )); then
-            echo "::error::Missing required repository secret(s): ${missing[*]}. Configure them under Settings > Secrets and variables > Actions before deploying."
+            echo "::error::Missing required configuration: ${missing[*]}. Run scripts/setup-github.sh (see docs/deployment/github-actions-setup.md)."
             exit 1
           fi
-      - name: Azure login (OIDC)
+      - name: Azure login (OIDC, infrastructure identity)
         uses: azure/login@v2
         with:
-          client-id: ${{ secrets.AZURE_CLIENT_ID }}
-          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
-          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
 
       - name: az deployment sub create
         env:
@@ -270,6 +318,8 @@ jobs:
           AZURE_BASE_NAME: ${{ env.AZURE_BASE_NAME }}
           AZURE_OPENAI_ACCOUNT_NAME: ${{ vars.AZURE_OPENAI_ACCOUNT_NAME }}
           ALERT_EMAIL_ADDRESS: ${{ vars.ALERT_EMAIL_ADDRESS }}
+          AZURE_RELEASE_DEV_PRINCIPAL_ID: ${{ vars.AZURE_RELEASE_DEV_PRINCIPAL_ID }}
+          AZURE_RELEASE_PROD_PRINCIPAL_ID: ${{ vars.AZURE_RELEASE_PROD_PRINCIPAL_ID }}
           PG_ADMIN_PASSWORD: ${{ secrets.PG_ADMIN_PASSWORD }}
           AUTH_SECRET: ${{ secrets.AUTH_SECRET }}
           AUTH_SECRET_DEV: ${{ secrets.AUTH_SECRET_DEV }}
@@ -300,19 +350,21 @@ jobs:
   # -------------------------------------------------------------------------
   smoke_test:
     name: Post-deploy smoke test
+    timeout-minutes: 20
     needs: deploy
     runs-on: ubuntu-latest
+    environment: azure-readonly
     permissions:
       id-token: write
       contents: read
     steps:
       - uses: actions/checkout@v4
-      - name: Azure login (OIDC)
+      - name: Azure login (OIDC, read-only identity)
         uses: azure/login@v2
         with:
-          client-id: ${{ secrets.AZURE_CLIENT_ID }}
-          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
-          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
 
       - name: Download deployment outputs
         uses: actions/download-artifact@v4

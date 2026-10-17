@@ -24,7 +24,9 @@ export default defineConfig({
     { name: 'visual', use: { ...devices['Desktop Chrome'] }, testMatch: /visual\.spec\.ts/ },
   ],
   webServer: {
-    command: process.env.CI ? 'npm run start' : 'npm run dev',
+    command: process.env.PLAYWRIGHT_STANDALONE === 'true'
+      ? 'node drop/server.js'
+      : process.env.CI ? 'npm run start' : 'npm run dev',
     url: 'http://localhost:3000',
     reuseExistingServer: !process.env.CI,
     timeout: 180_000,

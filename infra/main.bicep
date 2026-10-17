@@ -86,6 +86,12 @@ param requiredTagName string = 'project'
 @description('Email address to notify on app exceptions/failed (5xx) requests. Leave empty to skip creating alert resources.')
 param alertEmailAddress string = ''
 
+@description('Object ID of the CI/CD service principal that releases to the dev slot. Leave empty to skip its role assignments.')
+param devReleasePrincipalId string = ''
+
+@description('Object ID of the CI/CD service principal that promotes to production. Leave empty to skip its role assignments.')
+param prodReleasePrincipalId string = ''
+
 // Custom policy definitions live at subscription scope (can't be created on a resource group),
 // then get assigned to the resource group inside resources.bicep.
 module policyDefinitions 'modules/policy-definitions.bicep' = {
@@ -132,6 +138,8 @@ module resources 'modules/resources.bicep' = {
     requireTagsPolicyId: policyDefinitions.outputs.requireTagsPolicyId
     requireTagsEffect: requireTagsEffect
     alertEmailAddress: alertEmailAddress
+    devReleasePrincipalId: devReleasePrincipalId
+    prodReleasePrincipalId: prodReleasePrincipalId
   }
 }
 

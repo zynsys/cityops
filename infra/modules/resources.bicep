@@ -77,6 +77,12 @@ param requireTagsEffect string = 'Audit'
 @description('Email address to notify on app exceptions/failed (5xx) requests. Leave empty to skip creating alert resources (e.g. ad-hoc/local test deployments).')
 param alertEmailAddress string = ''
 
+@description('Object ID of the CI/CD service principal that releases to the dev slot. Leave empty to skip its role assignments (local deployments).')
+param devReleasePrincipalId string = ''
+
+@description('Object ID of the CI/CD service principal that promotes to production. Leave empty to skip its role assignments (local deployments).')
+param prodReleasePrincipalId string = ''
+
 // Deterministic names (no uniqueString suffix) — app/kv/pg/storage names must be globally unique
 // across all of Azure, so baseName must be distinctive enough to avoid collisions. The default
 // 'cityops' is NOT globally available (app-cityops and stcityops are taken by other tenants), so
@@ -448,6 +454,85 @@ resource openAiRoleAssignmentDevSlot 'Microsoft.Authorization/roleAssignments@20
   dependsOn: [
     openAi
   ]
+}
+
+// ---------------------------------------------------------------------------
+// CI/CD release identities — least privilege, managed as code so a redeploy restores them.
+// Dev release: deploy to the dev slot and read only the dev database secret.
+// Production release: swap slots on the site and read only the production database secret.
+// Both get Reader on the resource group to verify the environment before deploying.
+// ---------------------------------------------------------------------------
+var readerRoleId = 'acdd72a7-3385-48ef-bd42-f606fba81ae7' // Reader
+var websiteContributorRoleId = 'de139f84-1756-47ae-9be6-808fbbbdf0ee' // Website Contributor
+
+resource webAppRef 'Microsoft.Web/sites@2023-12-01' existing = {
+  name: appName
+  dependsOn: [
+    appService
+  ]
+}
+
+resource devSlotRef 'Microsoft.Web/sites/slots@2023-12-01' existing = {
+  parent: webAppRef
+  name: devSlotName
+}
+
+resource devReleaseReader 'Microsoft.Authorization/roleAssignments@2022-04-01' = if (!empty(devReleasePrincipalId)) {
+  name: guid(resourceGroup().id, devReleasePrincipalId, readerRoleId)
+  properties: {
+    principalId: devReleasePrincipalId
+    roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', readerRoleId)
+    principalType: 'ServicePrincipal'
+  }
+}
+
+resource devReleaseSlotContributor 'Microsoft.Authorization/roleAssignments@2022-04-01' = if (!empty(devReleasePrincipalId)) {
+  name: guid(devSlotRef.id, devReleasePrincipalId, websiteContributorRoleId)
+  scope: devSlotRef
+  properties: {
+    principalId: devReleasePrincipalId
+    roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', websiteContributorRoleId)
+    principalType: 'ServicePrincipal'
+  }
+}
+
+resource devReleaseDatabaseSecret 'Microsoft.Authorization/roleAssignments@2022-04-01' = if (!empty(devReleasePrincipalId)) {
+  name: guid(secretDatabaseUrlDev.id, devReleasePrincipalId, kvSecretsUserRoleId)
+  scope: secretDatabaseUrlDev
+  properties: {
+    principalId: devReleasePrincipalId
+    roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', kvSecretsUserRoleId)
+    principalType: 'ServicePrincipal'
+  }
+}
+
+resource prodReleaseReader 'Microsoft.Authorization/roleAssignments@2022-04-01' = if (!empty(prodReleasePrincipalId)) {
+  name: guid(resourceGroup().id, prodReleasePrincipalId, readerRoleId)
+  properties: {
+    principalId: prodReleasePrincipalId
+    roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', readerRoleId)
+    principalType: 'ServicePrincipal'
+  }
+}
+
+resource prodReleaseSiteContributor 'Microsoft.Authorization/roleAssignments@2022-04-01' = if (!empty(prodReleasePrincipalId)) {
+  name: guid(webAppRef.id, prodReleasePrincipalId, websiteContributorRoleId)
+  scope: webAppRef
+  properties: {
+    principalId: prodReleasePrincipalId
+    roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', websiteContributorRoleId)
+    principalType: 'ServicePrincipal'
+  }
+}
+
+resource prodReleaseDatabaseSecret 'Microsoft.Authorization/roleAssignments@2022-04-01' = if (!empty(prodReleasePrincipalId)) {
+  name: guid(secretDatabaseUrl.id, prodReleasePrincipalId, kvSecretsUserRoleId)
+  scope: secretDatabaseUrl
+  properties: {
+    principalId: prodReleasePrincipalId
+    roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', kvSecretsUserRoleId)
+    principalType: 'ServicePrincipal'
+  }
 }
 
 // ---------------------------------------------------------------------------

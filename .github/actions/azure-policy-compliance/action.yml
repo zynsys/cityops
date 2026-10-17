@@ -23,6 +23,11 @@ runs:
         TRIGGER='${{ inputs.trigger-scan }}'
         FAIL='${{ inputs.fail-on-noncompliant }}'
 
+        if [ "$(az group exists --name "$RG")" != "true" ]; then
+          echo "::notice::Resource group '$RG' does not exist yet (first deployment); nothing to evaluate."
+          exit 0
+        fi
+
         if [ "$TRIGGER" = "true" ]; then
           echo "Triggering on-demand policy evaluation for '$RG' (can take several minutes)…"
           az policy state trigger-scan -g "$RG"

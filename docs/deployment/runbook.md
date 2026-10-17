@@ -11,6 +11,12 @@
 7. Deploy the app to the dev slot and verify `/api/health`.
 8. Promote to production only through an explicit manual action and approval.
 
+For GitHub, follow the [two-workflow demo sequence](github-actions.md#customer-demo-sequence):
+infrastructure `apply` and application `production` are explicit manual operations on main.
+Both fail closed until `prod` requires independent reviewers, prevents self-review, disables
+administrator bypass and allows only the main branch. Dev deployment is automatic after CI.
+Never approve production until ZAP, E2E/UI, health checks and migration compatibility have been reviewed.
+
 ## Update infrastructure
 
 Change Bicep, update its tests, and run validation/what-if. Use the currently active deployment provider to apply. Do not switch providers during an in-progress run.

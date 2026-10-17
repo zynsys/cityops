@@ -14,6 +14,10 @@ AZURE_DB_LOCATION="${AZURE_DB_LOCATION:-francecentral}"
 AZURE_BASE_NAME="${AZURE_BASE_NAME:-cityops}"
 AZURE_OPENAI_ACCOUNT_NAME="${AZURE_OPENAI_ACCOUNT_NAME:-azopenai-$AZURE_BASE_NAME}"
 ALERT_EMAIL_ADDRESS="${ALERT_EMAIL_ADDRESS:-}"
+AZURE_RELEASE_DEV_PRINCIPAL_ID="${AZURE_RELEASE_DEV_PRINCIPAL_ID:-}"
+AZURE_RELEASE_PROD_PRINCIPAL_ID="${AZURE_RELEASE_PROD_PRINCIPAL_ID:-}"
+# ProviderNoRbac lets a read-only identity preview changes (Azure CLI 2.76+); apply always uses full RBAC checks.
+AZURE_WHATIF_VALIDATION_LEVEL="${AZURE_WHATIF_VALIDATION_LEVEL:-Provider}"
 
 require_command az
 az account show >/dev/null 2>&1 || die "Not logged in to Azure. Run 'az login' first."
@@ -43,6 +47,8 @@ PARAMETERS=(
   baseName="$AZURE_BASE_NAME"
   openAiAccountName="$AZURE_OPENAI_ACCOUNT_NAME"
   alertEmailAddress="$ALERT_EMAIL_ADDRESS"
+  devReleasePrincipalId="$AZURE_RELEASE_DEV_PRINCIPAL_ID"
+  prodReleasePrincipalId="$AZURE_RELEASE_PROD_PRINCIPAL_ID"
   pgAdminPassword="$PG_ADMIN_PASSWORD"
   authSecret="$AUTH_SECRET"
   authSecretDev="$AUTH_SECRET_DEV"
@@ -54,6 +60,7 @@ if [[ "$OPERATION" == "what-if" ]]; then
     --location "$AZURE_LOCATION" \
     --name "$DEPLOYMENT_NAME" \
     --template-file "$REPO_ROOT/infra/main.bicep" \
+    --validation-level "$AZURE_WHATIF_VALIDATION_LEVEL" \
     --parameters "${PARAMETERS[@]}"
   exit 0
 fi

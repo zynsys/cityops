@@ -51,6 +51,35 @@ Describe 'infra/modules/resources.bicep' {
     It 'falls back actionGroupName to an empty string when the alerts module is skipped' {
         $resourcesTemplate.outputs.actionGroupName.value | Should -Match '^\[coalesce\('
     }
+
+    It 'makes release identity <_> optional so local deployments skip its role assignments' -ForEach 'devReleasePrincipalId', 'prodReleasePrincipalId' {
+        $mainTemplate.parameters.$_.defaultValue | Should -Be ''
+        $resourcesTemplate.parameters.$_.defaultValue | Should -Be ''
+    }
+
+    It 'grants <Name> only <Role> at its narrow scope' -ForEach @(
+        @{ Name = 'devReleaseReader'; Role = 'readerRoleId'; Id = 'acdd72a7-3385-48ef-bd42-f606fba81ae7'; Scope = $null }
+        @{ Name = 'devReleaseSlotContributor'; Role = 'websiteContributorRoleId'; Id = 'de139f84-1756-47ae-9be6-808fbbbdf0ee'; Scope = 'slots' }
+        @{ Name = 'devReleaseDatabaseSecret'; Role = 'kvSecretsUserRoleId'; Id = '4633458b-17de-408a-b874-0445c86b69e6'; Scope = 'DATABASE-URL-DEV' }
+        @{ Name = 'prodReleaseReader'; Role = 'readerRoleId'; Id = 'acdd72a7-3385-48ef-bd42-f606fba81ae7'; Scope = $null }
+        @{ Name = 'prodReleaseSiteContributor'; Role = 'websiteContributorRoleId'; Id = 'de139f84-1756-47ae-9be6-808fbbbdf0ee'; Scope = 'Microsoft.Web/sites' }
+        @{ Name = 'prodReleaseDatabaseSecret'; Role = 'kvSecretsUserRoleId'; Id = '4633458b-17de-408a-b874-0445c86b69e6'; Scope = "'DATABASE-URL')" }
+    ) {
+        $assignment = $resourcesTemplate.resources.$Name
+        $assignment.condition | Should -Match 'empty\(parameters\(''(dev|prod)ReleasePrincipalId''\)\)'
+        $assignment.properties.roleDefinitionId | Should -Match ([regex]::Escape("variables('$Role')"))
+        $resourcesTemplate.variables.$Role | Should -Be $Id
+        if ($Scope) {
+            $assignment.scope | Should -Match ([regex]::Escape($Scope))
+        } else {
+            $assignment.PSObject.Properties.Name | Should -Not -Contain 'scope'
+        }
+    }
+
+    It 'never grants the dev release identity the production database secret or site' {
+        $resourcesTemplate.resources.devReleaseDatabaseSecret.scope | Should -Not -Match "'DATABASE-URL'\)"
+        $resourcesTemplate.resources.devReleaseSlotContributor.scope | Should -Match 'slots'
+    }
 }
 
 Describe 'infra/modules/alerts.bicep' {

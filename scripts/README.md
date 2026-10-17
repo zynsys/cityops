@@ -16,6 +16,8 @@ These scripts provide provider-neutral deployment behavior used by local setup, 
 | `app/resolve-azure-names.sh`    | Resolve deterministic App Service and Key Vault names                                           |
 | `app/verify-azure-resources.sh` | Fail fast when app deployment resources are missing                                             |
 | `app/smoke-test.sh`             | Retry an application health endpoint                                                            |
+| `github/check-environment.sh` | Fail closed unless production requires independent approval and main-only deployments |
+| `github/check-environment.test.sh` | Mocked regression tests for GitHub approval protection checks (Bash + jq) |
 | `npm-ci.sh`                     | Install dependencies with bounded retries                                                       |
 
 See [`docs/deployment/README.md`](../docs/deployment/README.md) before deploying.

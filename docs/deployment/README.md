@@ -24,7 +24,7 @@ flowchart TD
 | Method                              | Use it when                                                                                 | Authentication                            | Configuration                    |
 | ----------------------------------- | ------------------------------------------------------------------------------------------- | ----------------------------------------- | -------------------------------- |
 | [Local scripts](local.md)           | Evaluating the architecture, bootstrapping, troubleshooting, or demonstrating without CI/CD | Interactive `az login`                    | Prompts or environment variables |
-| [GitHub Actions](github-actions.md) | Demonstrating GitHub-native CI/CD                                                           | Entra workload identity federation (OIDC) | GitHub variables and secrets     |
+| [GitHub Actions](github-actions.md) ([step-by-step setup](github-actions-setup.md)) | Demonstrating GitHub-native CI/CD                                                           | Entra workload identity federation (OIDC) | GitHub variables and secrets     |
 | [Azure DevOps](azure-devops.md)     | Demonstrating Azure DevOps CI/CD                                                            | ARM service connection                    | ADO variable groups              |
 
 Only one CI provider should have deployment triggers enabled for a shared reference deployment. Validation may run in both, but do not apply through GitHub Actions and ADO simultaneously because their concurrency locks do not coordinate across platforms.

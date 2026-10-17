@@ -1,5 +1,5 @@
 ﻿# CodeQL configuration for CityOps advanced setup.
-# Referenced by .github/workflows/codeql.yml (config-file input).
+# Referenced by .github/workflows/app-cicd.yml (config-file input).
 #
 # Why a config file instead of inlining everything in the workflow?
 #   - Query suites and path filters live in one place for every language in the matrix.
