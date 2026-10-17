@@ -565,6 +565,14 @@ jobs:
         with:
           base-name: ${{ env.AZURE_BASE_NAME }}
 
+      # Warm the slot first: the first render after a deploy can exceed ZAP's spider read timeout.
+      - name: Warm up dev slot
+        run: |
+          base="https://${{ steps.names.outputs.web-app-name }}-dev.azurewebsites.net"
+          for path in / /map /reports /sign-in; do
+            curl --silent --output /dev/null --max-time 120 --write-out "$path -> %{http_code} in %{time_total}s\n" "$base$path" || true
+          done
+
       - name: OWASP ZAP baseline scan
         run: |
           mkdir -p zap
@@ -572,7 +580,8 @@ jobs:
           docker run --rm -v "$(pwd)/zap:/zap/wrk:rw" \
             ghcr.io/zaproxy/zaproxy:stable zap-baseline.py \
             -t "https://${{ steps.names.outputs.web-app-name }}-dev.azurewebsites.net" \
-            -m 5 -r zap-baseline-report.html -J zap-baseline-report.json -I
+            -m 5 -r zap-baseline-report.html -J zap-baseline-report.json -I \
+            -z "-config connection.timeoutInSecs=120"
 
       - name: Upload ZAP baseline report
         if: always()
