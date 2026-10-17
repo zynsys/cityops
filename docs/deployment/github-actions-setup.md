@@ -286,7 +286,11 @@ gh workflow run infra-cicd.yml --ref main -f operation=apply
 gh run watch (gh run list --workflow infra-cicd.yml --limit 1 --json databaseId --jq '.[0].databaseId')
 ```
 
-1. Preview, policy and cost checks run first. Read the `what-if` summary in the run.
+1. Preview, policy and cost checks run first. Read the `what-if` summary in the run. The policy
+   gate reads Azure's latest stored compliance state, which takes seconds. Azure re-evaluates
+   whenever a resource changes and every 24 hours. Only the nightly scheduled run forces a fresh
+   scan, which takes 10–15 minutes. To force a fresh scan before a demo, run
+   `az policy state trigger-scan -g <resource-group>` first.
 2. The `deploy` job waits for approval of the `infra` environment. Review, then approve.
 3. The deployment takes about 15–25 minutes (PostgreSQL is the slowest resource).
 4. The smoke test confirms the resources exist.

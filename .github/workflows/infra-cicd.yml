@@ -182,7 +182,10 @@ jobs:
         with:
           resource-group: ${{ vars.AZURE_RESOURCE_GROUP }}
           fail-on-noncompliant: "true"
-          trigger-scan: "true" # infra runs are infrequent/manual — the extra minutes for a fresh evaluation are cheap here
+          # A forced re-evaluation takes 10-15 min. Azure re-evaluates on every resource
+          # change and every 24h anyway, so only the nightly drift run forces a fresh scan;
+          # PR, push and apply runs gate on the latest stored compliance state (seconds).
+          trigger-scan: ${{ github.event_name == 'schedule' && 'true' || 'false' }}
 
   # -------------------------------------------------------------------------
   # COST ESTIMATE = informational, non-blocking. Queries the public Azure Retail
