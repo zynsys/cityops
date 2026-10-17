@@ -59,9 +59,9 @@ Describe 'infra/modules/resources.bicep' {
 
     It 'grants <Name> only <Role> at its narrow scope' -ForEach @(
         @{ Name = 'devReleaseReader'; Role = 'readerRoleId'; Id = 'acdd72a7-3385-48ef-bd42-f606fba81ae7'; Scope = $null }
-        @{ Name = 'devReleaseSlotContributor'; Role = 'websiteContributorRoleId'; Id = 'de139f84-1756-47ae-9be6-808fbbbdf0ee'; Scope = 'slots' }
+        @{ Name = 'devReleaseSlotContributor'; Role = 'websiteContributorRoleId'; Id = 'de139f84-1756-47ae-9be6-808fbbe84772'; Scope = 'slots' }
         @{ Name = 'prodReleaseReader'; Role = 'readerRoleId'; Id = 'acdd72a7-3385-48ef-bd42-f606fba81ae7'; Scope = $null }
-        @{ Name = 'prodReleaseSiteContributor'; Role = 'websiteContributorRoleId'; Id = 'de139f84-1756-47ae-9be6-808fbbbdf0ee'; Scope = 'Microsoft.Web/sites' }
+        @{ Name = 'prodReleaseSiteContributor'; Role = 'websiteContributorRoleId'; Id = 'de139f84-1756-47ae-9be6-808fbbe84772'; Scope = 'Microsoft.Web/sites' }
     ) {
         $assignment = $resourcesTemplate.resources.$Name
         $assignment.condition | Should -Match 'empty\(parameters\(''(dev|prod)ReleasePrincipalId''\)\)'

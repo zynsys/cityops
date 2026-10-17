@@ -528,7 +528,7 @@ resource blobRoleAssignmentDevSlot 'Microsoft.Authorization/roleAssignments@2022
 // not reachable from GitHub-hosted runners.
 // ---------------------------------------------------------------------------
 var readerRoleId = 'acdd72a7-3385-48ef-bd42-f606fba81ae7' // Reader
-var websiteContributorRoleId = 'de139f84-1756-47ae-9be6-808fbbbdf0ee' // Website Contributor
+var websiteContributorRoleId = 'de139f84-1756-47ae-9be6-808fbbe84772' // Website Contributor
 
 resource webAppRef 'Microsoft.Web/sites@2023-12-01' existing = {
   name: appName

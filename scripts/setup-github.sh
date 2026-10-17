@@ -34,7 +34,7 @@ RBAC_ADMIN_ROLE_ID="f58310d9-a9f6-439a-9e8d-f62e7b41a168" # Role Based Access Co
 DELEGATABLE_ROLE_IDS=(
   4633458b-17de-408a-b874-0445c86b69e6 # Key Vault Secrets User
   5e0bd9bd-7b93-4f28-af87-19fc36ad61bd # Cognitive Services OpenAI User
-  de139f84-1756-47ae-9be6-808fbbbdf0ee # Website Contributor
+  de139f84-1756-47ae-9be6-808fbbe84772 # Website Contributor
   acdd72a7-3385-48ef-bd42-f606fba81ae7 # Reader
   ba92f5b4-2d11-453d-a403-e96b0029c9fe # Storage Blob Data Contributor
 )
