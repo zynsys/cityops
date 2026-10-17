@@ -12,7 +12,8 @@ require_value AZURE_RESOURCE_GROUP
 az account show >/dev/null 2>&1 || die "Not logged in to Azure. Run 'az login' first."
 
 eval "$(bash "$SCRIPTS_DIR/app/resolve-azure-names.sh" "$AZURE_BASE_NAME")"
-az webapp show --resource-group "$AZURE_RESOURCE_GROUP" --name "$WEB_APP_NAME" --output none \
+# Generic ARM read: `az webapp show` also calls publishxml, which Reader cannot do.
+az resource show --resource-group "$AZURE_RESOURCE_GROUP" --resource-type Microsoft.Web/sites --name "$WEB_APP_NAME" --output none \
   || die "Web app '$WEB_APP_NAME' was not found in resource group '$AZURE_RESOURCE_GROUP'. Run an infrastructure deployment first."
 az keyvault show --name "$KEY_VAULT_NAME" --output none \
   || die "Key Vault '$KEY_VAULT_NAME' was not found. Run an infrastructure deployment first."
