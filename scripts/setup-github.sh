@@ -78,6 +78,14 @@ TENANT_ID="$(az_tsv account show --query tenantId)"
 SUBSCRIPTION_SCOPE="/subscriptions/$SUBSCRIPTION_ID"
 [[ -n "$GITHUB_APPROVERS" ]] || GITHUB_APPROVERS="$(gh api user --jq .login | tr -d '\r')"
 
+# The OIDC subject GitHub presents depends on repository settings. Repositories using immutable
+# subjects send 'repo:<owner>@<owner-id>/<repo>@<repo-id>:...'; read the actual prefix instead of guessing.
+oidc_settings="$(gh api "repos/$GITHUB_REPO_SLUG/actions/oidc/customization/sub" 2>/dev/null | tr -d '\r' || echo '{}')"
+[[ "$(jq -r '.use_default // true' <<< "$oidc_settings")" == true ]] \
+  || die "This repository uses a custom OIDC subject template; this script only supports the default subject format."
+OIDC_SUBJECT_PREFIX="$(jq -r --arg slug "$GITHUB_REPO_SLUG" '.sub_claim_prefix // ("repo:" + $slug)' <<< "$oidc_settings")"
+echo "OIDC subject prefix: $OIDC_SUBJECT_PREFIX"
+
 # Secrets are optional on re-runs: an existing 'infra' secret is kept when its variable is unset.
 existing_infra_secrets="$(gh secret list --repo "$GITHUB_REPO_SLUG" --env "$INFRA_ENV" --json name --jq '.[].name' 2>/dev/null | tr -d '\r' || true)"
 for name in "${INFRA_SECRETS[@]}"; do
@@ -95,7 +103,7 @@ done
 # ---------------------------------------------------------------------------------------------
 # ensure_identity <display-name> <github-environment>  -> sets APP_ID and SP_OBJECT_ID
 ensure_identity() {
-  local display_name="$1" environment="$2" subject="repo:$GITHUB_REPO_SLUG:environment:$2"
+  local display_name="$1" environment="$2" subject="$OIDC_SUBJECT_PREFIX:environment:$2"
   APP_ID="$(az_json ad app list --filter "displayName eq '$display_name'" | jq -r '.[0].appId // empty' | tr -d '\r')"
   if [[ -z "$APP_ID" ]]; then
     APP_ID="$(az_tsv ad app create --display-name "$display_name" --sign-in-audience AzureADMyOrg --query appId)"
