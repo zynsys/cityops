@@ -11,6 +11,8 @@ const { auth } = NextAuth(authConfig);
 const PUBLIC_PREFIXES = [
   '/map',
   '/reports/',
+  '/analytics',
+  '/api/analytics/',
   '/api/auth/',
   '/api/detect-council',
   '/api/health',
@@ -24,7 +26,7 @@ const PUBLIC_PREFIXES = [
 ];
 
 /** Exact public paths (checked separately to avoid prefix collision). */
-const PUBLIC_EXACT = new Set(['/']);
+const PUBLIC_EXACT = new Set(['/', '/reports']);
 
 /** Paths that require authentication even if they match a public prefix. */
 const AUTH_REQUIRED_EXACT = new Set(['/reports/new']);

@@ -67,7 +67,8 @@ Platform admin is a SaaS super-user: **read everything, write nothing on tenant 
 | Route prefix | Allowed roles | Notes |
 |---|---|---|
 | `/` (home) | everyone | always public |
-| `/reports` | everyone | public analytics |
+| `/reports` | everyone | public reports list |
+| `/analytics` | everyone | public analytics dashboard (aggregate data only) |
 | `/map` | everyone | public map |
 | `/alerts` | everyone | public |
 | `/help` | everyone | public |

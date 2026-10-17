@@ -468,6 +468,17 @@ jobs:
           path: playwright-report/
           retention-days: 14
 
+      # Missing visual baselines are written next to the spec on the runner; publish them so they
+      # can be reviewed and committed (docs/deployment-guidelines.md §11.8).
+      - name: Publish generated visual baselines
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: visual-baselines
+          path: e2e/*-snapshots/
+          if-no-files-found: ignore
+          retention-days: 14
+
   # ---------------------------------------------------------------------------
   # DEPLOY (Dev slot) — deploy the built app to the 'dev' slot and migrate the
   # dev database (cityops_dev). Gated by the 'dev' environment (no approval — fast
