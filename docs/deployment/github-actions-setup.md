@@ -24,6 +24,9 @@ resource groups or subscriptions per environment and keep a staging slot for swa
 2. [Merge the workflow and identity changes](#step-2-merge-the-workflow-and-identity-changes)
 3. [Create identities, environments and secrets](#step-3-create-identities-environments-and-secrets)
 4. [Deploy the infrastructure](#step-4-deploy-the-infrastructure)
+5. [Deploy the app to the dev slot](#step-5-deploy-the-app-to-the-dev-slot)
+6. [Promote to production](#step-6-promote-to-production)
+7. [Troubleshooting](#step-7-troubleshooting)
 
 ---
 
@@ -316,3 +319,105 @@ succeeded.
 
 - [ ] Infra CI/CD run green, including the smoke test.
 - [ ] The resource group contains the web app, the `dev` slot and both private endpoints.
+
+---
+
+## Step 5: Deploy the app to the dev slot
+
+**Goal:** build, test and deploy the app to the `dev` slot with the `CityOps App CI/CD` workflow.
+
+Every push to `main` that changes app files runs CI and then deploys to dev automatically:
+lint, type-check, unit and integration tests, build, dependency audit, CodeQL and DevSkim.
+After that it verifies the Azure resources, migrates `cityops_dev`, deploys to the `dev` slot,
+smoke-tests `/api/health` and runs an OWASP ZAP baseline scan.
+
+A manual run adds the Playwright E2E and UI (accessibility, visual, cross-browser) suites. Use it
+the first time, or whenever you need demo data:
+
+```powershell
+gh workflow run app-cicd.yml --ref main -f operation=dev -f seed_demo_data=true
+gh run watch (gh run list --workflow app-cicd.yml --event workflow_dispatch --limit 1 --json databaseId --jq '.[0].databaseId')
+```
+
+| Input | Values | Effect |
+| --- | --- | --- |
+| `operation` | `validate` | CI only, no deployment |
+| | `dev` | CI, E2E/UI, then deploy to the `dev` slot |
+| | `production` | Everything in `dev`, then the approval-gated swap to production (Step 6) |
+| | `load-test` | k6 load test against the dev slot |
+| `seed_demo_data` | `true`/`false` | Runs `prisma/seed.ts` against the dev database (and the prod database on `production`) |
+
+**Migrations run on every deployment** (`prisma migrate deploy`). "No pending migrations" in the log
+is normal once the schema is current. **Demo data is opt-in**: without `seed_demo_data=true` the
+site works but shows no reports. The seed is idempotent. It upserts its own records and deletes only
+the report IDs it owns, so re-running it is safe.
+
+Demo accounts (all use the password `Password123!`, so use them for demos only): `admin@cityops.dev`
+(platform admin) and the council and citizen accounts listed in `prisma/seed.ts`.
+
+Expect about 2 minutes of cold start after each deployment. The smoke test polls for up to
+4 minutes, and the ZAP scan warms up the main pages first.
+
+### Step 5 checklist
+
+- [ ] Manual `operation=dev` run green, including E2E, UI, deploy and ZAP.
+- [ ] `https://<web-app>-dev.azurewebsites.net/reports` lists the demo reports.
+
+---
+
+## Step 6: Promote to production
+
+**Goal:** release the tested build to production with human approval and no downtime.
+
+```powershell
+gh workflow run app-cicd.yml --ref main -f operation=production -f seed_demo_data=true
+```
+
+1. The run repeats the full CI, E2E/UI, dev deployment and ZAP scan. Production can never receive a
+   build that skipped those checks.
+2. `Deploy to Production (swap)` waits for approval of the `prod` environment. Open the run, then
+   **Review deployments → prod → Approve and deploy**. Make sure GitHub shows the approval; if the
+   job still says *waiting*, the approval was not submitted.
+3. The job migrates the `cityops` database, optionally seeds it, swaps `dev` into production and
+   smoke-tests production.
+
+`DATABASE_URL`, `AUTH_SECRET`, `NEXTAUTH_URL` and `AZURE_STORAGE_CONTAINER` are slot-sticky (see
+`infra/resources.bicep`). Each slot keeps its own database and storage after a swap.
+
+**After a swap the `dev` slot holds the previous production build.** That is your instant rollback:
+
+```powershell
+az webapp deployment slot swap -g <resource-group> -n <web-app> --slot dev --target-slot production
+```
+
+On the **first** promotion, production was empty, so the dev slot is empty afterwards and returns
+503 (`Cannot find module '/home/site/wwwroot/server.js'`). Run Step 5 again (without seeding) to
+refill it. Later promotions don't have this problem.
+
+For a real production workload, don't seed production. Demo credentials are publicly known.
+
+### Step 6 checklist
+
+- [ ] Production run green, including the production smoke test.
+- [ ] `https://<web-app>.azurewebsites.net/reports` works.
+- [ ] Dev slot redeployed after the first promotion.
+
+---
+
+## Step 7: Troubleshooting
+
+| Symptom | Cause | Fix |
+| --- | --- | --- |
+| Pages return 500; logs show `DatabaseNotReachable` | PostgreSQL Flexible Server is **stopped**. Subscription automation can stop idle servers. | `az postgres flexible-server start -g <rg> -n <pg-server>`. Check it before every demo. |
+| Health check times out right after a deployment | Cold start (about 2 minutes) | Wait, then retry. The smoke test already polls. |
+| Deploy jobs show *skipped* | An upstream job failed, or the run was a push (no E2E/UI) and `operation` was not set | Check the `CI gate` job and re-run with a manual dispatch |
+| `npm audit` fails the build | High or critical advisory in a production dependency | Upgrade the package (`npx -y npm@11 audit fix`), then `npm rebuild` |
+| Visual test fails with "snapshot doesn't exist" | A new page or changed layout has no Linux baseline | Download the `visual-baselines` artifact from the run, review it, and commit it to `e2e/visual.spec.ts-snapshots/` |
+| ZAP scan times out | The app was still cold | Re-run the job; the scan warms the pages up first |
+| Approval never takes effect | The review was not submitted | Check `gh api repos/<owner>/<repo>/actions/runs/<run-id>/approvals` |
+
+Read the app logs:
+
+```powershell
+az webapp log download -g <rg> -n <web-app> --slot dev --log-file logs.zip
+```
