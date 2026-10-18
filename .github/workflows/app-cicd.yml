@@ -34,7 +34,7 @@ on:
         options: [validate, dev, production, load-test]
         default: validate
       seed_demo_data:
-        description: "Seed demo accounts/data in dev only (manual dev/production run)"
+        description: "Seed demo accounts/data (dev DB on 'dev'; dev + prod DBs on 'production')"
         type: boolean
         default: false
 
@@ -653,6 +653,11 @@ jobs:
 
       - name: Migrate cityops (prod)
         run: npm run db:migrate:deploy
+
+      # Demo environments only: the seed is idempotent but creates known demo credentials.
+      - name: Seed prod demo data (explicit opt-in)
+        if: inputs.seed_demo_data
+        run: npm run db:seed
 
       - name: Swap dev → production
         run: az webapp deployment slot swap -g "${{ vars.AZURE_RESOURCE_GROUP }}" -n "${{ steps.names.outputs.web-app-name }}" --slot dev --target-slot production
