@@ -78,7 +78,7 @@ jobs:
     timeout-minutes: 20
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Bicep unit tests (Pester)
         shell: pwsh
         run: |
@@ -111,7 +111,7 @@ jobs:
       actions: read
       id-token: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Verify independent approval configuration before apply
         if: inputs.operation == 'apply'
         env:
@@ -176,7 +176,7 @@ jobs:
           tenant-id: ${{ vars.AZURE_TENANT_ID }}
           subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
 
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Azure Policy compliance check
         uses: ./.github/actions/azure-policy-compliance
         with:
@@ -285,7 +285,7 @@ jobs:
       id-token: write
       contents: read
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Verify deployment secrets and identities are configured
         shell: bash
         env:
@@ -361,7 +361,7 @@ jobs:
       id-token: write
       contents: read
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Azure login (OIDC, read-only identity)
         uses: azure/login@v2
         with:
