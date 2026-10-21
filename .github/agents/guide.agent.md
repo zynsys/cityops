@@ -1,4 +1,5 @@
 ---
+name: Guide
 description: Answers questions about CityOps features, architecture, and development.
 ---
 
