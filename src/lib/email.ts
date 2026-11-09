@@ -16,6 +16,7 @@ import { statusChangeEmailHtml } from '@/lib/email-templates/status-change';
 import { reportSubmissionEmailHtml } from '@/lib/email-templates/report-submission';
 import { commentNotificationEmailHtml } from '@/lib/email-templates/comment-notification';
 import { assignmentNotificationEmailHtml } from '@/lib/email-templates/assignment-notification';
+import { invitationEmailHtml } from '@/lib/email-templates/invitation';
 
 /* ------------------------------------------------------------------ */
 /*  Core send function                                                */
@@ -135,6 +136,17 @@ export async function sendPasswordResetEmail(email: string, token: string): Prom
   await sendEmail({
     to: email,
     subject: 'Reset your password — CityOps',
+    html,
+  });
+}
+
+export async function sendInvitationEmail(email: string, token: string, tenantName: string): Promise<void> {
+  const invitationUrl = `${baseUrl()}/accept-invite?token=${encodeURIComponent(token)}`;
+  const html = invitationEmailHtml({ tenantName, invitationUrl });
+
+  await sendEmail({
+    to: email,
+    subject: `You're invited to join ${tenantName} on CityOps`,
     html,
   });
 }

@@ -38,6 +38,7 @@
 | `user` | Any person registered on the platform | No (platform-level) |
 | `role` | System-defined roles (citizen, authority_user, tenant_admin, platform_admin) | No (platform-level) |
 | `user_role` | Maps a user to one or more roles within a tenant | Yes |
+| `invitation` | Single-use invitation for a tenant staff account | Yes |
 | `report_category` | Tenant-configurable report categories (e.g., Road Safety, Drainage) | Yes |
 | `report` | A reported civic report | Yes |
 | `report_attachment` | Image or file attached to an report | Yes |
@@ -624,6 +625,27 @@ Links external OAuth/OIDC provider identities to a user. Allows one user to link
 
 ---
 
+### Invitation
+
+Single-use tenant staff invitations. Only a token hash is stored; acceptance assigns the recorded tenant and role.
+
+| Column | Type | Nullable | Default | Notes |
+|---|---|---|---|---|
+| `id` | uuid | no | gen_random_uuid() | PK |
+| `tenant_id` | uuid | no | | FK → `tenant.id` |
+| `invited_by_user_id` | uuid | no | | FK → `user.id` |
+| `email` | varchar(255) | no | | Normalized invitee email |
+| `role_id` | uuid | no | | FK → `role.id`; staff role only |
+| `token_hash` | varchar(64) | no | | Unique SHA-256 digest of the invitation token |
+| `expires_at` | timestamptz | no | | Invitation expiry |
+| `accepted_at` | timestamptz | yes | | Set atomically when accepted |
+| `revoked_at` | timestamptz | yes | | Set when replaced by a new invitation |
+| `created_at` | timestamptz | no | now() | |
+
+**Unique:** `token_hash`
+
+---
+
 ### 4.25 `tenant_boundary`
 
 Stores the geographic boundary polygon for each tenant. Used to resolve which council a citizen belongs to when they drop a pin on a map — the platform performs a spatial containment query against this table instead of requiring subdomain-based routing. Not tenant-scoped; managed by platform admins.
@@ -656,6 +678,7 @@ Stores the geographic boundary polygon for each tenant. Used to resolve which co
 
 - `tenant` 1 → 1 `tenant_boundary` (optional — not all tenants need boundary data)
 - `tenant` 1 → N `tenant_config`
+- `tenant` 1 → N `invitation`
 - `tenant` 1 → N `report_category`
 - `tenant` 1 → N `report`
 - `tenant` 1 → N `notification_template`
@@ -673,6 +696,7 @@ Stores the geographic boundary polygon for each tenant. Used to resolve which co
 - `user` 1 → N `session`
 - `user` 1 → N `password_reset_token`
 - `user` 1 → N `email_verification_token`
+- `user` 1 → N `invitation` (as inviter)
 - `user` 1 → N `account` (OAuth provider links)
 
 ### 5.3 Report Relationships

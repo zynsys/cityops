@@ -128,6 +128,7 @@ model Tenant {
   sessions                Session[]
   passwordResetTokens     PasswordResetToken[]
   emailVerificationTokens EmailVerificationToken[]
+  invitations            Invitation[]
   accounts                Account[]
   boundary                TenantBoundary?
 
@@ -200,6 +201,7 @@ model User {
   sessions                 Session[]
   passwordResetTokens      PasswordResetToken[]
   emailVerificationTokens  EmailVerificationToken[]
+  invitationsSent          Invitation[]           @relation("UserInvitationsSent")
   accounts                 Account[]
 
   @@unique([tenantId, email])
@@ -214,6 +216,7 @@ model Role {
   createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz
 
   userRoles UserRole[]
+  invitations Invitation[]
 
   @@map("role")
 }
@@ -599,6 +602,27 @@ model EmailVerificationToken {
 
   @@index([userId])
   @@map("email_verification_token")
+}
+
+/// Invitation — single-use onboarding invitations for tenant staff
+model Invitation {
+  id            String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId      String    @map("tenant_id") @db.Uuid
+  invitedByUserId String  @map("invited_by_user_id") @db.Uuid
+  email         String    @db.VarChar(255)
+  roleId        String    @map("role_id") @db.Uuid
+  tokenHash     String    @unique @map("token_hash") @db.VarChar(64)
+  expiresAt     DateTime  @map("expires_at") @db.Timestamptz
+  acceptedAt    DateTime? @map("accepted_at") @db.Timestamptz
+  revokedAt     DateTime? @map("revoked_at") @db.Timestamptz
+  createdAt     DateTime  @default(now()) @map("created_at") @db.Timestamptz
+
+  tenant      Tenant @relation(fields: [tenantId], references: [id])
+  invitedBy   User   @relation("UserInvitationsSent", fields: [invitedByUserId], references: [id])
+  role        Role   @relation(fields: [roleId], references: [id])
+
+  @@index([tenantId, email])
+  @@map("invitation")
 }
 
 /// 4.24 Account — links external OAuth/OIDC provider identities to a user
